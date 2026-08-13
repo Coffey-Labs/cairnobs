@@ -1,6 +1,8 @@
 // Package searchclient adapts the generated gRPC SearchServiceClient to
-// the narrow queryapi.searchClient interface, so queryapi doesn't need to
-// know anything about gRPC/protobuf directly.
+// the narrow querylang/executor.SearchClient interface (Search(ctx,
+// query string, limit uint32) ([]string, error), satisfied structurally,
+// no adapter type needed), so the query executor doesn't need to know
+// anything about gRPC/protobuf directly.
 package searchclient
 
 import (

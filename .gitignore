@@ -8,6 +8,7 @@ search/target/
 /api/api
 /cli/sentryctl
 /hack/windows-fixture/windows-fixture
+/hack/benchmark-fixture/benchmark-fixture
 
 # Node / SvelteKit (web/ has its own more detailed .gitignore too)
 web/node_modules/
