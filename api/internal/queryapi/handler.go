@@ -1,13 +1,13 @@
-// Package queryapi is the Phase 0 query API: a single crude POST /query
-// endpoint that takes a raw SQL string, allowlists it to a single SELECT
-// statement, and proxies it to ClickHouse. This is a deliberate
-// simplification of the pinned "gRPC + REST gateway" control-plane
-// pattern (see CLAUDE.md's tech stack table): a plain net/http REST
-// handler, not a gRPC service transcoded through grpc-gateway. That
-// machinery (proto definitions, googleapis annotations, gateway codegen)
-// buys nothing for one crude placeholder endpoint that Phase 2 replaces
-// outright with the real SPL-like query layer. Revisit gRPC+gateway when
-// /api grows a second real endpoint.
+// Package queryapi is Sentry's query API: POST /query (Phase 0, a crude
+// raw-SQL passthrough allowlisted to SELECT) and POST /search (Phase 1,
+// free-text search via the search service, joined back against
+// ClickHouse). This is a deliberate simplification of the pinned "gRPC +
+// REST gateway" control-plane pattern (see CLAUDE.md's tech stack table):
+// plain net/http REST handlers, not a gRPC service transcoded through
+// grpc-gateway. That machinery (proto definitions, googleapis
+// annotations, gateway codegen) doesn't buy much for two crude endpoints
+// that Phase 2's real SPL-like query layer replaces outright. Revisit
+// gRPC+gateway once /api's endpoint count and lifespan justify it.
 package queryapi
 
 import (
@@ -28,17 +28,19 @@ type queryExecutor interface {
 type Handler struct {
 	logger        *slog.Logger
 	exec          queryExecutor
+	search        searchClient
 	queryTimeout  time.Duration
 	allowedOrigin string
 }
 
-func NewHandler(logger *slog.Logger, exec queryExecutor, queryTimeout time.Duration, allowedOrigin string) *Handler {
-	return &Handler{logger: logger, exec: exec, queryTimeout: queryTimeout, allowedOrigin: allowedOrigin}
+func NewHandler(logger *slog.Logger, exec queryExecutor, search searchClient, queryTimeout time.Duration, allowedOrigin string) *Handler {
+	return &Handler{logger: logger, exec: exec, search: search, queryTimeout: queryTimeout, allowedOrigin: allowedOrigin}
 }
 
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /query", h.handleQuery)
+	mux.HandleFunc("POST /search", h.handleSearch)
 	mux.HandleFunc("GET /healthz", h.handleHealthz)
 	return h.withCORS(mux)
 }
@@ -99,10 +101,7 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
-		h.logger.Error("encoding response", "error", err)
-	}
+	writeJSON(w, result)
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

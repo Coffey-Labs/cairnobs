@@ -4,9 +4,17 @@ Go service sitting between the Rust agent and ClickHouse. Two halves in one
 binary, selected with `--mode`:
 
 - **server** — mTLS gRPC front end (`LogIngest.PushBatch`) that agents
-  connect to. Forwards each record, proto-encoded and unchanged, onto
-  Redpanda. Does no normalization — kept thin so agent-facing latency isn't
-  coupled to ClickHouse write performance.
+  connect to. Assigns each record a server-side `record_id` (a UUID,
+  overwriting whatever the agent sent — agents always send it empty) and
+  otherwise forwards records proto-encoded onto Redpanda unchanged. Still
+  kept thin — one field assignment, no real normalization — so agent-
+  facing latency isn't coupled to ClickHouse write performance.
+  `record_id` has to be assigned exactly once, here, rather than
+  independently by each downstream consumer: Phase 1's Tantivy indexer
+  and the ClickHouse writer both read the same Redpanda messages and need
+  to agree on the same ID for the same record to join search hits back to
+  rows — two consumers generating their own IDs would produce mismatched
+  ones for what's supposed to be the same record.
 - **consumer** — reads back off Redpanda, normalizes into the ClickHouse row
   shape (`internal/normalize`), and batch-writes via the native protocol
   driver. Commits Redpanda offsets only after a successful ClickHouse
@@ -35,6 +43,10 @@ egress an agent has. See `/docs/architecture.md`.
   protocol, pure Go (no cgo).
 - **golang.org/x/sync/errgroup** — used in `cmd/ingest/main.go` to run the
   server and consumer halves concurrently and propagate the first error.
+- **github.com/google/uuid** — was already in the dependency graph
+  transitively (via clickhouse-go); promoted to a direct dependency for
+  `record_id` generation in `internal/grpcserver`, so not a new addition
+  to the transitive tree.
 
 ## Configuration
 

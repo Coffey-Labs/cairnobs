@@ -9,6 +9,8 @@ package normalize
 import (
 	"time"
 
+	"github.com/google/uuid"
+
 	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
 
@@ -19,6 +21,7 @@ type Row struct {
 	Severity   string
 	Message    string
 	Attributes map[string]string
+	RecordID   uuid.UUID
 }
 
 func ToRow(rec *logsv1.LogRecord) Row {
@@ -26,6 +29,12 @@ func ToRow(rec *logsv1.LogRecord) Row {
 	if attrs == nil {
 		attrs = map[string]string{}
 	}
+	// grpcserver's PushBatch handler always assigns a valid UUID before a
+	// record reaches this point (see its doc comment for why), so a parse
+	// failure here would mean something upstream is bypassing that —
+	// fall back to the nil UUID rather than failing the whole row, same
+	// "never silently drop a record" spirit as the rest of this pipeline.
+	recordID, _ := uuid.Parse(rec.GetRecordId())
 	return Row{
 		Timestamp:  time.Unix(0, rec.GetTimestampUnixNano()).UTC(),
 		Host:       rec.GetHost(),
@@ -33,6 +42,7 @@ func ToRow(rec *logsv1.LogRecord) Row {
 		Severity:   severityText(rec.GetSeverity()),
 		Message:    rec.GetMessage(),
 		Attributes: attrs,
+		RecordID:   recordID,
 	}
 }
 

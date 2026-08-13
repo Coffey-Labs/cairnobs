@@ -3,6 +3,9 @@ mod config;
 mod grpc;
 mod source;
 
+#[cfg(windows)]
+mod service;
+
 pub mod pb {
     tonic::include_proto!("sentry.logs.v1");
 }
@@ -18,23 +21,66 @@ use tokio::sync::mpsc;
 use tonic::transport::Channel;
 
 #[derive(Parser)]
-#[command(name = "sentry-agent", about = "Sentry Linux log collector")]
+#[command(name = "sentry-agent", about = "Sentry Linux/Windows log collector")]
 struct Cli {
-    /// Path to a TOML config file. Defaults to /etc/sentry-agent/agent.toml
-    /// if present, otherwise built-in defaults (journald source, default
-    /// TLS cert paths under /etc/sentry-agent/).
+    /// Path to a TOML config file. Defaults to the platform's conventional
+    /// path if present, otherwise built-in defaults — see config::Config::load.
     #[arg(long)]
     config: Option<PathBuf>,
+
+    #[cfg(windows)]
+    #[command(subcommand)]
+    command: Option<WindowsCommand>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+#[cfg(windows)]
+#[derive(clap::Subcommand)]
+enum WindowsCommand {
+    /// Registers this binary as a Windows service (Automatic start,
+    /// LocalSystem account). Requires an administrator shell.
+    Install,
+    /// Removes the Windows service registration.
+    Uninstall,
+    /// Entry point the Service Control Manager invokes when starting the
+    /// registered service. Not meant to be run directly by a user — use
+    /// `sentry-agent` with no subcommand for a normal foreground/console
+    /// run, same as on Linux.
+    RunService,
+}
+
+/// Not `#[tokio::main]`: the Windows service dispatcher
+/// (`service_dispatcher::start`, see service.rs) is a blocking, synchronous
+/// FFI call into the Service Control Manager and needs to be invoked
+/// directly from a plain thread, not from inside an already-running tokio
+/// runtime. Every other path builds its own runtime explicitly instead.
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    #[cfg(windows)]
+    {
+        match cli.command {
+            Some(WindowsCommand::Install) => return service::install().context("installing Windows service"),
+            Some(WindowsCommand::Uninstall) => return service::uninstall().context("removing Windows service"),
+            Some(WindowsCommand::RunService) => return service::run_as_service().context("running as a Windows service"),
+            None => {}
+        }
+    }
+
+    let rt = tokio::runtime::Runtime::new().context("building tokio runtime")?;
+    rt.block_on(run_agent(cli.config))
+}
+
+/// The actual agent: load config, connect to ingest, run the source ->
+/// parse -> batch -> ship loop until the source exits or the process is
+/// signaled to stop. Called from `main()` directly for a normal run, and
+/// from within the Windows service's own thread when running as a
+/// service (see service.rs) — same logic either way.
+pub async fn run_agent(config_path: Option<PathBuf>) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let cli = Cli::parse();
-    let cfg = Config::load(cli.config.as_deref()).context("loading config")?;
+    let cfg = Config::load(config_path.as_deref()).context("loading config")?;
 
     let host = cfg.agent.host.clone().unwrap_or_else(default_hostname);
     let service = cfg.agent.service.clone();
@@ -60,13 +106,23 @@ async fn main() -> Result<()> {
                 };
                 let parsed = sentry_parser::parse(&raw.line);
                 let severity = to_pb_severity(raw.severity_hint.or(parsed.severity));
+                let mut attributes: std::collections::HashMap<String, String> =
+                    parsed.attributes.into_iter().collect();
+                // Source-provided structured fields (e.g. Windows Event
+                // Log's EventID/Provider/Channel) win over anything the
+                // RFC 5424 parser inferred from the raw text, since they
+                // come from a more authoritative place.
+                attributes.extend(raw.extra_attributes);
                 let record = LogRecord {
                     timestamp_unix_nano: raw.timestamp_unix_nano,
                     host: host.clone(),
                     service: service.clone(),
                     severity: severity as i32,
                     message: parsed.message,
-                    attributes: parsed.attributes.into_iter().collect(),
+                    attributes,
+                    // Always empty as sent by the agent -- ingest assigns
+                    // this server-side. See the proto field comment.
+                    record_id: String::new(),
                 };
                 if let Some(batch) = batcher.push(record) {
                     flush(&mut client, batch).await;
@@ -87,13 +143,24 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+// `tx` genuinely goes unused in one rare-but-valid combination: Windows
+// features enabled while targeting a non-Windows platform (e.g. sanity-
+// checking the Windows source arms compile shape from Linux, which is
+// exactly how these were checked before a real Windows toolchain was
+// available) collapses every arm to the tx-free `Err(...)` fallback.
+#[allow(unused_variables)]
 async fn spawn_source(source: config::SourceConfig, tx: source::LineSender) {
-    let result = match source {
-        #[cfg(feature = "journald")]
+    // Explicit type: with an unusual feature combination (e.g.
+    // windows-eventlog enabled while targeting Linux), every arm below can
+    // collapse to the same untyped `Err(...)` fallback, and Rust can't
+    // infer the Ok type without at least one real `.await` call anywhere
+    // in the compiled match to anchor it.
+    let result: Result<(), anyhow::Error> = match source {
+        #[cfg(all(feature = "journald", target_os = "linux"))]
         config::SourceConfig::Journald { unit } => source::journald::run(unit.as_deref(), tx).await,
-        #[cfg(not(feature = "journald"))]
+        #[cfg(not(all(feature = "journald", target_os = "linux")))]
         config::SourceConfig::Journald { .. } => {
-            Err(anyhow::anyhow!("this build was compiled without the `journald` feature"))
+            Err(anyhow::anyhow!("this build was compiled without the `journald` feature (or isn't targeting Linux)"))
         }
 
         #[cfg(feature = "file-tail")]
@@ -103,6 +170,20 @@ async fn spawn_source(source: config::SourceConfig, tx: source::LineSender) {
         #[cfg(not(feature = "file-tail"))]
         config::SourceConfig::File { .. } => {
             Err(anyhow::anyhow!("this build was compiled without the `file-tail` feature"))
+        }
+
+        #[cfg(all(feature = "windows-eventlog", target_os = "windows"))]
+        config::SourceConfig::EventLog { channels } => source::windows_eventlog::run(&channels, tx).await,
+        #[cfg(not(all(feature = "windows-eventlog", target_os = "windows")))]
+        config::SourceConfig::EventLog { .. } => {
+            Err(anyhow::anyhow!("this build was compiled without the `windows-eventlog` feature (or isn't targeting Windows)"))
+        }
+
+        #[cfg(all(feature = "etw", target_os = "windows"))]
+        config::SourceConfig::Etw { providers } => source::etw::run(&providers, tx).await,
+        #[cfg(not(all(feature = "etw", target_os = "windows")))]
+        config::SourceConfig::Etw { .. } => {
+            Err(anyhow::anyhow!("this build was compiled without the `etw` feature (or isn't targeting Windows)"))
         }
     };
     if let Err(e) = result {
@@ -142,6 +223,7 @@ fn to_pb_severity(sev: Option<u8>) -> Severity {
     }
 }
 
+#[cfg(not(windows))]
 fn default_hostname() -> String {
     if let Ok(s) = std::fs::read_to_string("/etc/hostname") {
         let s = s.trim().to_string();
@@ -150,4 +232,12 @@ fn default_hostname() -> String {
         }
     }
     std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string())
+}
+
+#[cfg(windows)]
+fn default_hostname() -> String {
+    // Windows sets this in every process's environment; no Win32 API call
+    // needed (GetComputerNameW would be the "proper" way, but this is the
+    // same value and far simpler).
+    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown-host".to_string())
 }

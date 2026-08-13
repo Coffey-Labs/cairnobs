@@ -63,6 +63,7 @@ mod tests {
             severity: 0,
             message: msg.into(),
             attributes: Default::default(),
+            record_id: String::new(),
         }
     }
 

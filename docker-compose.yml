@@ -1,12 +1,18 @@
-# Phase 0 stack: Redpanda -> ingest -> ClickHouse -> api -> web.
+# Phase 0+1 stack: Redpanda -> ingest -> ClickHouse -> api -> web, plus
+# search (Tantivy full-text indexing, reads the same Redpanda topic
+# ingest's consumer does).
 #
 # Does NOT include the Rust agent — see /agent/README.md: journald
 # sourcing needs the host's journal, which isn't something a container
 # gets for free. Run the agent natively on the host per
 # /docs/phase-0-runbook.md, pointed at ingest's mapped port (localhost:4317).
+# Windows Event Log/ETW sourcing needs a real Windows host regardless —
+# see /docs/phase-1-runbook.md.
 #
 # Before first run: generate dev mTLS certs (hack/dev-certs/generate.sh).
-# See /docs/phase-0-runbook.md for the full sequence.
+# See /docs/phase-0-runbook.md (Linux pipeline) and
+# /docs/phase-1-runbook.md (Windows + full-text search) for the full
+# sequences.
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
@@ -44,6 +50,10 @@ services:
     environment:
       REDPANDA_BROKERS: "redpanda:9092"
       REDPANDA_ADMIN_HOSTS: "redpanda:9644"
+      # Explicit rather than relying on both this script's and /search's
+      # defaults happening to agree — search consumes this same topic and
+      # needs to know the partition count up front (see /search/README.md).
+      REDPANDA_TOPIC_PARTITIONS: "6"
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -109,9 +119,30 @@ services:
     volumes:
       - ./hack/dev-certs/out:/etc/sentry-ingest:ro
 
+  # Reads the same sentry.logs.raw topic ingest's consumer does (own
+  # offset tracking, own failure domain — see /search/README.md) and
+  # builds a Tantivy full-text index over the message field.
+  search:
+    build:
+      context: . # needs both search/ and proto/
+      dockerfile: search/Dockerfile
+    container_name: sentry-search
+    depends_on:
+      redpanda-provision:
+        condition: service_completed_successfully
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      REDPANDA_TOPIC_PARTITIONS: "6" # must match redpanda-provision's above
+      # tracing-subscriber's default filter suppresses INFO without this
+      # -- found by actually checking `docker compose logs search` and
+      # seeing nothing, same silent-logging gap the agent had in Phase 0.
+      RUST_LOG: "info"
+    volumes:
+      - search-index-data:/var/lib/sentry-search
+
   api:
     build:
-      context: .
+      context: . # needs both api/ and proto/ (gRPC client to search)
       dockerfile: api/Dockerfile
     container_name: sentry-api
     depends_on:
@@ -122,6 +153,7 @@ services:
     environment:
       CLICKHOUSE_ADDR: "clickhouse:9000"
       CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      SEARCH_GRPC_ADDR: "search:50052"
 
   web:
     build:
@@ -141,3 +173,4 @@ services:
 volumes:
   redpanda-data:
   clickhouse-data:
+  search-index-data:

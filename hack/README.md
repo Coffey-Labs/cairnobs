@@ -14,3 +14,8 @@ monorepos (Kubernetes among them).
 - `dev-certs/` — generates a throwaway CA + server/client cert pair for
   local mTLS between the agent and ingest. See `/docs/phase-0-runbook.md`
   for when to run it.
+- `windows-fixture/` — sends synthetic Windows Event Log-shaped records
+  directly to `ingest`, bypassing the real Windows agent. Tests whether
+  the pipeline handles Windows-shaped data; doesn't test the real
+  `EvtSubscribe`/ETW integration, which needs actual Windows. See
+  `/docs/phase-1-runbook.md`.

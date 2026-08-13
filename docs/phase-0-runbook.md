@@ -5,13 +5,16 @@ ingest, and ClickHouse, to a browser table. This is the actual
 "done" criterion for Phase 0 — if this doesn't work, Phase 0 isn't done,
 regardless of what any individual component's tests say.
 
-**This sequence has not been run end-to-end** in the environment that
-built it (no Docker available there — see the caveats each component's
-summary already flagged). Individual pieces are unit-tested and built
-successfully in isolation; this document is the logical sequence to run
-for real, not a report that it's been run. Expect to debug something on
-first attempt, and treat the "Troubleshooting" section at the bottom as a
-starting point, not an exhaustive list.
+**Update:** this sequence has since been run for real, more than once,
+against a live Docker install — not just written and trusted. Two real
+bugs turned up doing that (ClickHouse's official image silently disabling
+network access without a password set; `rpk`'s exact flag syntax) and got
+fixed; see the git history around the "Fix two bugs found by actually
+running the Phase 0 pipeline end-to-end" commit if you want the details.
+The steps below reflect what was actually run, not just planned. The
+"Troubleshooting" section below is still worth reading first if something
+doesn't work — it's not an exhaustive list, but it does reflect real
+failures encountered, not hypothetical ones.
 
 ## Prerequisites
 
@@ -113,12 +116,15 @@ Reading the system journal generally needs root (or membership in the
 by distro, root is the reliable path for this runbook):
 
 ```sh
-sudo ./target/release/sentry-agent
+sudo RUST_LOG=info ./target/release/sentry-agent
 ```
 
-Leave it running in this terminal — you should see a `connected to ingest
-service` log line. If you see a TLS or connection error instead, stop
-here and check the Troubleshooting section before continuing.
+`RUST_LOG=info` matters: `tracing_subscriber`'s default filter is
+otherwise strict enough to suppress even the startup log line, and the
+agent will look like it's silently doing nothing. Leave it running in
+this terminal — you should see a `connected to ingest service` log line.
+If you see a TLS or connection error instead, stop here and check the
+Troubleshooting section before continuing.
 
 ## 6. Generate a test log line
 

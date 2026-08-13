@@ -4,6 +4,8 @@
 	// This is a placeholder for the real query UI that lands once /api grows
 	// a real SPL-like query layer in Phase 2.
 
+	import ResultsTable from '$lib/ResultsTable.svelte';
+
 	const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
 	let sql = $state('SELECT * FROM logs ORDER BY timestamp DESC LIMIT 100');
@@ -12,12 +14,6 @@
 	let error = $state('');
 	let loading = $state(false);
 	let hasRun = $state(false);
-
-	function formatCell(value: unknown): string {
-		if (value === null || value === undefined) return '';
-		if (typeof value === 'object') return JSON.stringify(value);
-		return String(value);
-	}
 
 	async function runQuery() {
 		loading = true;
@@ -49,10 +45,11 @@
 </script>
 
 <main>
-	<h1>Sentry — Log Query (Phase 0)</h1>
+	<h1>Sentry — Log Query</h1>
 	<p>
 		Raw SQL only, SELECT statements against the <code>logs</code> table. No auth, no query
-		builder yet — see <code>/api</code> for what's actually allowed.
+		builder yet — see <code>/api</code> for what's actually allowed. Looking for free-text
+		search instead? See the <a href="/search">Full-Text Search</a> page.
 	</p>
 
 	<textarea bind:value={sql} rows="4" cols="100" spellcheck="false"></textarea>
@@ -66,30 +63,7 @@
 		<p class="error">Error: {error}</p>
 	{/if}
 
-	{#if hasRun && !error}
-		<p>{rows.length} row(s)</p>
-	{/if}
-
-	{#if columns.length > 0}
-		<table>
-			<thead>
-				<tr>
-					{#each columns as col (col)}
-						<th>{col}</th>
-					{/each}
-				</tr>
-			</thead>
-			<tbody>
-				{#each rows as row, i (i)}
-					<tr>
-						{#each row as cell, j (j)}
-							<td>{formatCell(cell)}</td>
-						{/each}
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	{/if}
+	<ResultsTable {columns} {rows} {hasRun} />
 </main>
 
 <style>
@@ -109,20 +83,5 @@
 	}
 	.error {
 		color: #b00020;
-	}
-	table {
-		border-collapse: collapse;
-		width: 100%;
-		margin-top: 1rem;
-	}
-	th,
-	td {
-		border: 1px solid #ccc;
-		padding: 0.25rem 0.5rem;
-		text-align: left;
-		font-size: 0.85rem;
-	}
-	th {
-		background: #f0f0f0;
 	}
 </style>

@@ -1,7 +1,9 @@
 // Package grpcserver implements the agent-facing side of ingest: an mTLS
-// gRPC server accepting LogIngest.PushBatch calls, which it forwards
-// unchanged (proto-encoded) onto Redpanda. Normalization into the
-// ClickHouse row shape happens later, on the consumer side.
+// gRPC server accepting LogIngest.PushBatch calls. It assigns each record
+// a stable record_id (see the proto field comment for why this has to
+// happen exactly once, here, rather than in either downstream consumer)
+// and otherwise forwards records unchanged onto Redpanda — normalization
+// into the ClickHouse row shape happens later, on the consumer side.
 package grpcserver
 
 import (
@@ -10,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -76,6 +79,15 @@ func (s *Server) PushBatch(ctx context.Context, req *logsv1.PushBatchRequest) (*
 
 	msgs := make([]kafka.Message, 0, len(req.GetRecords()))
 	for _, rec := range req.GetRecords() {
+		// Assigned here, once, before this record is produced to
+		// Redpanda: the ClickHouse-writer consumer and the Tantivy-
+		// indexer consumer (Phase 1) both read the same Redpanda
+		// messages and need to agree on the same ID for the same
+		// record. Overwrites anything the agent sent (it always sends
+		// empty, per the proto comment, but this is authoritative
+		// regardless).
+		rec.RecordId = uuid.NewString()
+
 		val, err := proto.Marshal(rec)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "marshaling record: %v", err)

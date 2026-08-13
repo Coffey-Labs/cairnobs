@@ -41,14 +41,14 @@ func (w *Writer) Close() error {
 }
 
 func (w *Writer) WriteBatch(ctx context.Context, records []*logsv1.LogRecord) error {
-	batch, err := w.conn.PrepareBatch(ctx, "INSERT INTO logs (timestamp, host, service, severity, message, attributes)")
+	batch, err := w.conn.PrepareBatch(ctx, "INSERT INTO logs (timestamp, host, service, severity, message, attributes, record_id)")
 	if err != nil {
 		return fmt.Errorf("preparing batch: %w", err)
 	}
 
 	for _, rec := range records {
 		row := normalize.ToRow(rec)
-		if err := batch.Append(row.Timestamp, row.Host, row.Service, row.Severity, row.Message, row.Attributes); err != nil {
+		if err := batch.Append(row.Timestamp, row.Host, row.Service, row.Severity, row.Message, row.Attributes, row.RecordID); err != nil {
 			return fmt.Errorf("appending row to batch: %w", err)
 		}
 	}

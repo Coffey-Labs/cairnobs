@@ -1,7 +1,7 @@
-// Command api is the Sentry Phase 0 query API: a single crude POST /query
-// endpoint proxying allowlisted SELECT statements to ClickHouse. See
-// internal/queryapi for why this is plain REST rather than the pinned
-// gRPC+gateway pattern for Phase 0.
+// Command api is Sentry's query API: POST /query (raw SQL, SELECT-only)
+// and POST /search (free-text, via the search service). See
+// internal/queryapi for why these are plain REST rather than the pinned
+// gRPC+gateway pattern.
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 
 	"github.com/sentry/sentry/api/internal/config"
 	"github.com/sentry/sentry/api/internal/queryapi"
+	"github.com/sentry/sentry/api/internal/searchclient"
 )
 
 func main() {
@@ -50,8 +51,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	search, err := searchclient.Dial(cfg.SearchGRPCAddr)
+	if err != nil {
+		logger.Error("dialing search service", "error", err)
+		os.Exit(1)
+	}
+	defer search.Close()
+
 	exec := queryapi.NewExecutor(conn)
-	handler := queryapi.NewHandler(logger, exec, cfg.QueryTimeout, cfg.CORSAllowedOrigin)
+	handler := queryapi.NewHandler(logger, exec, search, cfg.QueryTimeout, cfg.CORSAllowedOrigin)
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,

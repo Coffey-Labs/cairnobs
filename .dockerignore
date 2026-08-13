@@ -1,7 +1,8 @@
-# ingest/ and api/ build with context "." (repo root) so their Dockerfiles
-# can also COPY proto/. Keep that context lean.
+# ingest/, api/, and search/ build with context "." (repo root) so their
+# Dockerfiles can also COPY proto/. Keep that context lean.
 .git/
 agent/target/
+search/target/
 web/node_modules/
 web/build/
 web/.svelte-kit/

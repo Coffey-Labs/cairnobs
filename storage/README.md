@@ -4,7 +4,8 @@ ClickHouse schema and migration tooling for Sentry's analytical store.
 
 ## Schema
 
-One table for Phase 0, `logs`:
+One table, `logs` (Phase 0 columns plus `record_id`, added in
+`migrations/0002_add_record_id.sql`):
 
 ```sql
 CREATE TABLE logs
@@ -14,12 +15,30 @@ CREATE TABLE logs
     `service`    String,
     `severity`   LowCardinality(String),
     `message`    String,
-    `attributes` Map(String, String)
+    `attributes` Map(String, String),
+    `record_id`  UUID DEFAULT generateUUIDv4()
 )
 ENGINE = MergeTree
 PARTITION BY toDate(timestamp)
 ORDER BY (service, timestamp)
+-- plus: INDEX record_id_idx record_id TYPE bloom_filter GRANULARITY 4
 ```
+
+**`record_id`** (Phase 1) is the stable per-record identifier Tantivy's
+full-text search joins back to this table with — `/ingest`'s gRPC front
+end assigns it once, server-side, before a record is produced to
+Redpanda (see `/ingest/README.md` for why it has to happen exactly once,
+upstream of both the ClickHouse-writer and Tantivy-indexer consumers).
+Added via `ALTER TABLE ... ADD COLUMN` + `ADD INDEX` rather than changing
+`ORDER BY`: `ORDER BY (service, timestamp)` is the proven time-range-scan
+access pattern from Phase 0 and shouldn't be disturbed for a
+fundamentally different access pattern (point lookups by ID). A
+data-skipping bloom filter index on `record_id` serves the `WHERE
+record_id IN (...)` lookup Tantivy-backed search results need, without
+touching the primary sort order. The `DEFAULT generateUUIDv4()` is a
+safety net, not the normal path — every row `/ingest` writes explicitly
+supplies its own `record_id` from the proto message; the default only
+matters for rows written some other way.
 
 Notes on choices that weren't fully specified by the task description:
 
