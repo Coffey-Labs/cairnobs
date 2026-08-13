@@ -1,0 +1,33 @@
+# Example sentry-agent config. Copy to /etc/sentry-agent/agent.toml, or
+# pass --config /path/to/this/file.
+#
+# Every field has a built-in default (see src/config.rs), so this file only
+# needs to contain what you're overriding. An agent with NO config file at
+# all still runs: it defaults to journald, service = "default", and expects
+# mTLS material at /etc/sentry-agent/{ca,client,client-key}.pem.
+
+[agent]
+# host = "explicit-hostname-override"   # defaults to /etc/hostname
+service = "my-service"
+
+[source]
+kind = "journald"
+# unit = "nginx.service"                # omit to tail the whole journal
+
+# To tail a file instead:
+# [source]
+# kind = "file"
+# path = "/var/log/nginx/access.log"
+# from_beginning = false
+
+[batch]
+max_size = 500
+flush_interval_ms = 2000
+
+[ingest]
+endpoint = "https://ingest.internal:4317"
+
+[tls]
+ca_cert = "/etc/sentry-agent/ca.pem"
+client_cert = "/etc/sentry-agent/client.pem"
+client_key = "/etc/sentry-agent/client-key.pem"

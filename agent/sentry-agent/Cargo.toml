@@ -1,0 +1,34 @@
+[package]
+name = "sentry-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sentry distro-agnostic Linux log collector"
+
+[[bin]]
+name = "sentry-agent"
+path = "src/main.rs"
+
+[features]
+default = ["journald"]
+journald = []
+file-tail = []
+
+[dependencies]
+sentry-parser = { path = "../sentry-parser" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "io-std", "time", "fs", "sync", "signal"] }
+tonic = { version = "0.12", features = ["tls"] }
+prost = "0.13"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[build-dependencies]
+tonic-build = "0.12"

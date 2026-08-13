@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package sentry.logs.v1;
+
+option go_package = "github.com/sentry/sentry/proto/sentry/logs/v1;logsv1";
+
+// LogIngest is the service agents use to ship batched log records to the
+// ingest service over mTLS. Phase 0: single unary batch push. Streaming
+// (client-streaming for continuous shipping) is a likely Phase 1 upgrade
+// once backpressure/flow-control behavior is characterized.
+service LogIngest {
+  rpc PushBatch(PushBatchRequest) returns (PushBatchResponse);
+}
+
+// Severity follows OTel's severity number ranges (1-24), collapsed here to
+// the coarse names agents actually need to set. Numeric value stored
+// downstream may be a full OTel severity_number computed by ingest.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_TRACE = 1;
+  SEVERITY_DEBUG = 2;
+  SEVERITY_INFO = 3;
+  SEVERITY_WARN = 4;
+  SEVERITY_ERROR = 5;
+  SEVERITY_FATAL = 6;
+}
+
+message LogRecord {
+  // Unix epoch nanoseconds, set by the agent at time of read (not parse or
+  // send time) to preserve original ordering as closely as possible.
+  int64 timestamp_unix_nano = 1;
+
+  // Hostname the agent is running on. Agent fills this from its own config
+  // or system hostname; not trusted as an identity claim (mTLS client cert
+  // is the identity boundary).
+  string host = 2;
+
+  // Logical service/unit name. For journald sources, this is typically the
+  // systemd unit name; for file sources, it comes from agent config.
+  string service = 3;
+
+  Severity severity = 4;
+
+  // Original, unparsed log line. Always populated, even when structured
+  // fields below are also present, per the schema-on-read fallback
+  // requirement in CLAUDE.md.
+  string message = 5;
+
+  // Structured fields extracted by the agent's parser (e.g. RFC 5424
+  // syslog header fields). Empty when the raw-passthrough fallback fires.
+  map<string, string> attributes = 6;
+}
+
+message PushBatchRequest {
+  // Agent-assigned identifier for dedup/idempotency on retry. Ingest may
+  // use this to avoid double-writing a batch if a retry follows a
+  // timeout on an actually-successful push.
+  string batch_id = 1;
+
+  repeated LogRecord records = 2;
+}
+
+message PushBatchResponse {
+  // Number of records ingest accepted. Phase 0: batches are all-or-nothing,
+  // so this equals len(records) on success. Partial-acceptance semantics
+  // are not implemented yet.
+  uint32 accepted = 1;
+}

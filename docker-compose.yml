@@ -1,0 +1,128 @@
+# Phase 0 stack: Redpanda -> ingest -> ClickHouse -> api -> web.
+#
+# Does NOT include the Rust agent — see /agent/README.md: journald
+# sourcing needs the host's journal, which isn't something a container
+# gets for free. Run the agent natively on the host per
+# /docs/phase-0-runbook.md, pointed at ingest's mapped port (localhost:4317).
+#
+# Before first run: generate dev mTLS certs (hack/dev-certs/generate.sh).
+# See /docs/phase-0-runbook.md for the full sequence.
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: sentry-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # One-shot: creates the sentry.logs.raw topic, then exits 0. ingest
+  # waits on this completing successfully before it starts.
+  redpanda-provision:
+    build:
+      context: ./transport
+    container_name: sentry-redpanda-provision
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: sentry-clickhouse
+    ports:
+      - "8123:8123" # HTTP interface, used by the migrate step
+      - "9000:9000" # native protocol, used by ingest and api
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # One-shot: applies /storage/migrations/*.sql, then exits 0. ingest and
+  # api both wait on this completing successfully.
+  clickhouse-migrate:
+    build:
+      context: ./storage
+    container_name: sentry-clickhouse-migrate
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_HTTP: "http://clickhouse:8123"
+
+  ingest:
+    build:
+      context: . # needs both ingest/ and proto/
+      dockerfile: ingest/Dockerfile
+    container_name: sentry-ingest
+    depends_on:
+      redpanda-provision:
+        condition: service_completed_successfully
+      clickhouse-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4317:4317" # gRPC, mTLS — this is what the host-run agent connects to
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      CLICKHOUSE_ADDR: "clickhouse:9000"
+      # TLS_*_FILE env vars are left at their defaults
+      # (/etc/sentry-ingest/{server,server-key,ca}.pem) — matches where
+      # the volume below mounts the generated dev certs.
+    volumes:
+      - ./hack/dev-certs/out:/etc/sentry-ingest:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: sentry-api
+    depends_on:
+      clickhouse-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      CLICKHOUSE_ADDR: "clickhouse:9000"
+
+  web:
+    build:
+      context: web
+      args:
+        # Baked in at build time (static site, not a server) as
+        # localhost:8080 -- this is fetched from the *browser*, which
+        # resolves against the host's mapped port, not the compose
+        # network's service DNS name.
+        VITE_API_BASE_URL: "http://localhost:8080"
+    container_name: sentry-web
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  redpanda-data:
+  clickhouse-data:
