@@ -1,0 +1,34 @@
+# Standalone Redpanda for local development against /transport in
+# isolation. The root-level docker-compose.yml runs the full Phase 0 stack
+# and defines its own redpanda service separately — this file is not
+# included by it.
+#
+# Note advertise-kafka-addr is "localhost" here (host tools connect via the
+# mapped port), vs "redpanda" in the root compose (other containers connect
+# via the compose network's service DNS name). Getting this wrong is the
+# classic Redpanda/Kafka docker-compose footgun — clients can connect
+# initially but then fail on the broker's advertised address once they try
+# to actually produce/consume.
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: sentry-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644" # admin API, used by rpk/healthchecks
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+volumes:
+  redpanda-data:

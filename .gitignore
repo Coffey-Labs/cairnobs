@@ -1,0 +1,21 @@
+# Rust
+agent/target/
+
+# Go build cache (go build ./... without -o doesn't normally leave
+# binaries in-tree, but be defensive)
+/ingest/ingest
+/api/api
+/cli/sentryctl
+
+# Node / SvelteKit (web/ has its own more detailed .gitignore too)
+web/node_modules/
+web/build/
+web/.svelte-kit/
+
+# Dev-only generated secrets
+hack/dev-certs/out/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
