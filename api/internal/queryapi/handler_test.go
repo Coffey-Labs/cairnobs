@@ -27,8 +27,24 @@ func (f *fakeExecutor) Execute(_ context.Context, sql string) (*QueryResult, err
 	return f.result, nil
 }
 
+type fakeSearchClient struct {
+	recordIDs []string
+	err       error
+}
+
+func (f *fakeSearchClient) Search(_ context.Context, _ string, _ uint32) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.recordIDs, nil
+}
+
 func newTestHandler(exec queryExecutor) *Handler {
-	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), exec, time.Second, "*")
+	return newTestHandlerWithSearch(exec, &fakeSearchClient{})
+}
+
+func newTestHandlerWithSearch(exec queryExecutor, search searchClient) *Handler {
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), exec, search, time.Second, "*")
 }
 
 func TestHandleQuerySuccess(t *testing.T) {

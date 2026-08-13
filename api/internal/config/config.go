@@ -12,6 +12,7 @@ import (
 type Config struct {
 	HTTPListenAddr    string
 	ClickHouse        ClickHouseConfig
+	SearchGRPCAddr    string
 	QueryTimeout      time.Duration
 	CORSAllowedOrigin string
 }
@@ -32,6 +33,9 @@ func Load() (Config, error) {
 			Username: getenv("CLICKHOUSE_USERNAME", "default"),
 			Password: getenv("CLICKHOUSE_PASSWORD", ""),
 		},
+		// Search service's gRPC address (see /search) -- default matches
+		// /search's own default GRPC_LISTEN_ADDR.
+		SearchGRPCAddr: getenv("SEARCH_GRPC_ADDR", "localhost:50052"),
 		// Phase 0 has no auth, so this is wide open by default to keep
 		// the local SvelteKit dev server (a different origin/port)
 		// working out of the box. Tighten before this is ever reachable

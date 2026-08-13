@@ -1,11 +1,13 @@
 # Rust
 agent/target/
+search/target/
 
 # Go build cache (go build ./... without -o doesn't normally leave
 # binaries in-tree, but be defensive)
 /ingest/ingest
 /api/api
 /cli/sentryctl
+/hack/windows-fixture/windows-fixture
 
 # Node / SvelteKit (web/ has its own more detailed .gitignore too)
 web/node_modules/

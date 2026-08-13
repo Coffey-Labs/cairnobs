@@ -4,10 +4,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
 
 func TestToRowMapsFieldsAndSeverity(t *testing.T) {
+	id := uuid.New()
 	rec := &logsv1.LogRecord{
 		TimestampUnixNano: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC).UnixNano(),
 		Host:               "host-1",
@@ -15,6 +18,7 @@ func TestToRowMapsFieldsAndSeverity(t *testing.T) {
 		Severity:           logsv1.Severity_SEVERITY_ERROR,
 		Message:            "boom",
 		Attributes:         map[string]string{"k": "v"},
+		RecordId:           id.String(),
 	}
 
 	row := ToRow(rec)
@@ -30,6 +34,17 @@ func TestToRowMapsFieldsAndSeverity(t *testing.T) {
 	}
 	if !row.Timestamp.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) {
 		t.Fatalf("unexpected timestamp: %v", row.Timestamp)
+	}
+	if row.RecordID != id {
+		t.Fatalf("RecordID = %v, want %v", row.RecordID, id)
+	}
+}
+
+func TestToRowInvalidRecordIDFallsBackToNilUUID(t *testing.T) {
+	rec := &logsv1.LogRecord{Host: "h", Service: "s", Message: "m", RecordId: "not-a-uuid"}
+	row := ToRow(rec)
+	if row.RecordID != uuid.Nil {
+		t.Fatalf("expected nil UUID fallback for an invalid record_id, got %v", row.RecordID)
 	}
 }
 

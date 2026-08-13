@@ -103,8 +103,18 @@ type LogRecord struct {
 	// requirement in CLAUDE.md.
 	Message string `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
 	// Structured fields extracted by the agent's parser (e.g. RFC 5424
-	// syslog header fields). Empty when the raw-passthrough fallback fires.
-	Attributes    map[string]string `protobuf:"bytes,6,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// syslog header fields), plus source-provided fields (e.g. Windows
+	// Event Log's winevt.event_id/winevt.provider/winevt.channel). Empty
+	// when the raw-passthrough fallback fires and the source added nothing.
+	Attributes map[string]string `protobuf:"bytes,6,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Stable per-record identifier, used to join Tantivy full-text search
+	// hits back to their ClickHouse row (Phase 1). Always empty as sent by
+	// the agent — ingest's PushBatch handler assigns this server-side,
+	// once, before producing to Redpanda, since both the ClickHouse-writer
+	// consumer and the Tantivy-indexer consumer read the same Redpanda
+	// messages and need to agree on the same ID for the same record. See
+	// /ingest/README.md.
+	RecordId      string `protobuf:"bytes,7,opt,name=record_id,json=recordId,proto3" json:"record_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -179,6 +189,13 @@ func (x *LogRecord) GetAttributes() map[string]string {
 		return x.Attributes
 	}
 	return nil
+}
+
+func (x *LogRecord) GetRecordId() string {
+	if x != nil {
+		return x.RecordId
+	}
+	return ""
 }
 
 type PushBatchRequest struct {
@@ -287,7 +304,7 @@ var File_sentry_logs_v1_logs_proto protoreflect.FileDescriptor
 
 const file_sentry_logs_v1_logs_proto_rawDesc = "" +
 	"\n" +
-	"\x19sentry/logs/v1/logs.proto\x12\x0esentry.logs.v1\"\xc3\x02\n" +
+	"\x19sentry/logs/v1/logs.proto\x12\x0esentry.logs.v1\"\xe0\x02\n" +
 	"\tLogRecord\x12.\n" +
 	"\x13timestamp_unix_nano\x18\x01 \x01(\x03R\x11timestampUnixNano\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x18\n" +
@@ -296,7 +313,8 @@ const file_sentry_logs_v1_logs_proto_rawDesc = "" +
 	"\amessage\x18\x05 \x01(\tR\amessage\x12I\n" +
 	"\n" +
 	"attributes\x18\x06 \x03(\v2).sentry.logs.v1.LogRecord.AttributesEntryR\n" +
-	"attributes\x1a=\n" +
+	"attributes\x12\x1b\n" +
+	"\trecord_id\x18\a \x01(\tR\brecordId\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"b\n" +

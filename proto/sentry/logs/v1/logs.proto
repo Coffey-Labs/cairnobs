@@ -47,8 +47,19 @@ message LogRecord {
   string message = 5;
 
   // Structured fields extracted by the agent's parser (e.g. RFC 5424
-  // syslog header fields). Empty when the raw-passthrough fallback fires.
+  // syslog header fields), plus source-provided fields (e.g. Windows
+  // Event Log's winevt.event_id/winevt.provider/winevt.channel). Empty
+  // when the raw-passthrough fallback fires and the source added nothing.
   map<string, string> attributes = 6;
+
+  // Stable per-record identifier, used to join Tantivy full-text search
+  // hits back to their ClickHouse row (Phase 1). Always empty as sent by
+  // the agent — ingest's PushBatch handler assigns this server-side,
+  // once, before producing to Redpanda, since both the ClickHouse-writer
+  // consumer and the Tantivy-indexer consumer read the same Redpanda
+  // messages and need to agree on the same ID for the same record. See
+  // /ingest/README.md.
+  string record_id = 7;
 }
 
 message PushBatchRequest {

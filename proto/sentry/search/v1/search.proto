@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package sentry.search.v1;
+
+option go_package = "github.com/sentry/sentry/proto/sentry/search/v1;searchv1";
+
+// SearchService is the full-text search index (Tantivy-backed) that
+// `api` calls to resolve a free-text query into matching record_ids,
+// which `api` then joins back against ClickHouse. Internal service-to-
+// service call, same gRPC-first convention as agent<->ingest — see
+// /docs/architecture.md and /search/README.md.
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  // Free-text query passed to Tantivy's query parser as-is. Supports
+  // phrase queries ("exact phrase") and wildcards (foo*) per Tantivy's
+  // own query syntax — see /search/README.md for exactly what that does
+  // and doesn't support in Phase 1.
+  string query = 1;
+
+  // Max results to return. 0 (unset) uses the service's own default.
+  uint32 limit = 2;
+}
+
+message SearchResponse {
+  // record_ids of matching logs, most-relevant first. Callers join these
+  // back against ClickHouse's `logs.record_id` column to get full rows —
+  // this service only ever returns IDs, never row data, so it stays a
+  // pure text index rather than a second copy of the row.
+  repeated string record_ids = 1;
+}

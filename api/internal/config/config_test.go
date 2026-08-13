@@ -19,6 +19,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.CORSAllowedOrigin != "*" {
 		t.Errorf("CORSAllowedOrigin = %q, want *", cfg.CORSAllowedOrigin)
 	}
+	if cfg.SearchGRPCAddr != "localhost:50052" {
+		t.Errorf("SearchGRPCAddr = %q, want localhost:50052", cfg.SearchGRPCAddr)
+	}
 }
 
 func TestLoadInvalidTimeoutErrors(t *testing.T) {

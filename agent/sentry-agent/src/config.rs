@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+#[cfg(not(windows))]
 const DEFAULT_CONFIG_PATH: &str = "/etc/sentry-agent/agent.toml";
+#[cfg(windows)]
+const DEFAULT_CONFIG_PATH: &str = r"C:\ProgramData\SentryAgent\agent.toml";
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
@@ -15,11 +18,13 @@ pub struct Config {
 }
 
 impl Config {
-    /// Loads config from `explicit_path` if given, else from
-    /// `/etc/sentry-agent/agent.toml` if it exists, else falls back to
-    /// built-in defaults (journald source, default TLS cert paths). Only an
-    /// explicitly-passed `--config` path that doesn't exist is an error;
-    /// the conventional default path is optional.
+    /// Loads config from `explicit_path` if given, else from the
+    /// platform's conventional config path if it exists
+    /// (`/etc/sentry-agent/agent.toml` on Linux,
+    /// `C:\ProgramData\SentryAgent\agent.toml` on Windows), else falls
+    /// back to built-in defaults (journald source on Linux, default TLS
+    /// cert paths). Only an explicitly-passed `--config` path that doesn't
+    /// exist is an error; the conventional default path is optional.
     pub fn load(explicit_path: Option<&Path>) -> Result<Config> {
         let path = match explicit_path {
             Some(p) => Some(p.to_path_buf()),
@@ -63,13 +68,55 @@ impl Default for AgentConfig {
 pub enum SourceConfig {
     Journald {
         #[serde(default)]
+        #[cfg_attr(not(all(feature = "journald", target_os = "linux")), allow(dead_code))]
         unit: Option<String>,
     },
+    // Dead-code-on-default-build, same reasoning as EventLog/Etw below:
+    // these fields are only read by the `file-tail`-gated arm in
+    // spawn_source (main.rs), which doesn't exist in the default build
+    // (`default = ["journald"]`). Pre-existing gap from Phase 0 — CLAUDE.md
+    // mandates plain `cargo clippy --all-targets -- -D warnings` (no
+    // --all-features), which this broke silently since only
+    // --all-features clippy was ever actually run.
     File {
+        #[cfg_attr(not(feature = "file-tail"), allow(dead_code))]
         path: PathBuf,
         #[serde(default)]
+        #[cfg_attr(not(feature = "file-tail"), allow(dead_code))]
         from_beginning: bool,
     },
+    /// Windows Event Log via EvtSubscribe. Requires the agent to be built
+    /// with the `windows-eventlog` feature; see /agent/README.md.
+    ///
+    /// `channels`/`providers` below are read only by the Windows-only
+    /// consumers in `spawn_source` (main.rs), which don't exist at all on
+    /// non-Windows builds — unlike `File`'s fields (dead only when the
+    /// `file-tail` feature happens to be off), these are dead on *every*
+    /// non-Windows build regardless of feature flags, since their sole
+    /// consumer is `target_os = "windows"`-gated. `cfg_attr` here keeps
+    /// clippy honest: still flags genuine dead code on an actual Windows
+    /// build, just not on the platform where these fields can never be
+    /// read no matter what.
+    EventLog {
+        #[serde(default = "default_eventlog_channels")]
+        #[cfg_attr(not(windows), allow(dead_code))]
+        channels: Vec<String>,
+    },
+    /// ETW (Event Tracing for Windows). Requires the `etw` feature and
+    /// (usually) elevated privileges — see /agent/README.md before
+    /// enabling this in any environment that isn't Windows-first.
+    Etw {
+        #[cfg_attr(not(windows), allow(dead_code))]
+        providers: Vec<String>,
+    },
+}
+
+fn default_eventlog_channels() -> Vec<String> {
+    vec![
+        "Application".to_string(),
+        "System".to_string(),
+        "Security".to_string(),
+    ]
 }
 
 impl Default for SourceConfig {
@@ -119,9 +166,19 @@ pub struct TlsConfig {
 impl Default for TlsConfig {
     fn default() -> Self {
         Self {
-            ca_cert: PathBuf::from("/etc/sentry-agent/ca.pem"),
-            client_cert: PathBuf::from("/etc/sentry-agent/client.pem"),
-            client_key: PathBuf::from("/etc/sentry-agent/client-key.pem"),
+            ca_cert: default_cert_path("ca.pem"),
+            client_cert: default_cert_path("client.pem"),
+            client_key: default_cert_path("client-key.pem"),
         }
     }
+}
+
+#[cfg(not(windows))]
+fn default_cert_path(name: &str) -> PathBuf {
+    PathBuf::from(format!("/etc/sentry-agent/{name}"))
+}
+
+#[cfg(windows)]
+fn default_cert_path(name: &str) -> PathBuf {
+    PathBuf::from(format!(r"C:\ProgramData\SentryAgent\{name}"))
 }

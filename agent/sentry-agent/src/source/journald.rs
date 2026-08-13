@@ -61,6 +61,7 @@ pub async fn run(unit: Option<&str>, tx: LineSender) -> Result<()> {
                 line: message,
                 timestamp_unix_nano,
                 severity_hint,
+                extra_attributes: Default::default(),
             })
             .await
             .is_err()

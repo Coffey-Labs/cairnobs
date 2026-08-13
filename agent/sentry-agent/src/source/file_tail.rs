@@ -61,6 +61,7 @@ pub async fn run(path: &Path, from_beginning: bool, tx: LineSender) -> Result<()
                 line,
                 timestamp_unix_nano,
                 severity_hint: None,
+                extra_attributes: Default::default(),
             })
             .await
             .is_err()
