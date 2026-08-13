@@ -59,18 +59,28 @@ split multi-statement files — keep each migration to a single statement.
 ## Running
 
 ```sh
-docker compose up -d          # starts a standalone ClickHouse for local work
-./migrate.sh                  # applies migrations/*.sql
+docker compose up -d                          # starts a standalone ClickHouse for local work
+CLICKHOUSE_PASSWORD=sentry-dev-only ./migrate.sh   # applies migrations/*.sql
 ```
 
-Environment variables `migrate.sh` reads (all optional, matching
-`/ingest`'s ClickHouse defaults so the two stay in sync out of the box):
+`CLICKHOUSE_PASSWORD` here has to match whatever `docker-compose.yml` set
+on the `clickhouse` service — found this the hard way running the Phase 0
+runbook for real: the official ClickHouse image silently disables *all*
+network access (including the published port, not just container-to-
+container traffic) for the `default` user unless `CLICKHOUSE_USER` or
+`CLICKHOUSE_PASSWORD` is a genuinely non-empty value. An empty
+`CLICKHOUSE_PASSWORD=""` still triggers the lockdown — it has to actually
+have a value. Not a real secret, just what this image demands.
+
+Environment variables `migrate.sh` reads (all optional except
+`CLICKHOUSE_PASSWORD` as of the above, matching `/ingest`'s ClickHouse
+defaults so the two stay in sync out of the box):
 
 | Var | Default |
 |---|---|
 | `CLICKHOUSE_HTTP` | `http://localhost:8123` |
 | `CLICKHOUSE_USER` | `default` |
-| `CLICKHOUSE_PASSWORD` | (empty) |
+| `CLICKHOUSE_PASSWORD` | (empty — override, see above) |
 | `CLICKHOUSE_DATABASE` | `sentry` |
 
 There's also a `Dockerfile` (bash + curl baked in, `migrations/` copied in

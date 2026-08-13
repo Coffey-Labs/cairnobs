@@ -15,8 +15,16 @@ both are invoked.
 
 ```sh
 docker compose up -d
-REDPANDA_BROKERS=localhost:9092 ./provision-topics.sh
+./provision-topics.sh   # defaults (localhost:9092 / localhost:9644) match this compose file
 ```
+
+Two separate addresses matter here, confirmed by actually running this
+against a live Redpanda container: `rpk cluster health` talks to the
+**Admin API** (`REDPANDA_ADMIN_HOSTS`, port 9644), while `rpk topic ...`
+talks to the **Kafka API** (`REDPANDA_BROKERS`, port 9092) — and neither
+accepts a `--brokers` flag directly, both need `-X admin.hosts=...` /
+`-X brokers=...`. Get this wrong and it doesn't error loudly: it just
+retries the health check forever without ever reporting why.
 
 ## In the full stack
 
