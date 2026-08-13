@@ -9,6 +9,15 @@ services:
     ports:
       - "8123:8123" # HTTP interface, used by migrate.sh
       - "9000:9000" # native protocol, used by ingest
+    environment:
+      # The official image disables *network* access entirely for the
+      # default user (this includes the published port, not just
+      # container-to-container traffic) unless CLICKHOUSE_USER or
+      # CLICKHOUSE_PASSWORD is set to a genuinely non-empty value — an
+      # explicitly-empty CLICKHOUSE_PASSWORD="" still triggers it. Not a
+      # real secret; see the root docker-compose.yml for the full
+      # explanation.
+      CLICKHOUSE_PASSWORD: "sentry-dev-only"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     ulimits:
