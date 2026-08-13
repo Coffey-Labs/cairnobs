@@ -1,4 +1,4 @@
-package queryapi
+package executor
 
 import (
 	"context"
@@ -8,32 +8,30 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
-type QueryResult struct {
-	Columns []string `json:"columns"`
-	Rows    [][]any  `json:"rows"`
-}
-
-// Executor runs arbitrary (pre-validated) SELECT statements against
+// ChRunner runs arbitrary (pre-validated) SELECT statements against
 // ClickHouse and shapes the result into JSON-friendly columns/rows,
 // discovering the result's column set at query time via reflection since
-// the query itself is arbitrary.
-type Executor struct {
+// the query itself is arbitrary. Ported from Phase 0/1's
+// api/internal/queryapi.Executor, which this replaces (see task 4) --
+// same logic, moved here since it's the query-execution layer's
+// plumbing, not specific to the old placeholder /query handler.
+type ChRunner struct {
 	conn driver.Conn
 }
 
-func NewExecutor(conn driver.Conn) *Executor {
-	return &Executor{conn: conn}
+func NewChRunner(conn driver.Conn) *ChRunner {
+	return &ChRunner{conn: conn}
 }
 
-func (e *Executor) Execute(ctx context.Context, sql string) (*QueryResult, error) {
-	rows, err := e.conn.Query(ctx, sql)
+func (r *ChRunner) RunSQL(ctx context.Context, sql string) (*Result, error) {
+	rows, err := r.conn.Query(ctx, sql)
 	if err != nil {
 		return nil, fmt.Errorf("executing query: %w", err)
 	}
 	defer rows.Close()
 
 	columnTypes := rows.ColumnTypes()
-	result := &QueryResult{
+	result := &Result{
 		Columns: rows.Columns(),
 		Rows:    [][]any{},
 	}

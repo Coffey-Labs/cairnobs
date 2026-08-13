@@ -1,7 +1,8 @@
-// Command api is Sentry's query API: POST /query (raw SQL, SELECT-only)
-// and POST /search (free-text, via the search service). See
-// internal/queryapi for why these are plain REST rather than the pinned
-// gRPC+gateway pattern.
+// Command api is Sentry's query API: a single POST /query endpoint
+// accepting either the pipe syntax or raw SQL, compiled and routed
+// across ClickHouse and search by internal/querylang. See
+// internal/queryapi and /docs/query-language-design.md for why this is
+// plain REST rather than the pinned gRPC+gateway pattern.
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 
 	"github.com/sentry/sentry/api/internal/config"
+	"github.com/sentry/sentry/api/internal/querylang/executor"
 	"github.com/sentry/sentry/api/internal/queryapi"
 	"github.com/sentry/sentry/api/internal/searchclient"
 )
@@ -58,8 +60,8 @@ func main() {
 	}
 	defer search.Close()
 
-	exec := queryapi.NewExecutor(conn)
-	handler := queryapi.NewHandler(logger, exec, search, cfg.QueryTimeout, cfg.CORSAllowedOrigin)
+	sqlRunner := executor.NewChRunner(conn)
+	handler := queryapi.NewHandler(logger, sqlRunner, search, cfg.QueryTimeout, cfg.CORSAllowedOrigin)
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,

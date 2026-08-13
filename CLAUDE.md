@@ -54,21 +54,46 @@ dashboards — that discipline held for the whole phase.
 
 ## What "done" looks like for Phase 1
 
-A Windows Event Log entry and a Linux journald entry should both be
-queryable via SQL (the ClickHouse path) and via free-text search (the
-Tantivy path), from the same UI, within a few seconds of being generated.
+**Status: shipped.** A Windows Event Log entry and a Linux journald entry
+are both queryable via SQL (the ClickHouse path) and via free-text search
+(the Tantivy path), from the same UI, within a few seconds of being
+generated. Verified end-to-end on the live stack, including the same
+`record_id` coming back from both query paths for the same record — see
+`/docs/phase-1-runbook.md`.
 
-Non-goals for this phase (same "resist scope creep" discipline as Phase 0):
-no alerting, no dashboards, no SPL-like query layer, no multi-tenancy, and
-no unified query experience — two separate boxes on two separate pages is
-correct for Phase 1; unifying them is Phase 2's job.
+ETW and WEF (Windows Event Forwarding) were *designed* in this phase but
+not required to be running for "done": ETW ships behind a feature flag
+most environments won't enable (it needs elevated privileges), and WEF's
+receiver-side was explicitly deferred rather than built. Only the Event
+Log source needed to actually be running end-to-end, and did. The
+Windows-specific agent code itself (`EvtSubscribe`, ETW, service
+registration) remains unverified on real Windows — no Windows toolchain
+existed anywhere in the environment this was built in; flagged
+prominently in `/agent/README.md` and the runbook.
 
-ETW and WEF (Windows Event Forwarding) are *designed* in this phase but not
-required to be running for "done": ETW ships behind a feature flag most
-environments won't enable (it needs elevated privileges), and WEF's
-receiver-side is explicitly deferred rather than built now — see
-`/docs/phase-1-runbook.md` for both. Only the Event Log source needs to
-actually be running end-to-end for this phase to count as done.
+## What "done" looks like for Phase 2
+
+A single query bar in the web UI and a single `sentryctl query` command
+can express filter + free-text + stats in one query (e.g. `service=api |
+where status>=500 | stats count by host | sort -count`, or
+`message:"connection refused" | stats count by host`), execute correctly
+against both ClickHouse and Tantivy in one compiled plan, and return in
+well under a second for a 1M-row fixture dataset (rough benchmark, not a
+formal SLA — see `/docs/phase-2-runbook.md` for the actual measurement).
+Raw ClickHouse SQL remains available as an escape hatch, compiling to the
+same execution plan/IR as the pipe syntax so performance doesn't depend
+on which syntax a query uses.
+
+Non-goals for this phase (same "resist scope creep" discipline as every
+phase so far): no alerting, no dashboards, no multi-tenancy — this phase
+is the query layer only. The two separate placeholder pages/endpoints
+from Phase 0/1 (`/query` raw-SQL-only, `/search` free-text-only) are
+retired, replaced by one `/query` endpoint and one query page.
+
+See `/docs/query-language-design.md` for the grammar, IR, and
+ClickHouse/Tantivy routing strategy, and
+`/docs/query-language-reference.md` for the user-facing syntax reference
+once built.
 
 ## When in doubt
 Ask before: changing the pinned stack, adding a new external dependency
