@@ -1,6 +1,6 @@
 // Package authhandler implements enterprise-auth's POST /internal/authorize
 // endpoint -- the HTTP side of the "network boundary, not import boundary"
-// pattern api/internal/authz.HTTPAuthorizer calls into (see that package's
+// pattern api/authz.HTTPAuthorizer calls into (see that package's
 // doc comment). It resolves a caller's credentials (session cookie or
 // service-token Bearer header) to an identity, using session.Manager for
 // both -- a human session and /alerting's service token are both just
@@ -18,7 +18,7 @@ import (
 	"github.com/sentry/sentry/enterprise/internal/session"
 )
 
-// SessionCookieName matches the name api/internal/authz.HTTPAuthorizer's
+// SessionCookieName matches the name api/authz.HTTPAuthorizer's
 // tests and doc comments already assume ("sentry_session").
 const SessionCookieName = "sentry_session"
 

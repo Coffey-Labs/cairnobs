@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/authz"
-	"github.com/sentry/sentry/api/internal/querylang/executor"
+	"github.com/sentry/sentry/api/authz"
 	"github.com/sentry/sentry/api/internal/querylang/planner"
+	"github.com/sentry/sentry/api/querylang/executor"
 )
 
 // AuditLogger is core's extension point for query audit logging --
@@ -74,7 +74,7 @@ func NewHandler(logger *slog.Logger, sqlRunner executor.SQLRunner, search execut
 }
 
 // RegisterRoutes adds this handler's routes onto a shared mux. Phase 3
-// introduced a second handler package (internal/dashboards), so CORS is
+// introduced a second handler package (dashboards), so CORS is
 // now applied once, by main.go, around the fully-assembled mux rather
 // than by each handler wrapping itself individually -- see
 // httpserver.WithCORS.

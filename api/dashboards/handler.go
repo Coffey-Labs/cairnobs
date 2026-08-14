@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/sentry/sentry/api/internal/authz"
+	"github.com/sentry/sentry/api/authz"
 )
 
 // store is the narrow interface Handler depends on -- *Store (store.go)

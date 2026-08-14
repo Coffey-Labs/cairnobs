@@ -42,7 +42,7 @@ func RequireRole(authorizer Authorizer, minRole Role, next http.HandlerFunc) htt
 			writeForbidden(w)
 			return
 		}
-		next(w, r.WithContext(withIdentity(r.Context(), identity)))
+		next(w, r.WithContext(WithIdentity(r.Context(), identity)))
 	}
 }
 
@@ -67,6 +67,6 @@ func RequireRoleOrService(authorizer Authorizer, minRole Role, next http.Handler
 			writeForbidden(w)
 			return
 		}
-		next(w, r.WithContext(withIdentity(r.Context(), identity)))
+		next(w, r.WithContext(WithIdentity(r.Context(), identity)))
 	}
 }

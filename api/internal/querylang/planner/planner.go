@@ -18,7 +18,7 @@ import (
 type Language string
 
 const (
-	Auto Language = ""    // detect from the query text (default)
+	Auto Language = "" // detect from the query text (default)
 	SQL  Language = "sql"
 	SPL  Language = "spl" // the pipe syntax; named to match the query-language-reference doc
 )

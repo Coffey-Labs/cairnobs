@@ -264,6 +264,46 @@ services:
       timeout: 5s
       retries: 30
 
+  # Multi-tenant-aware alternative to `api` (Phase 4) -- see
+  # enterprise/cmd/enterprise-api/main.go's doc comment for why this is
+  # a second binary rather than a flag on `api`. NOT part of the default
+  # traffic path: `web`'s VITE_API_BASE_URL still points at `api`
+  # (localhost:8080), and nothing here provisions any tenants (see that
+  # binary's -provision-tenant flag) -- included so it can be
+  # built/run/curled directly, same "available, not defaulted in" shape
+  # as enterprise-auth above. CLICKHOUSE_ADMIN_USERNAME/PASSWORD reuse
+  # the same admin credential `clickhouse-migrate` uses, since
+  # tenantprovision needs access_management, not a tenant-scoped grant.
+  enterprise-api:
+    build:
+      context: .
+      dockerfile: enterprise/cmd/enterprise-api/Dockerfile
+    container_name: sentry-enterprise-api
+    depends_on:
+      clickhouse-migrate:
+        condition: service_completed_successfully
+      metadata-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8083:8083"
+    environment:
+      CLICKHOUSE_ADDR: "clickhouse:9000"
+      CLICKHOUSE_ADMIN_USERNAME: "default"
+      CLICKHOUSE_ADMIN_PASSWORD: "sentry-dev-only"
+      SEARCH_GRPC_ADDR: "search:50052"
+      POSTGRES_ADDR: "metadata-postgres:5432"
+      POSTGRES_DATABASE: "sentry_metadata"
+      POSTGRES_USERNAME: "sentry"
+      POSTGRES_PASSWORD: "sentry-dev-only"
+      AUDIT_WRITER_USERNAME: "audit_writer"
+      AUDIT_WRITER_PASSWORD: "audit-writer-dev-only"
+      ENTERPRISE_AUTH_URL: "http://enterprise-auth:8082"
+    healthcheck:
+      test: ["CMD", "/enterprise-api", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   web:
     build:
       context: web

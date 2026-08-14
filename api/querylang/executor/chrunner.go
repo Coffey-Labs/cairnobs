@@ -12,7 +12,7 @@ import (
 // ClickHouse and shapes the result into JSON-friendly columns/rows,
 // discovering the result's column set at query time via reflection since
 // the query itself is arbitrary. Ported from Phase 0/1's
-// api/internal/queryapi.Executor, which this replaces (see task 4) --
+// api/queryapi.Executor, which this replaces (see task 4) --
 // same logic, moved here since it's the query-execution layer's
 // plumbing, not specific to the old placeholder /query handler.
 type ChRunner struct {

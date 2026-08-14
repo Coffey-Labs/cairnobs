@@ -12,7 +12,7 @@
 //	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/api \
 //	  -e DASHBOARDS_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
 //	  -e DASHBOARDS_TEST_POSTGRES_PASSWORD=sentry-dev-only \
-//	  golang:1.25-alpine go test ./internal/dashboards/... -run Integration -v
+//	  golang:1.25-alpine go test ./dashboards/... -run Integration -v
 package dashboards
 
 import (

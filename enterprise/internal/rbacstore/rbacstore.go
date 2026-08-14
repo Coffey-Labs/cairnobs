@@ -14,10 +14,11 @@
 // that handler itself isn't built yet (see cmd/enterprise-auth/main.go's
 // doc comment), so today rbacstore's only production caller is
 // -mint-service-token's future tenant-aware successor and its own tests.
-// dashboard_permissions and data_sources (also part of the schema) don't
-// have CRUD here yet -- no caller needs them until dashboards' handler
-// wiring reads per-resource grants, named as deferred in task 5's
-// summary.
+// dashboard_permissions doesn't have CRUD here yet -- no caller reads
+// per-resource grants (see api/dashboards/handler.go's doc
+// comment). data_sources CRUD was added once enterprise/internal/
+// chrunner needed a real place to read per-tenant ClickHouse credentials
+// from at startup (see that package's doc comment).
 package rbacstore
 
 import (
@@ -44,17 +45,17 @@ type User struct {
 }
 
 type Tenant struct {
-	ID              string
-	DisplayName     string
-	Status          string
-	OwnerUserID     string // empty until a first Owner is assigned
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID          string
+	DisplayName string
+	Status      string
+	OwnerUserID string // empty until a first Owner is assigned
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
-// Role mirrors api/internal/authz.Role's string values, kept as a plain
+// Role mirrors api/authz.Role's string values, kept as a plain
 // string here rather than importing authz -- rbacstore is enterprise
-// code and api/internal/authz is core; enterprise may depend on
+// code and api/authz is core; enterprise may depend on
 // nothing-shaped-like-an-import-from-core per the module boundary
 // (see /docs/phase-4-isolation-design.md), even though the reverse
 // (core importing enterprise) is the one hack/check-tenant-boundary.sh
@@ -249,6 +250,117 @@ func (s *Store) ListMembershipsForUser(ctx context.Context, userID string) ([]Me
 		}
 		m.Role = Role(role)
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// DataSource is one tenant's data-plane location -- today, exactly one
+// ClickHouse database + one Tantivy index per tenant (see
+// /docs/phase-4-rbac-design.md's "data_sources" extension-point
+// section). ClickHouseUsername/Password are nil until
+// enterprise/internal/tenantprovision actually provisions the
+// ClickHouse-side user/database and calls SetDataSourceClickHouseCredentials.
+type DataSource struct {
+	ID                     string
+	TenantID               string
+	Name                   string
+	ClickHouseDatabaseName string
+	TantivyIndexPath       string
+	ClickHouseUsername     *string
+	ClickHousePassword     *string
+}
+
+// CreateDataSource inserts the row tenantprovision will later attach
+// credentials to (SetDataSourceClickHouseCredentials) -- split into two
+// steps because the row (database name, index path) is decided before
+// provisioning runs, but the ClickHouse-side username/password only
+// exist after CREATE USER actually succeeds.
+func (s *Store) CreateDataSource(ctx context.Context, tenantID, name, clickHouseDatabaseName, tantivyIndexPath string) (*DataSource, error) {
+	ds := DataSource{
+		ID: uuid.NewString(), TenantID: tenantID, Name: name,
+		ClickHouseDatabaseName: clickHouseDatabaseName, TantivyIndexPath: tantivyIndexPath,
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO data_sources (id, tenant_id, name, clickhouse_database_name, tantivy_index_path)
+		VALUES ($1, $2, $3, $4, $5)`,
+		ds.ID, ds.TenantID, ds.Name, ds.ClickHouseDatabaseName, ds.TantivyIndexPath)
+	if err != nil {
+		return nil, fmt.Errorf("rbacstore: creating data source: %w", err)
+	}
+	return &ds, nil
+}
+
+// SetDataSourceClickHouseCredentials is the only way
+// clickhouse_username/password change -- called once, right after
+// enterprise/internal/tenantprovision.ProvisionClickHouse succeeds.
+// Never called again for the same data source: rotating a live tenant's
+// credential without first updating it on the ClickHouse side would
+// just break every open connection, same reasoning as
+// deploy/operator/internal/controller/tenant_controller.go's
+// reconcileSecret.
+func (s *Store) SetDataSourceClickHouseCredentials(ctx context.Context, id, username, password string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE data_sources SET clickhouse_username = $2, clickhouse_password = $3 WHERE id = $1`,
+		id, username, password)
+	if err != nil {
+		return fmt.Errorf("rbacstore: setting data source credentials: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func scanDataSource(row pgx.Row) (*DataSource, error) {
+	var ds DataSource
+	if err := row.Scan(&ds.ID, &ds.TenantID, &ds.Name, &ds.ClickHouseDatabaseName, &ds.TantivyIndexPath,
+		&ds.ClickHouseUsername, &ds.ClickHousePassword); err != nil {
+		return nil, err
+	}
+	return &ds, nil
+}
+
+func (s *Store) GetDataSourceForTenant(ctx context.Context, tenantID string) (*DataSource, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT id, tenant_id, name, clickhouse_database_name, tantivy_index_path, clickhouse_username, clickhouse_password
+		FROM data_sources WHERE tenant_id = $1 ORDER BY created_at LIMIT 1`, tenantID)
+	ds, err := scanDataSource(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("rbacstore: getting data source: %w", err)
+	}
+	return ds, nil
+}
+
+// ListProvisionedDataSources returns every data source for an active
+// tenant that has already been provisioned (ClickHouse credentials set)
+// -- exactly the set enterprise/internal/chrunner.NewRegistry needs at
+// startup. A data source with no credentials yet (tenantprovision hasn't
+// run for it) is deliberately excluded rather than returned with empty
+// credentials -- chrunner has nothing safe to connect with for it, and
+// silently including it would turn into a confusing empty-string
+// connection attempt instead of a clear "not provisioned yet" absence.
+func (s *Store) ListProvisionedDataSources(ctx context.Context) ([]DataSource, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ds.id, ds.tenant_id, ds.name, ds.clickhouse_database_name, ds.tantivy_index_path,
+		       ds.clickhouse_username, ds.clickhouse_password
+		FROM data_sources ds
+		JOIN tenants t ON t.id = ds.tenant_id
+		WHERE t.status = 'active' AND ds.clickhouse_username IS NOT NULL AND ds.clickhouse_password IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("rbacstore: listing provisioned data sources: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DataSource
+	for rows.Next() {
+		ds, err := scanDataSource(rows)
+		if err != nil {
+			return nil, fmt.Errorf("rbacstore: scanning data source: %w", err)
+		}
+		out = append(out, *ds)
 	}
 	return out, rows.Err()
 }

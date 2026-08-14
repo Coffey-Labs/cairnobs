@@ -12,23 +12,23 @@ type Kind int
 const (
 	EOF Kind = iota
 	Illegal
-	Ident   // bare words: field names, keywords, unquoted values/free-text terms
-	String  // quoted string: "..."
-	Number  // 123, 1.5
-	Pipe    // |
-	Eq      // =
-	Neq     // !=
-	Gt      // >
-	Gte     // >=
-	Lt      // <
-	Lte     // <=
-	Colon   // :
-	Comma   // ,
-	LParen  // (
-	RParen  // )
-	Minus   // -
-	Plus    // +
-	Star    // * (only meaningful inside count(*), same as SQL)
+	Ident  // bare words: field names, keywords, unquoted values/free-text terms
+	String // quoted string: "..."
+	Number // 123, 1.5
+	Pipe   // |
+	Eq     // =
+	Neq    // !=
+	Gt     // >
+	Gte    // >=
+	Lt     // <
+	Lte    // <=
+	Colon  // :
+	Comma  // ,
+	LParen // (
+	RParen // )
+	Minus  // -
+	Plus   // +
+	Star   // * (only meaningful inside count(*), same as SQL)
 )
 
 type Token struct {

@@ -9,28 +9,58 @@ for the full design rationale behind the controls described here.
 
 ## Read this first: the single most important open finding
 
-**Log data queried through `POST /query` is not tenant-isolated today.**
-Every authenticated tenant's ad hoc queries and dashboard panel queries
-execute against the same shared ClickHouse connection and the same
-shared Tantivy index — there is no per-tenant database, user, or index
-routing anywhere in the query execution path
-(`api/internal/querylang/executor.SQLRunner`/`SearchClient`, `search`'s
-gRPC service, `proto/sentry/search/v1/search.proto`). Confirmed by
-reading the actual code, not assumed: neither interface, nor the
-`search` proto, carries a tenant field anywhere.
+**Updated**: this section originally read "log data queried through
+`POST /query` is not tenant-isolated at all." That's now only half
+true, and the half that's no longer true matters — read carefully,
+because the remaining gap (Tantivy/free-text) is easy to miss if you
+stop at "ClickHouse is isolated now."
 
-This is exactly the mechanism `/docs/phase-4-isolation-design.md`
-specifies as the core deliverable of tenant isolation (one dedicated
-ClickHouse database/user and one dedicated Tantivy index directory per
-tenant) — it is **designed but not built**. What *is* built and live:
-role-based access control (below) and tenant-scoped control-plane data
-(dashboards, below). Until `enterprise/internal/chrunner` and
-`enterprise/internal/searchclient` exist and are wired into
-`api/internal/queryapi.Handler` in place of the single shared connection
-`api/cmd/api/main.go` opens today, **treat any deployment of this system
-as single-tenant only**, regardless of how many `Tenant` CRs or
-`tenant_memberships` rows exist. RBAC controls who can run a query; they
-do not control what data that query can see.
+**ClickHouse (the SQL path) is now built, but only if you run the right
+binary — and it has not yet been confirmed against a real ClickHouse.**
+`enterprise/internal/tenantprovision` (real `CREATE DATABASE`/`CREATE
+USER`/`GRANT` against ClickHouse) and `enterprise/internal/chrunner` (a
+per-tenant `driver.Conn` registry implementing api's
+`querylang/executor.SQLRunner`, resolving which tenant's connection to
+use from the authenticated identity in request context — never from a
+client-suppliable field) now exist, and a new binary,
+`enterprise/cmd/enterprise-api`, wires them into the same
+`api/queryapi.Handler`/`api/dashboards.Handler` core already ships. Real
+integration tests exist and would prove the core adversarial claim —
+`enterprise/internal/tenantprovision/tenantprovision_test.go`'s
+`TestProvisionedUserCannotReadOtherTenantDatabase` and
+`TestProvisionedUserCannotReadSystemTables`,
+`enterprise/internal/chrunner/chrunner_test.go`'s
+`TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL` — but this
+environment had no Docker/ClickHouse access while these were written, so
+they've only been confirmed to skip cleanly offline, not to pass for
+real. See `/docs/phase-4-runbook.md`'s verification-status section
+before treating "the test exists" as "isolation is confirmed."
+
+**But plain `api/cmd/api` still runs with one shared connection**, and
+nothing in this repo automatically routes traffic to `enterprise-api`
+instead — `docker-compose.yml` includes it "available, not defaulted
+into the traffic path" (same shape as `enterprise-auth`'s own addition),
+and the Helm chart has no service for it at all yet. **A deployment is
+only as isolated as which binary is actually serving traffic** — this
+is an operational decision nothing currently enforces or even surfaces
+as a warning.
+
+**Tantivy (the free-text path) is still fully unisolated.** There is no
+`enterprise/internal/searchclient` (the Tantivy-side equivalent of
+chrunner) — `search`'s gRPC service and
+`proto/sentry/search/v1/search.proto`'s `SearchRequest` still carry no
+tenant field anywhere, confirmed by reading the code. Every tenant's
+free-text queries hit the same shared Tantivy index regardless of which
+binary (`api` or `enterprise-api`) serves the HTTP request. A query that
+resolves to a pure pipe-syntax free-text search (e.g. `message:"error"`)
+is not protected by chrunner at all.
+
+**What this means concretely**: treat a deployment as tenant-isolated
+for structured/SQL queries *only if* it runs `enterprise-api` fronting
+provisioned tenants, and treat it as **not isolated at all** for
+free-text search regardless of which binary runs. RBAC (below) and
+dashboard tenant-scoping (below) hold regardless of which binary is
+running; the ClickHouse/Tantivy split above is what changed.
 
 ## System overview
 
@@ -38,12 +68,19 @@ do not control what data that query can see.
 Browser ──▶ web (SvelteKit, static)
               │
               ▼
-Browser ──▶ api ──▶ ClickHouse (log data, SQL path)
-              │  └─▶ search (gRPC) ──▶ Tantivy (log data, full-text path)
+Browser ──▶ api OR enterprise-api ──▶ ClickHouse (log data, SQL path)
+              │                    └─▶ search (gRPC) ──▶ Tantivy (log data, full-text path)
               └─▶ Postgres (control plane: dashboards, alert_rules,
                              tenants, users, tenant_memberships, audit_log)
 
-alerting ──▶ api (POST /query, RoleService credential)
+# api: one shared ClickHouse connection, nil AuditLogger -- Phase 0-3 behavior.
+# enterprise-api: enterprise/internal/chrunner (per-tenant ClickHouse
+# connections) + enterprise/internal/audit.QueryAPILogger (real audit
+# writes) wired into the SAME api/queryapi.Handler/api/dashboards.Handler
+# core -- see this document's "Read this first" section. Either binary
+# can be running; nothing forces the isolated one.
+
+alerting ──▶ api or enterprise-api (POST /query, RoleService credential)
 alerting ──▶ Postgres (rulestore, notifystore)
 
 api/alerting ──▶ enterprise-auth (POST /internal/authorize, HTTP only —
@@ -67,9 +104,9 @@ doesn't yet cover, not just an implementation gap.
 session issuance) is never imported by AGPL core (`/api`, `/alerting`,
 `/web`, `/cli`) — enforced in CI by `hack/check-tenant-boundary.sh`,
 which greps for the import edge on every build. Core calls
-`enterprise-auth` over plain HTTP (`api/internal/authz.HTTPAuthorizer`),
+`enterprise-auth` over plain HTTP (`api/authz.HTTPAuthorizer`),
 forwarding only the `Cookie`/`Authorization` headers, never the full
-request (`api/internal/authz/httpauthz_test.go` asserts this — an
+request (`api/authz/httpauthz_test.go` asserts this — an
 unrelated header like `X-Forwarded-For` is never forwarded). This means
 core's authorization decision is only as trustworthy as the network path
 to `enterprise-auth` — see "Deployment/network assumptions" below.
@@ -95,9 +132,9 @@ a network-reachable endpoint) and configured via `API_SERVICE_TOKEN`.
 `enterprise/internal/session.Manager` issues and validates this token;
 `enterprise/internal/authhandler`'s `POST /internal/authorize` resolves
 it. `RoleService` is a distinct, non-comparable lane on the `Role` type
-(`api/internal/authz.Role.Satisfies`) — a service credential can never
+(`api/authz.Role.Satisfies`) — a service credential can never
 satisfy a human-role check and vice versa, verified by exhaustive
-table-driven tests (`api/internal/authz/authz_test.go`).
+table-driven tests (`api/authz/authz_test.go`).
 
 **Session/token integrity.** Tokens are HS256-signed JWTs with a single
 shared signing key (`ENTERPRISE_SESSION_SIGNING_KEY`, ≥32 bytes,
@@ -115,10 +152,10 @@ mode — bad signature, malformed token, expired — into one
 
 **Live and enforced.** `POST /query` and every `/dashboards` endpoint in
 `api` require a minimum role, resolved per-request via
-`api/internal/authz.RequireRole`/`RequireRoleOrService` calling
+`api/authz.RequireRole`/`RequireRoleOrService` calling
 `enterprise-auth`. Roles: Viewer < Editor < Admin < Owner, plus the
 separate `RoleService` lane above. `GET /dashboards` is Viewer+;
-create/update/delete require Editor+ (`api/internal/dashboards/
+create/update/delete require Editor+ (`api/dashboards/
 handler.go`). A nil `Authorizer` (no `ENTERPRISE_AUTH_URL` configured)
 is a deliberate no-op, matching Phase 0-3's no-auth behavior — this is
 correct default-open-for-single-tenant behavior, not an oversight, but
@@ -135,12 +172,12 @@ dashboard in that tenant, not just their own/granted ones.
 
 **Application-layer tenant scoping (dashboards only).** Every
 `dashboards` store query filters `WHERE tenant_id = $identity.TenantID`
-(`api/internal/dashboards/store.go`), and the handler resolves that
+(`api/dashboards/store.go`), and the handler resolves that
 tenant ID from the RBAC-authenticated identity's context
 (`authz.IdentityFromContext`), **never** from a client-supplied request
 field. This closes a real gap found during this document's own review:
 `Dashboard.TenantID` is a JSON-tagged, client-settable field
-(`api/internal/dashboards/types.go`), and the original handler/store
+(`api/dashboards/types.go`), and the original handler/store
 implementation trusted it directly on create/update and applied no
 `tenant_id` filter at all on list/get/update/delete — meaning any
 authenticated user could read, modify, or delete any other tenant's
@@ -149,7 +186,7 @@ dashboards simply by supplying (or guessing) their UUID, or spoof
 to. Fixed as part of this task, with regression tests proving
 cross-tenant access now returns 404 (not 403, which would itself leak
 that the ID exists under a different tenant) —
-`api/internal/dashboards/handler_test.go`'s
+`api/dashboards/handler_test.go`'s
 `TestCrossTenant*`/`TestCreateDashboardIgnoresClientSuppliedTenantID`/
 `TestImportIgnoresExportedTenantID`. **This same class of bug should be
 assumed present anywhere else client-supplied identifiers cross a tenant
@@ -200,7 +237,7 @@ altered after the fact" claim actually holds against a privileged
 insider.
 
 **Fail-open by design for routine queries.** `queryapi.Handler.logAudit`
-(`api/internal/queryapi/handler.go`) logs a write failure and otherwise
+(`api/queryapi/handler.go`) logs a write failure and otherwise
 ignores it — an audit-log outage does not take down the query path. This
 is a deliberate availability-over-completeness tradeoff: it means a
 brief audit outage produces an under-logged (not over-blocked) window.
@@ -234,15 +271,21 @@ terms:
   credentials. That's an operational control (credential custody,
   infrastructure access review), out of scope for this system's own
   code.
-- **`system.query_log` metadata leakage** (task 2's finding): once
-  per-tenant ClickHouse users exist, `system.query_log` and related
-  `system.*` tables can expose other tenants' query *text* (predicate
-  values, field names) even if row-level isolation between databases
-  works perfectly. The design calls for revoking `system.*` access from
-  every tenant user explicitly, not relying on ClickHouse's default
-  template — this can only be verified once per-tenant users actually
-  exist (they don't yet; see the top of this document), so it remains
-  an open verification item, not a closed one.
+- **`system.query_log` metadata leakage — per-tenant users are now
+  real, but the check itself hasn't run yet.** Was an open verification
+  item because there were no per-tenant ClickHouse users to check
+  against; that blocker is gone (`enterprise/internal/tenantprovision`
+  exists), and `tenantprovision_test.go`'s
+  `TestProvisionedUserCannotReadSystemTables` asserts exactly what the
+  design calls for (`system.query_log`/`system.tables` inaccessible,
+  `SHOW DATABASES` not revealing other tenants) — but this environment
+  never had ClickHouse access to actually run it, so it remains
+  unconfirmed against the pinned version
+  (`clickhouse/clickhouse-server:24.8`) until someone with Docker access
+  runs it (`/docs/phase-4-runbook.md` §8). Also still contingent on the
+  deployment-shape caveat at the top of this document: even once
+  confirmed, this only holds when `enterprise-api` (not plain `api`) is
+  actually serving traffic.
 - **No deny-override grants** — `dashboard_permissions` is additive-only
   by design; a full allow/deny ACL system is unbuilt, future work.
 - **No data retention/deletion policy** for a deprovisioned tenant —
@@ -278,12 +321,16 @@ terms:
 |---|---|
 | Role-based access control on `/query`, `/dashboards` | **Enforced** |
 | `alerting`↔`api` service-identity credential | **Enforced** |
-| Tenant scoping on dashboards (control-plane data) | **Enforced** (fixed this task) |
-| Tenant isolation on log data (`/query` → ClickHouse/Tantivy) | **Not implemented** |
+| Tenant scoping on dashboards (control-plane data) | **Enforced** |
+| ClickHouse per-tenant provisioning (`tenantprovision`) | **Built, not live-verified** — real integration test exists, not yet run against ClickHouse |
+| ClickHouse query routing (`chrunner`) | **Built, not live-verified** — and only applies when `enterprise-api` serves traffic, not plain `api` |
+| `system.*` ClickHouse metadata isolation | **Built, not live-verified** — same caveat as above |
+| Tantivy/free-text tenant isolation | **Not implemented** — no per-tenant index routing at all |
+| Deployment actually routing traffic to `enterprise-api` | **Not implemented** — no Helm service, no default wiring |
 | Human SSO login (OIDC/SAML) | **Not implemented** |
 | Per-resource dashboard grants (`own/granted`) | **Not implemented** |
-| Query audit logging (routine queries) | **Enforced**, fail-open |
+| Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |
 | Audit log tamper prevention (external anchoring) | **Design only** — `FileSink` is a dev stand-in |
-| `system.*` ClickHouse metadata isolation | **Unverified** — depends on unbuilt per-tenant users |
+| Mid-provisioning-race handling (evaluator ticks against a not-yet-active tenant) | **Unverified** — see `api/queryapi/tenant_isolation_gap_test.go` |
 | Protection against a privileged DB administrator | **Explicit non-goal** |
