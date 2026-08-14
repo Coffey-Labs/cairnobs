@@ -44,16 +44,23 @@ searchclient`'s tests run a real in-process gRPC server and confirm the
 wire-level `SearchRequest` carries the right `tenant_id`. All pass, for
 real, no disclaimer needed for this specific claim.
 
-**But plain `api/cmd/api` still runs with one shared ClickHouse
-connection and no tenant-scoped search client**, and nothing in this
-repo automatically routes traffic to `enterprise-api` instead —
-`docker-compose.yml` includes it "available, not defaulted into the
-traffic path" (same shape as `enterprise-auth`'s own addition), and the
-Helm chart has no service for it at all yet. **A deployment is only as
-isolated as which binary is actually serving traffic** — this is an
-operational decision nothing currently enforces or even surfaces as a
-warning. This is now the single largest gap in the isolation story, not
-a missing mechanism.
+**The Helm chart now closes this for K8s deployments; `docker-compose.yml`
+still doesn't.** `deploy/helm/sentry/templates/api.yaml` and
+`enterprise-api.yaml` are mutually exclusive, gated on opposite sides of
+the same `enterprise.enabled` flag, rendering to the same Service
+name/port — so a Helm-deployed cluster runs exactly one of the two
+binaries, chosen by the same flag that turns on RBAC/audit/SSO, not a
+second independently-forgettable decision. Verified by parsing (not
+eyeballing) the rendered YAML under both values: exactly one `sentry-api`
+Deployment either way, with the right image. **`docker-compose.yml`
+still runs plain `api` unconditionally** and includes `enterprise-api`
+as an extra, separately-started service — local/dev parity with the Helm
+chart's enforcement is real remaining work. And this only constrains
+*deployment*, not *operation*: nothing stops an operator from manually
+running plain `api`'s image against a cluster that has tenants
+provisioned, pointing at the same ClickHouse/Postgres. The Helm chart
+makes the *default*, chart-managed path correct; it isn't a runtime
+guard against misconfiguration.
 
 **Ingest is not tenant-aware for either storage engine**, and this is
 more load-bearing than it sounds: `chrunner`/`searchclient` prove *read*
@@ -360,7 +367,8 @@ terms:
 | Tantivy per-tenant index routing (`search/src/registry.rs`) | **Enforced, verified live** — real Tantivy indices, real cross-tenant probe, all passing |
 | Tantivy tenant_id resolution (`enterprise/internal/searchclient`) | **Enforced, verified live** — real gRPC wire-level test |
 | Ingest tenant-awareness (ClickHouse and Tantivy both) | **Not implemented, undesigned** — every ingested record lands in the single shared database/index regardless of tenant |
-| Deployment actually routing traffic to `enterprise-api` | **Not implemented** — no Helm service, no default wiring; now the largest gap in the isolation story |
+| Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
+| Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Not implemented** — `docker-compose.yml` runs plain `api` unconditionally |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Not implemented** |
 | Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |

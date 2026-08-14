@@ -1,3 +1,13 @@
+{{/*
+Mutually exclusive with enterprise-api.yaml's Deployment+Service, gated
+the opposite way -- see that file's doc comment for why: "does a
+deployment run the tenant-isolated binary or not" should be a single
+values.yaml decision (enterprise.enabled), not two independently
+driftable ones. Both render a Service named {{ .Release.Name }}-api on
+port 8080, so every consumer (alerting's API_QUERY_URL, web's build
+args) needs zero conditional logic of its own.
+*/}}
+{{- if not .Values.enterprise.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,15 +54,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-postgres
                   key: password
-            {{- if .Values.enterprise.enabled }}
-            # Turns on authz.RequireRole*/RequireRoleOrService enforcement
-            # on /query and /dashboards -- see api/authz and
-            # /docs/phase-4-rbac-design.md. Off (unset) when
-            # enterprise.enabled is false, matching every nil-authorizer
-            # no-op default in this codebase.
-            - name: ENTERPRISE_AUTH_URL
-              value: "http://{{ .Release.Name }}-enterprise-auth:8082"
-            {{- end }}
+            # No ENTERPRISE_AUTH_URL here -- this file only renders when
+            # enterprise.enabled is false (see the top of this file), so
+            # authz.RequireRole*/RequireRoleOrService stay a permanent
+            # no-op for this Deployment. enterprise-api.yaml is where
+            # that enforcement actually turns on.
           ports:
             - name: http
               containerPort: 8080
@@ -77,3 +83,4 @@ spec:
   ports:
     - name: http
       port: 8080
+{{- end }}

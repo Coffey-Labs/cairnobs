@@ -140,6 +140,15 @@ enterprise:
   image:
     repository: sentry-enterprise-auth
     tag: latest
+  # enterprise-api (templates/enterprise-api.yaml) -- swaps in for
+  # api.yaml's plain api Deployment when enterprise.enabled is true, on
+  # the same Service/port every consumer already expects. Built from the
+  # repo root (needs api/ and proto/, not just enterprise/), unlike
+  # enterprise-auth's image above -- see
+  # enterprise/cmd/enterprise-api/Dockerfile.
+  apiImage:
+    repository: sentry-enterprise-api
+    tag: latest
   replicas: 1
   resources: {}
   # Leave empty to auto-generate (>= 32 bytes) and persist across
