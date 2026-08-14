@@ -29,7 +29,17 @@ type SearchRequest struct {
 	// and doesn't support in Phase 1.
 	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	// Max results to return. 0 (unset) uses the service's own default.
-	Limit         uint32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Limit uint32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// tenant_id (Phase 4) selects which per-tenant Tantivy index to search
+	// -- resolved server-side by the caller (enterprise/internal/
+	// searchclient, from the authenticated identity in request context),
+	// never a value a browser/client supplies directly. Empty selects the
+	// single default index every Phase 0-3 deployment (and every
+	// ingest-written record today, regardless of tenant -- see
+	// /docs/security/threat-model.md's ingest-tenancy caveat) already
+	// uses, so this field is purely additive: an old caller that never
+	// sets it keeps today's behavior exactly.
+	TenantId      string `protobuf:"bytes,3,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -76,6 +86,13 @@ func (x *SearchRequest) GetLimit() uint32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *SearchRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
 }
 
 type SearchResponse struct {
@@ -130,10 +147,11 @@ var File_sentry_search_v1_search_proto protoreflect.FileDescriptor
 
 const file_sentry_search_v1_search_proto_rawDesc = "" +
 	"\n" +
-	"\x1dsentry/search/v1/search.proto\x12\x10sentry.search.v1\";\n" +
+	"\x1dsentry/search/v1/search.proto\x12\x10sentry.search.v1\"X\n" +
 	"\rSearchRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\rR\x05limit\"/\n" +
+	"\x05limit\x18\x02 \x01(\rR\x05limit\x12\x1b\n" +
+	"\ttenant_id\x18\x03 \x01(\tR\btenantId\"/\n" +
 	"\x0eSearchResponse\x12\x1d\n" +
 	"\n" +
 	"record_ids\x18\x01 \x03(\tR\trecordIds2\\\n" +

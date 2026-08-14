@@ -11,6 +11,16 @@ pub struct Config {
     pub index_path: PathBuf,
     pub offsets_path: PathBuf,
     pub commit_interval: Duration,
+    /// Phase 4: per-tenant index directories live under here, one
+    /// subdirectory per tenant_id, opened on demand by
+    /// registry::IndexRegistry -- distinct from `index_path` above,
+    /// which stays the single shared index every ingest-written record
+    /// lands in regardless of tenant (see registry.rs's doc comment and
+    /// /docs/security/threat-model.md's ingest-tenancy caveat). Default
+    /// matches the path convention deploy/operator's Tenant controller
+    /// and enterprise/internal/rbacstore's seeded default data source
+    /// already assume (`/var/lib/sentry-search/tenants/<id>`).
+    pub tenants_index_path: PathBuf,
 }
 
 impl Config {
@@ -35,6 +45,10 @@ impl Config {
                 "/var/lib/sentry-search/offsets.json",
             )),
             commit_interval: Duration::from_millis(commit_interval_ms),
+            tenants_index_path: PathBuf::from(getenv(
+                "TENANTS_INDEX_PATH",
+                "/var/lib/sentry-search/tenants",
+            )),
         })
     }
 }

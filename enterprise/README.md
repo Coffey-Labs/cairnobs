@@ -64,6 +64,19 @@ section for exactly what "not yet run" means here and why. Don't read
   verification, no live database or Docker needed) and every test
   passes. Not yet tried against a real external IdP or a running
   `enterprise-auth` container.
+- `internal/searchclient`: the Tantivy-side sibling of `chrunner` --
+  implements `api/querylang/executor.SearchClient`, resolving
+  `SearchRequest.tenant_id` (new field, `proto/sentry/search/v1/
+  search.proto`) from the authenticated request identity, same
+  fail-closed shape as `chrunner.Registry.RunSQL`. Paired with
+  `search/src/registry.rs`'s `IndexRegistry` (Rust, opens a per-tenant
+  Tantivy index on demand). **Both genuinely verified** -- unlike the
+  ClickHouse pieces, Tantivy is an embedded library, so the isolation
+  probe (three tenants, shared search term, scoped search returns only
+  that tenant's document) actually ran: `search`'s
+  `cargo test`/`cargo clippy --all-targets -- -D warnings` and this
+  package's `go test` both pass clean, no Docker or live database
+  needed for either.
 - `cmd/enterprise-api`: a second binary (alongside `api/cmd/api`,
   unchanged) importing *both* `api`'s handler packages and the
   tenant-aware implementations above -- see its own doc comment for why
@@ -86,15 +99,19 @@ silently left out:
   `metadata/migrations/0024`; no caller reads per-resource grants
   yet -- `dashboards`' handler enforces tenant-baseline role only, not
   the matrix's "(own/granted)" qualifier).
-- `internal/searchclient` (the Tantivy-side sibling of `chrunner`) --
-  `enterprise-api` shares the single, un-tenant-scoped Tantivy index
-  every deployment does today (`api/searchclient.Dial`, unchanged). See
+- **Ingest tenant-awareness, for either storage engine** -- `chrunner`/
+  `searchclient` prove read isolation given tenant-scoped data exists,
+  but nothing writes it: every record `ingest` produces still lands in
+  the single shared ClickHouse database and the single shared Tantivy
+  index. A newly-provisioned tenant's storage is real and isolated, and
+  permanently empty. Undesigned, not just unbuilt -- see
   `/docs/security/threat-model.md`.
 - Any deployment-topology mechanism that actually routes traffic to
   `enterprise-api` instead of `api` -- both binaries exist,
   `docker-compose.yml` includes `enterprise-api` available but not
   wired into `web`'s default base URL, and the Helm chart has no
-  service for it at all yet.
+  service for it at all yet. **This is now the single largest gap** --
+  both storage engines' isolation mechanisms themselves are built.
 
 ## Package layout
 
@@ -110,14 +127,15 @@ internal/loginhandler/       GET /auth/oidc/login, GET /auth/oidc/callback -- th
 internal/rbacstore/          users/tenants/tenant_memberships/data_sources CRUD (pgx against sentry_metadata)
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
+internal/searchclient/          tenant-scoped api/querylang/executor.SearchClient
 internal/audit/            append-only, hash-chained query audit log, plus the
                             api/queryapi.AuditLogger adapter (queryapi_adapter.go)
 internal/apiconfig/       enterprise-api's own env-var config
 internal/config/          enterprise-auth's env-var config
 ```
 
-Future additions: `internal/searchclient`, the OIDC/SAML login/callback
-HTTP handlers, `dashboard_permissions` CRUD, and real deployment-topology
+Future additions: SAML's login handler, `dashboard_permissions` CRUD,
+ingest tenant-awareness (undesigned), and real deployment-topology
 wiring for `enterprise-api` -- see "Status" above.
 
 ## Why OIDC and SAML aren't hand-rolled

@@ -159,15 +159,21 @@ tenant/role from `tenant_memberships`) — genuinely verified, unlike the
 ClickHouse pieces, via a real fake IdP that signs and verifies actual
 RS256 tokens (`loginhandler_test.go`, all passing), though never tried
 against a real external IdP or through a running `enterprise-auth`
-container. Two things still keep this phase from being done: SAML login
-(protocol wiring exists, no ACS handler calls it, following OIDC's now
--built pattern), and Tantivy/free-text queries have no per-tenant index
-routing at all (`enterprise-api` closes the ClickHouse half of tenant
-isolation, not the Tantivy half) — plus a deployment gap worth naming
-explicitly: nothing yet forces or even flags whether a given deployment
-is actually running the isolated binary (`enterprise-api`) versus the
-plain single-tenant one (`api`); both still exist and nothing currently
-prevents mixing them up. Full accounting:
+container. Tantivy per-tenant index routing is now built too
+(`search/src/registry.rs` + `enterprise/internal/searchclient`) —
+**genuinely verified**, like the OIDC login flow: Tantivy is an embedded
+library, not a networked service, so the isolation probe (three tenants,
+same search term, scoped search returns only that tenant's document)
+actually ran in this environment, no Docker needed. What still keeps
+this phase from being done: SAML login (protocol wiring exists, no ACS
+handler calls it, following OIDC's now-built pattern), ingest itself has
+no tenant concept for either storage engine (every record lands in the
+one shared ClickHouse database and Tantivy index no matter what —
+undesigned, not just unbuilt), and a deployment-topology gap that's now
+the single largest one: nothing yet forces or even flags whether a given
+deployment is actually running the isolated binary (`enterprise-api`)
+versus the plain single-tenant one (`api`); both still exist and nothing
+currently prevents mixing them up. Full accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit

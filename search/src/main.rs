@@ -3,6 +3,7 @@ mod consumer;
 mod grpc;
 mod index;
 mod offsets;
+mod registry;
 
 pub mod logsv1 {
     tonic::include_proto!("sentry.logs.v1");
@@ -14,6 +15,7 @@ pub mod searchv1 {
 use anyhow::{Context, Result};
 use config::Config;
 use index::SearchIndex;
+use registry::IndexRegistry;
 use std::sync::Arc;
 use tonic::transport::Server;
 
@@ -33,6 +35,12 @@ async fn main() -> Result<()> {
     let index = Arc::new(
         SearchIndex::open_or_create(&cfg.index_path).context("opening tantivy index")?,
     );
+    // Per-tenant indices (Phase 4) are resolved on demand by
+    // IndexRegistry, opened under cfg.tenants_index_path -- see
+    // registry.rs's doc comment for what this does and doesn't isolate
+    // yet (read-side only; the consumer below still only ever writes
+    // into the single default `index` above).
+    let registry = Arc::new(IndexRegistry::new(Arc::clone(&index), cfg.tenants_index_path.clone()));
 
     let partition_count: i32 = std::env::var("REDPANDA_TOPIC_PARTITIONS")
         .ok()
@@ -53,7 +61,7 @@ async fn main() -> Result<()> {
         .context("parsing GRPC_LISTEN_ADDR")?;
     tracing::info!(addr = %cfg.grpc_listen_addr, "search gRPC server listening");
 
-    let search_server = grpc::SearchServer::new(Arc::clone(&index));
+    let search_server = grpc::SearchServer::new(Arc::clone(&registry));
     Server::builder()
         .add_service(searchv1::search_service_server::SearchServiceServer::new(
             search_server,
