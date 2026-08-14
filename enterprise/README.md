@@ -150,7 +150,7 @@ silently left out:
 ## Package layout
 
 ```
-cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features endpoints, -mint-service-token
+cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features endpoints, -mint-service-token, -create-tenant, -grant-membership-*
 cmd/enterprise-api/     multi-tenant-aware alternative to api/cmd/api -- see its own doc comment
 internal/tenant/        the ID type -- see its package doc comment before touching it
 internal/oidc/           coreos/go-oidc wiring: discovery, login redirect, code exchange + ID token verification
@@ -232,8 +232,8 @@ docker run --rm --network sentry_default -v $(pwd)/..:/src -w /src/enterprise \
 
 ## Turning on auth enforcement for manual testing
 
-Off by default (see "Status" above -- there's no login flow to issue a
-human session yet). To exercise the `RoleService` path end to end:
+Off by default (see "Status" above). To exercise the `RoleService` path
+end to end:
 
 ```sh
 docker compose up -d enterprise-auth
@@ -245,6 +245,36 @@ TOKEN=$(docker compose run --rm enterprise-auth -mint-service-token=alerting)
 ```sh
 docker build -f Dockerfile -t sentry-enterprise-auth .   # context is enterprise/, not the repo root
 ```
+
+## Bootstrapping a tenant and its first human user
+
+`-create-tenant`/`-grant-membership-*` are `enterprise-auth` operator
+flags, same "offline action gated by access to enterprise-auth's own
+environment, not a network-reachable endpoint" shape as
+`-mint-service-token` -- deliberately not an authenticated HTTP admin
+API, which would have to solve "who's allowed to create the very first
+tenant/membership" itself. Replaces what used to be a manual `psql`
+dance (see `/docs/phase-4-runbook.md` §3a's history if you're wondering
+why old references to it still show up in git blame):
+
+```sh
+docker compose run --rm enterprise-auth -create-tenant=acme -display-name="Acme Corp"
+# Log in once via /auth/oidc/login or /auth/saml/login -- it fails with
+# "no tenant membership" (403), but UpsertUserBySSO already created the
+# users row by then, which -grant-membership-user-email needs.
+docker compose run --rm enterprise-auth \
+  -grant-membership-tenant=acme -grant-membership-user-email=you@example.com -grant-membership-role=owner
+```
+
+`-create-tenant` only touches `rbacstore` -- pair with `enterprise-api
+-provision-tenant` (below) for a tenant to actually be able to run
+queries, not just log in. `role=owner` also calls `SetOwner`, since a
+tenant's Owner is a dedicated `tenants.owner_user_id` column, not just
+the highest `tenant_memberships` role. Not yet built: revoking a
+membership, listing a tenant's members, or a flag for
+`dashboard_permissions` grants (those go through the HTTP endpoints
+`api/dashboards`' handler now exposes -- `PUT`/`DELETE
+/dashboards/{id}/permissions/{userId}`, `GET .../permissions`).
 
 ## Provisioning a tenant and running `enterprise-api`
 

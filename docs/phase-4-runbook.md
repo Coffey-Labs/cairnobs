@@ -132,32 +132,32 @@ curl -s http://localhost:8082/auth/features
 ```
 
 Before a login can succeed, the logging-in identity needs a
-`tenant_memberships` row -- there's no admin UI for this yet, so insert
-one directly:
+`tenant_memberships` row. There's still no admin UI for this, but as of
+this runbook revision there's no manual SQL either --
+`enterprise-auth`'s `-create-tenant`/`-grant-membership-*` operator
+flags replace the old psql dance:
 
 ```sh
-docker run --rm --network sentry_default postgres:16-alpine psql \
-  "postgres://sentry:sentry-dev-only@metadata-postgres:5432/sentry_metadata" -c \
-  "INSERT INTO tenants (id, display_name, status) VALUES ('acme', 'Acme Corp', 'active') ON CONFLICT DO NOTHING;"
-# The users row is created automatically on first login (UpsertUserBySSO)
-# -- but tenant_memberships needs the user's ID, which doesn't exist
-# until after a first login attempt fails with 403. Log in once (it'll
-# fail with "no tenant membership"), then:
-docker run --rm --network sentry_default postgres:16-alpine psql \
-  "postgres://sentry:sentry-dev-only@metadata-postgres:5432/sentry_metadata" -c \
-  "SELECT id, email FROM users;"
-docker run --rm --network sentry_default postgres:16-alpine psql \
-  "postgres://sentry:sentry-dev-only@metadata-postgres:5432/sentry_metadata" -c \
-  "INSERT INTO tenant_memberships (id, tenant_id, user_id, role) VALUES (gen_random_uuid(), 'acme', '<user id from above>', 'viewer');"
+docker compose run --rm enterprise-auth -create-tenant=acme -display-name="Acme Corp"
+# Log in once at http://localhost:8082/auth/oidc/login -- it'll fail
+# with "no tenant membership" (403), but UpsertUserBySSO already created
+# the users row by that point, which -grant-membership-user-email needs.
+docker compose run --rm enterprise-auth \
+  -grant-membership-tenant=acme -grant-membership-user-email=<the email you logged in with> -grant-membership-role=viewer
 ```
 
-Then visit `http://localhost:8082/auth/oidc/login` in a real browser,
-complete the IdP's login, and confirm you land on
+Then visit `http://localhost:8082/auth/oidc/login` again in a real
+browser, complete the IdP's login, and confirm you land on
 `POST_LOGIN_REDIRECT_URL` (`http://localhost:3000` by default) with a
-`sentry_session` cookie set. This whole bootstrap sequence (manual SQL
-to create the first tenant membership) is exactly the kind of rough
-edge an admin UI would smooth over -- named as real future work, not
-hidden.
+`sentry_session` cookie set. `-create-tenant` only touches `rbacstore`
+(control-plane/RBAC) -- it's independent of `enterprise-api
+-provision-tenant`'s ClickHouse/Tantivy data-plane provisioning (§8),
+so a tenant created this way can log users in immediately but can't yet
+serve their queries until that's run too, the same "two separate
+operator actions" gap named in "Known gaps" below. Not yet built: an
+equivalent for revoking/listing memberships, or anything for
+`dashboard_permissions` grants (§5a) beyond calling the HTTP endpoints
+directly.
 
 ## 3b. `enterprise-auth`: human login via SAML (new -- same "verified
 live in this session, not against a real running container or a real
@@ -185,9 +185,10 @@ curl -s http://localhost:8082/auth/features
 # expect: {"sso_configured":true,"oidc_enabled":false,"saml_enabled":true}
 ```
 
-Bootstrapping the first `tenant_memberships` row is the same manual-SQL
-dance as §3a (log in once, it fails with 403, insert the membership
-using the `users` row that got created, log in again). Then visit
+Bootstrapping the first `tenant_memberships` row uses the same
+`-create-tenant`/`-grant-membership-*` flags as §3a (log in once, it
+fails with 403, grant the membership using the email you logged in
+with, log in again). Then visit
 `http://localhost:8082/auth/saml/login` in a real browser, complete the
 IdP's login, and confirm a `sentry_session` cookie lands after redirect
 to `POST_LOGIN_REDIRECT_URL`. Note SAML's `sentry_saml_request` cookie
@@ -448,8 +449,13 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   verification), not yet a real external IdP or a running
   `enterprise-auth` container. No tenant-picker UI for a multi-membership
   identity either (refused outright) for either protocol.
-- No admin UI to create a `tenant_memberships` row -- §3a's manual SQL
-  bootstrap is the only way to grant a logged-in identity access today.
+- No admin UI to create a `tenant_memberships` row, but §3a/§3b's manual
+  SQL bootstrap is gone -- `enterprise-auth -create-tenant`/
+  `-grant-membership-*` (offline operator flags, same shape as
+  `-mint-service-token`) replace it. Nothing yet for revoking a
+  membership, listing a tenant's members, or changing a role after the
+  fact (SetMembership's upsert supports it at the storage layer; there's
+  just no flag exposing it).
 - **Per-resource dashboard grants are now enforced** (`api/dashboards`'
   handler reads `dashboard_permissions` via
   `enterprise/internal/rbacstore.DashboardPermissions`, only when

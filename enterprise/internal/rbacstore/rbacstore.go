@@ -111,6 +111,25 @@ func (s *Store) UpsertUserBySSO(ctx context.Context, ssoSubject, email, displayN
 	return &u, nil
 }
 
+// GetUserByEmail supports enterprise-auth's -grant-membership-* operator
+// flags (cmd/enterprise-auth/main.go): granting a tenant_memberships row
+// by email is friendlier than requiring the operator to already know a
+// user's generated UUID, and email is the same natural key
+// UpsertUserBySSO already upserts on.
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	var u User
+	row := s.pool.QueryRow(ctx, `
+		SELECT id, email, display_name, sso_subject, created_at, updated_at
+		FROM users WHERE email = $1`, email)
+	if err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.SSOSubject, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("rbacstore: getting user by email: %w", err)
+	}
+	return &u, nil
+}
+
 func (s *Store) GetUser(ctx context.Context, id string) (*User, error) {
 	var u User
 	row := s.pool.QueryRow(ctx, `
