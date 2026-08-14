@@ -11,14 +11,19 @@ stack**, not asserted. This one is different, and says so plainly rather
 than papering over it: for the great majority of this phase's work,
 **there was no working Docker daemon access and no reachable Kubernetes
 cluster**, so most of what follows is a *procedure to run*, not a report
-of what was already run and passed. One genuine exception, verified live
-against a real Postgres earlier in this phase's work (see its own doc
-comments for the exact `docker run` invocations, and note this was
-before the environment lost Docker access, not a claim about this
-runbook's own session):
+of what was already run and passed. Two genuine exceptions:
 
 - `enterprise/internal/audit`'s hash-chain, tamper-detection, and
-  concurrent-write guarantees (task 4).
+  concurrent-write guarantees (task 4) -- verified live against a real
+  Postgres earlier in this phase's work (see its own doc comments for
+  the exact `docker run` invocations), before the environment lost
+  Docker access.
+- `enterprise/internal/loginhandler`'s full OIDC login flow (§3a) --
+  verified with real cryptography (a fake IdP that signs and verifies
+  genuine RS256 tokens) *without* needing Docker or a live database at
+  all, so this one was actually run in this runbook's own session, not
+  just an earlier one. What's still unverified is wiring it into a real
+  running `enterprise-auth` container against a real external IdP.
 
 Everything else — `internal/rbacstore`'s CRUD, the auth-enforcement
 walkthrough, the dashboards tenant-scoping fix, the Helm chart, the
@@ -84,6 +89,61 @@ curl -s http://localhost:8082/auth/features
 # expect: {"sso_configured":false,"oidc_enabled":false,"saml_enabled":false}
 # (no OIDC_ISSUER_URL/SAML_IDP_METADATA_URL set in this compose file)
 ```
+
+## 3a. `enterprise-auth`: human login via OIDC (new -- unlike everything
+else in this runbook, the underlying flow *was* verified live in this
+session, just not against a real running `enterprise-auth` container or
+a real external IdP)
+
+`enterprise/internal/loginhandler`'s tests already prove the mechanism
+works end to end against a real fake IdP (`go test
+./internal/loginhandler/... -v` from `enterprise/`, no Docker needed --
+see `enterprise/README.md`). What's still unverified is wiring it into
+this actual running stack. To try that for real, point
+`docker-compose.yml`'s `enterprise-auth` service at a real OIDC IdP
+(a free Auth0/Okta developer tenant, or any IdP you control):
+
+```sh
+# Add to enterprise-auth's environment in docker-compose.yml (or a
+# docker-compose.override.yml):
+#   OIDC_ISSUER_URL: "https://your-tenant.example.com/"
+#   OIDC_CLIENT_ID: "..."
+#   OIDC_CLIENT_SECRET: "..."
+#   OIDC_REDIRECT_URL: "http://localhost:8082/auth/oidc/callback"
+# Register that same redirect URL with the IdP's application config.
+
+docker compose up -d --build enterprise-auth
+curl -s http://localhost:8082/auth/features
+# expect: {"sso_configured":true,"oidc_enabled":true,"saml_enabled":false}
+```
+
+Before a login can succeed, the logging-in identity needs a
+`tenant_memberships` row -- there's no admin UI for this yet, so insert
+one directly:
+
+```sh
+docker run --rm --network sentry_default postgres:16-alpine psql \
+  "postgres://sentry:sentry-dev-only@metadata-postgres:5432/sentry_metadata" -c \
+  "INSERT INTO tenants (id, display_name, status) VALUES ('acme', 'Acme Corp', 'active') ON CONFLICT DO NOTHING;"
+# The users row is created automatically on first login (UpsertUserBySSO)
+# -- but tenant_memberships needs the user's ID, which doesn't exist
+# until after a first login attempt fails with 403. Log in once (it'll
+# fail with "no tenant membership"), then:
+docker run --rm --network sentry_default postgres:16-alpine psql \
+  "postgres://sentry:sentry-dev-only@metadata-postgres:5432/sentry_metadata" -c \
+  "SELECT id, email FROM users;"
+docker run --rm --network sentry_default postgres:16-alpine psql \
+  "postgres://sentry:sentry-dev-only@metadata-postgres:5432/sentry_metadata" -c \
+  "INSERT INTO tenant_memberships (id, tenant_id, user_id, role) VALUES (gen_random_uuid(), 'acme', '<user id from above>', 'viewer');"
+```
+
+Then visit `http://localhost:8082/auth/oidc/login` in a real browser,
+complete the IdP's login, and confirm you land on
+`POST_LOGIN_REDIRECT_URL` (`http://localhost:3000` by default) with a
+`sentry_session` cookie set. This whole bootstrap sequence (manual SQL
+to create the first tenant membership) is exactly the kind of rough
+edge an admin UI would smooth over -- named as real future work, not
+hidden.
 
 ## 4. Turn on RBAC enforcement and prove it actually blocks/allows
 
@@ -236,8 +296,13 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
 - **No Tantivy/free-text isolation at all**, regardless of which binary
   serves the request -- `enterprise/internal/searchclient` (chrunner's
   Tantivy-side sibling) doesn't exist.
-- **No human SSO login.** OIDC/SAML protocol wiring exists;
-  the HTTP login/callback handlers that would use it don't.
+- **Human SSO login now works for OIDC** (§3a) -- verified with a real
+  fake IdP, not yet a real external one or a running `enterprise-auth`
+  container. **SAML login still doesn't exist** -- protocol wiring only,
+  no ACS handler. No tenant-picker UI for a multi-membership identity
+  either (refused outright).
+- No admin UI to create a `tenant_memberships` row -- §3a's manual SQL
+  bootstrap is the only way to grant a logged-in identity access today.
 - **No per-resource dashboard grants** (`dashboard_permissions` has a
   schema, no handler reads it).
 - Two of the four adversarial ClickHouse/Tantivy probes named in

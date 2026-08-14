@@ -51,6 +51,19 @@ section for exactly what "not yet run" means here and why. Don't read
   grants).
 - `internal/audit.QueryAPILogger`: the real `api/queryapi.AuditLogger`
   implementation -- wired into `enterprise-api`, no longer `nil`.
+- `internal/loginhandler`: `GET /auth/oidc/login` + `GET /auth/oidc/callback`
+  -- the actual human login flow, previously entirely missing. Redirects
+  to the configured IdP with CSRF-protection state in a short-lived
+  cookie, exchanges the code, verifies the ID token via `internal/oidc`,
+  upserts a `users` row, resolves tenant/role from exactly one
+  `tenant_memberships` row (refuses with a clear error on zero or
+  multiple -- no tenant-picker UI yet), and issues a session cookie.
+  **This one genuinely is verified**, unlike the ClickHouse pieces above:
+  `loginhandler_test.go` runs the full flow against a real fake IdP
+  (`coreos/go-oidc`'s own `oidctest` package, real RS256 signing and
+  verification, no live database or Docker needed) and every test
+  passes. Not yet tried against a real external IdP or a running
+  `enterprise-auth` container.
 - `cmd/enterprise-api`: a second binary (alongside `api/cmd/api`,
   unchanged) importing *both* `api`'s handler packages and the
   tenant-aware implementations above -- see its own doc comment for why
@@ -62,11 +75,13 @@ section for exactly what "not yet run" means here and why. Don't read
 
 **Deliberately deferred, not half-built** -- named explicitly rather than
 silently left out:
-- The actual OIDC/SAML login/callback HTTP handlers that would issue a
-  *human* session after a real IdP round trip (`internal/oidc`/
-  `internal/saml` do the protocol mechanics; nothing calls them from an
-  HTTP handler yet). `-mint-service-token` is the only way to get a
-  token today, and it only mints `RoleService` credentials.
+- SAML's login handler (the ACS endpoint) -- `internal/saml` does the
+  protocol mechanics (AuthnRequest generation, assertion validation);
+  nothing calls it from an HTTP handler, following `internal/
+  loginhandler`'s now-built OIDC pattern once someone builds it.
+- A tenant-picker UI/flow for an identity with more than one
+  `tenant_memberships` row -- `loginhandler` refuses these logins
+  outright rather than guessing (`ErrMultipleMemberships`).
 - `dashboard_permissions` CRUD (schema exists,
   `metadata/migrations/0024`; no caller reads per-resource grants
   yet -- `dashboards`' handler enforces tenant-baseline role only, not
@@ -91,6 +106,7 @@ internal/oidc/           coreos/go-oidc wiring: discovery, login redirect, code 
 internal/saml/            crewjam/saml wiring: SP setup, login redirect, response parsing/validation
 internal/session/          issues/validates signed session + RoleService tokens
 internal/authhandler/       POST /internal/authorize, GET /auth/features
+internal/loginhandler/       GET /auth/oidc/login, GET /auth/oidc/callback -- the human login flow
 internal/rbacstore/          users/tenants/tenant_memberships/data_sources CRUD (pgx against sentry_metadata)
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
@@ -209,11 +225,12 @@ edit today, not a supported flag.
 | `OIDC_ISSUER_URL` | (empty — OIDC discovery skipped if unset) |
 | `OIDC_CLIENT_ID` | (empty) |
 | `OIDC_CLIENT_SECRET` | (empty) |
-| `OIDC_REDIRECT_URL` | (empty) |
+| `OIDC_REDIRECT_URL` | (empty — must be `<enterprise-auth base URL>/auth/oidc/callback`, registered with the IdP) |
 | `SAML_ENTITY_ID` | (empty) |
 | `SAML_ACS_URL` | (empty) |
 | `SAML_IDP_METADATA_URL` | (empty — presence only feeds `GET /auth/features`; not yet fetched/parsed) |
 | `ENTERPRISE_SESSION_SIGNING_KEY` | **required**, min 32 bytes |
+| `POST_LOGIN_REDIRECT_URL` | `http://localhost:3000` — where the browser lands after `internal/loginhandler` sets a session cookie |
 
 ## Environment variables (`enterprise-api`)
 

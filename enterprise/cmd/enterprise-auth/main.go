@@ -2,17 +2,17 @@
 // service (commercial license, not AGPL) -- see
 // /docs/phase-4-isolation-design.md and /docs/phase-4-rbac-design.md.
 //
-// Phase 4 task 5 adds session issuance/validation (internal/session) and
-// the POST /internal/authorize endpoint api/authz.HTTPAuthorizer
-// calls -- the piece that actually turns on RBAC enforcement in /api.
-// Still deliberately missing: the OIDC/SAML login/callback HTTP handlers
-// that would issue a *human* session after a real IdP round trip, and
-// internal/rbacstore (the org/tenant/user/role Postgres storage those
-// handlers need to look up a role from). Both depend on RBAC storage
-// that wasn't built in task 3's scope and are called out as deferred
-// rather than half-built -- see the task 5 summary. What IS wired end to
-// end: minting and validating the RoleService credential /alerting
-// presents, via -mint-service-token below.
+// Wires session issuance/validation (internal/session), the
+// POST /internal/authorize endpoint api/authz.HTTPAuthorizer calls (the
+// piece that turns on RBAC enforcement in /api), and -- since
+// internal/loginhandler -- the real GET /auth/oidc/login and
+// GET /auth/oidc/callback handlers that issue a *human* session after
+// an actual IdP round trip, resolving tenant/role via internal/rbacstore.
+// Still deliberately missing: SAML's equivalent (ACS endpoint) -- same
+// shape, not yet built, following internal/loginhandler's OIDC pattern
+// once it is. What's fully wired: -mint-service-token (the RoleService
+// credential /alerting presents) and, when OIDC_ISSUER_URL is
+// configured, a real human login flow.
 package main
 
 import (
@@ -27,9 +27,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/sentry/sentry/enterprise/internal/authhandler"
 	"github.com/sentry/sentry/enterprise/internal/config"
+	"github.com/sentry/sentry/enterprise/internal/loginhandler"
 	"github.com/sentry/sentry/enterprise/internal/oidc"
+	"github.com/sentry/sentry/enterprise/internal/rbacstore"
 	"github.com/sentry/sentry/enterprise/internal/session"
 )
 
@@ -78,18 +82,36 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	pgDSN := fmt.Sprintf("postgres://%s:%s@%s/%s", cfg.Postgres.Username, cfg.Postgres.Password, cfg.Postgres.Addr, cfg.Postgres.Database)
+	pgPool, err := pgxpool.New(ctx, pgDSN)
+	if err != nil {
+		logger.Error("opening postgres pool", "error", err)
+		os.Exit(1)
+	}
+	defer pgPool.Close()
+	if err := pgPool.Ping(ctx); err != nil {
+		logger.Error("pinging postgres", "error", err)
+		os.Exit(1)
+	}
+	rbac := rbacstore.NewStore(pgPool)
+
+	// oidcProvider stays nil (loginhandler.RegisterRoutes then registers
+	// nothing) unless OIDC is actually configured -- matches every other
+	// optional-config path in this codebase.
+	var oidcProvider *oidc.Provider
 	if cfg.OIDC.IssuerURL != "" {
-		if _, err := oidc.New(ctx, oidc.Config{
+		oidcProvider, err = oidc.New(ctx, oidc.Config{
 			IssuerURL: cfg.OIDC.IssuerURL, ClientID: cfg.OIDC.ClientID,
 			ClientSecret: cfg.OIDC.ClientSecret, RedirectURL: cfg.OIDC.RedirectURL,
 			Scopes: []string{"email", "profile"},
-		}); err != nil {
+		})
+		if err != nil {
 			logger.Error("discovering OIDC issuer", "error", err)
 			os.Exit(1)
 		}
 		logger.Info("OIDC provider configured", "issuer", cfg.OIDC.IssuerURL)
 	} else {
-		logger.Info("OIDC not configured (OIDC_ISSUER_URL unset) -- skipping discovery")
+		logger.Info("OIDC not configured (OIDC_ISSUER_URL unset) -- skipping discovery, /auth/oidc/* routes disabled")
 	}
 
 	mux := http.NewServeMux()
@@ -101,6 +123,7 @@ func main() {
 		SAMLEnabled: cfg.SAML.IDPMetadataURL != "",
 	}
 	authhandler.New(logger, sessionManager, features).RegisterRoutes(mux)
+	loginhandler.New(logger, oidcProvider, sessionManager, rbac, cfg.PostLoginRedirectURL).RegisterRoutes(mux)
 
 	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: mux}
 

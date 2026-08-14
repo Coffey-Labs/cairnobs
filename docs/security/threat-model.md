@@ -87,6 +87,10 @@ api/alerting ──▶ enterprise-auth (POST /internal/authorize, HTTP only —
                                     no Go import edge, see "Module
                                     boundary" below)
 
+Browser ──▶ enterprise-auth (GET /auth/oidc/login, /auth/oidc/callback)
+              └─▶ external IdP (OIDC authorization code flow)
+              └─▶ Postgres (rbacstore: users, tenant_memberships)
+
 sentryctl ──▶ api, alerting (Bearer token when SENTRYCTL_TOKEN is set)
 ```
 
@@ -113,15 +117,37 @@ to `enterprise-auth` — see "Deployment/network assumptions" below.
 
 ## Authentication
 
-**Not implemented for human users.** `enterprise/internal/oidc` and
-`enterprise/internal/saml` wire `coreos/go-oidc`/`crewjam/saml` for the
-protocol mechanics (discovery, AuthnRequest generation, token/assertion
-validation), but no HTTP handler calls them — there is no
-`/auth/oidc/login`, `/auth/oidc/callback`, or SAML ACS endpoint. A human
-cannot log in today. `GET /auth/features` (`enterprise/internal/
-authhandler`) reports whether OIDC/SAML are *configured* (for `/web`'s
-settings page to conditionally render), which is independent of whether
-login actually works.
+**Implemented for OIDC, still missing for SAML.**
+`enterprise/internal/loginhandler` serves `GET /auth/oidc/login`
+(redirects to the configured IdP, with a short-lived HttpOnly cookie
+carrying CSRF-protection state) and `GET /auth/oidc/callback`
+(validates state, exchanges the code, verifies the ID token via
+`enterprise/internal/oidc`'s real `coreos/go-oidc` wiring, upserts a
+`users` row keyed by SSO subject, resolves tenant/role from
+`tenant_memberships`, and issues a `session.Manager`-signed session
+cookie). Verified end-to-end with real cryptography, not mocked: the
+tests spin up a real fake IdP (`coreos/go-oidc`'s own `oidctest`
+package) that signs genuine RS256 ID tokens, and
+`enterprise/internal/loginhandler`'s handler verifies them for real via
+the same code path production uses — every test in
+`loginhandler_test.go` passes, including the full login→callback→
+session-cookie round trip. **Not yet verified**: wiring this into a
+running `enterprise-auth` container against a *real* external IdP
+(Google/Okta/etc.) — that needs real IdP credentials and a reachable
+callback URL neither of which this environment has; see
+`/docs/phase-4-runbook.md`.
+
+A user with zero or more than one `tenant_memberships` row is refused
+outright (403 / 501 respectively) rather than guessed at — a
+tenant-selection UI for the multi-membership case is real, undesigned
+future work, not silently approximated. `enterprise/internal/saml` still
+only does the protocol mechanics (AuthnRequest generation, assertion
+validation) with no ACS HTTP handler calling it — SAML login remains
+unimplemented, following `loginhandler`'s OIDC pattern once it is built.
+`GET /auth/features` (`enterprise/internal/authhandler`) reports whether
+OIDC/SAML are *configured*, for `/web`'s settings page to conditionally
+render — independent of whether a login button actually exists yet in
+the UI (it doesn't; only the two HTTP endpoints do).
 
 **Implemented for the one machine caller.** `/alerting`'s evaluator is
 the sole service-to-service caller (`POST /query`, to evaluate rule
@@ -327,7 +353,9 @@ terms:
 | `system.*` ClickHouse metadata isolation | **Built, not live-verified** — same caveat as above |
 | Tantivy/free-text tenant isolation | **Not implemented** — no per-tenant index routing at all |
 | Deployment actually routing traffic to `enterprise-api` | **Not implemented** — no Helm service, no default wiring |
-| Human SSO login (OIDC/SAML) | **Not implemented** |
+| Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
+| Human SSO login — SAML | **Not implemented** |
+| Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |
 | Per-resource dashboard grants (`own/granted`) | **Not implemented** |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |
