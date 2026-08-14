@@ -156,7 +156,7 @@ silently left out:
 ## Package layout
 
 ```
-cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features endpoints, -mint-service-token, -create-tenant, -grant-membership-*
+cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant
 cmd/enterprise-api/     multi-tenant-aware alternative to api/cmd/api -- see its own doc comment
 internal/tenant/        the ID type -- see its package doc comment before touching it
 internal/oidc/           coreos/go-oidc wiring: discovery, login redirect, code exchange + ID token verification
@@ -271,15 +271,24 @@ docker compose run --rm enterprise-auth -create-tenant=acme -display-name="Acme 
 # users row by then, which -grant-membership-user-email needs.
 docker compose run --rm enterprise-auth \
   -grant-membership-tenant=acme -grant-membership-user-email=you@example.com -grant-membership-role=owner
+
+# See who's actually in a tenant, and take access away again:
+docker compose run --rm enterprise-auth -list-memberships-tenant=acme
+docker compose run --rm enterprise-auth \
+  -revoke-membership-tenant=acme -revoke-membership-user-email=someone-else@example.com
 ```
 
 `-create-tenant` only touches `rbacstore` -- pair with `enterprise-api
 -provision-tenant` (below) for a tenant to actually be able to run
 queries, not just log in. `role=owner` also calls `SetOwner`, since a
 tenant's Owner is a dedicated `tenants.owner_user_id` column, not just
-the highest `tenant_memberships` role. Not yet built: revoking a
-membership, listing a tenant's members, or a flag for
-`dashboard_permissions` grants (those go through the HTTP endpoints
+the highest `tenant_memberships` role -- `-revoke-membership-*` refuses
+to revoke a tenant's current Owner for the same reason (transferring
+ownership first has no flag yet, only `rbacstore.SetOwner` at the
+storage layer). Changing a role is just re-running
+`-grant-membership-*` with a different `-grant-membership-role`
+(`SetMembership`'s upsert already supports it). Not yet built: a flag
+for `dashboard_permissions` grants (those go through the HTTP endpoints
 `api/dashboards`' handler now exposes -- `PUT`/`DELETE
 /dashboards/{id}/permissions/{userId}`, `GET .../permissions`).
 

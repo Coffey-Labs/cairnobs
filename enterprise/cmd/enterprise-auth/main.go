@@ -13,11 +13,12 @@
 // (crewjam/saml's samlsp.FetchMetadata; a trusted operator-supplied URL,
 // same trust level as OIDC_ISSUER_URL's discovery fetch, not
 // end-user-controlled input). Also fully wired: -mint-service-token
-// (the RoleService credential /alerting presents), and
-// -create-tenant/-grant-membership-* -- the operator actions that
-// replace phase-4-runbook.md's old "log in once so UpsertUserBySSO
-// creates a users row, then hand-write a psql INSERT into
-// tenant_memberships" bootstrap dance with a real command.
+// (the RoleService credential /alerting presents), -create-tenant/
+// -grant-membership-* -- the operator actions that replace
+// phase-4-runbook.md's old "log in once so UpsertUserBySSO creates a
+// users row, then hand-write a psql INSERT into tenant_memberships"
+// bootstrap dance with a real command -- and their counterparts
+// -revoke-membership-*/-list-memberships-tenant.
 package main
 
 import (
@@ -75,6 +76,9 @@ func main() {
 	grantTenant := flag.String("grant-membership-tenant", "", "tenant id to grant a membership in -- all three -grant-membership-* flags are required together")
 	grantUserEmail := flag.String("grant-membership-user-email", "", "email of an existing user to grant a tenant_memberships row to -- the user must have attempted an SSO login at least once already (UpsertUserBySSO creates the users row on first login, even one that then fails with \"no tenant membership\")")
 	grantRole := flag.String("grant-membership-role", "", "role to grant: viewer, editor, admin, or owner")
+	revokeTenant := flag.String("revoke-membership-tenant", "", "tenant id to revoke a membership from -- both -revoke-membership-* flags are required together")
+	revokeUserEmail := flag.String("revoke-membership-user-email", "", "email of the user whose tenant_memberships row to delete")
+	listMembershipsTenant := flag.String("list-memberships-tenant", "", "print every user with a membership in this tenant (id, email, display name, role) and exit")
 	// -healthcheck: same self-check mode as api/-healthcheck (see that
 	// binary's doc comment) -- enterprise-auth's image is distroless too.
 	healthcheck := flag.Bool("healthcheck", false, "self-check mode for Docker's HEALTHCHECK")
@@ -121,6 +125,12 @@ func main() {
 	}
 	if *grantTenant != "" || *grantUserEmail != "" || *grantRole != "" {
 		os.Exit(runGrantMembership(ctx, logger, rbac, *grantTenant, *grantUserEmail, *grantRole))
+	}
+	if *revokeTenant != "" || *revokeUserEmail != "" {
+		os.Exit(runRevokeMembership(ctx, logger, rbac, *revokeTenant, *revokeUserEmail))
+	}
+	if *listMembershipsTenant != "" {
+		os.Exit(runListMemberships(ctx, logger, rbac, *listMembershipsTenant))
 	}
 
 	// oidcProvider stays nil (loginhandler.RegisterRoutes then registers
@@ -285,6 +295,63 @@ func runGrantMembership(ctx context.Context, logger *slog.Logger, rbac *rbacstor
 		}
 	}
 	logger.Info("granted membership", "tenant_id", tenantID, "user_id", user.ID, "email", userEmail, "role", role)
+	return 0
+}
+
+// runRevokeMembership is -grant-membership's inverse -- looks the user
+// up by email (same reasoning as runGrantMembership: an operator knows
+// an email, not a generated UUID) and deletes their tenant_memberships
+// row. RevokeMembership itself refuses a tenant's current Owner (see
+// that method's doc comment); this function doesn't duplicate that
+// check, it just surfaces whatever error comes back.
+func runRevokeMembership(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID, userEmail string) int {
+	if tenantID == "" || userEmail == "" {
+		logger.Error("-revoke-membership-tenant and -revoke-membership-user-email are both required together")
+		return 1
+	}
+	user, err := rbac.GetUserByEmail(ctx, userEmail)
+	if err != nil {
+		if err == rbacstore.ErrNotFound {
+			logger.Error("no user with this email exists", "email", userEmail)
+		} else {
+			logger.Error("looking up user by email", "email", userEmail, "error", err)
+		}
+		return 1
+	}
+	if err := rbac.RevokeMembership(ctx, tenantID, user.ID); err != nil {
+		if err == rbacstore.ErrNotFound {
+			logger.Error("user has no membership in this tenant", "tenant_id", tenantID, "email", userEmail)
+		} else {
+			logger.Error("revoking membership", "error", err)
+		}
+		return 1
+	}
+	logger.Info("revoked membership", "tenant_id", tenantID, "user_id", user.ID, "email", userEmail)
+	return 0
+}
+
+// runListMemberships prints every member of a tenant to stdout (plain
+// text, not JSON -- an operator convenience for deciding who to
+// -grant-membership-role= or -revoke-membership-*, not a machine-
+// readable API; enterprise-auth has no admin HTTP surface for this at
+// all, per this binary's doc comment on why that's deliberate).
+func runListMemberships(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID string) int {
+	if _, err := rbac.GetTenant(ctx, tenantID); err != nil {
+		logger.Error("looking up tenant", "tenant_id", tenantID, "error", err)
+		return 1
+	}
+	members, err := rbac.ListMembershipsForTenant(ctx, tenantID)
+	if err != nil {
+		logger.Error("listing memberships", "error", err)
+		return 1
+	}
+	if len(members) == 0 {
+		fmt.Println("(no members)")
+		return 0
+	}
+	for _, m := range members {
+		fmt.Printf("%s\t%s\t%s\t%s\n", m.UserID, m.Email, m.DisplayName, m.Role)
+	}
 	return 0
 }
 

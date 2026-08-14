@@ -266,6 +266,75 @@ func (s *Store) GetMembership(ctx context.Context, tenantID, userID string) (*Me
 	return &m, nil
 }
 
+// RevokeMembership deletes a user's membership in a tenant -- the
+// counterpart to SetMembership's upsert. Refuses to revoke a tenant's
+// current Owner: unlike every other role, Owner is also a dedicated
+// tenants.owner_user_id column (see SetOwner's doc comment), so
+// revoking that membership without first transferring ownership would
+// leave owner_user_id pointing at a user with no membership in the
+// tenant at all -- an inconsistent state, not something this method
+// silently allows. Ownership transfer is a deliberate, separate action
+// (the RBAC matrix's "Transfer tenant Owner -- Owner only"), not a
+// side effect of revoking a membership.
+func (s *Store) RevokeMembership(ctx context.Context, tenantID, userID string) error {
+	tenant, err := s.GetTenant(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("rbacstore: getting tenant to check ownership: %w", err)
+	}
+	if tenant.OwnerUserID == userID {
+		return fmt.Errorf("rbacstore: refusing to revoke tenant %q's current Owner (%s) -- transfer ownership first", tenantID, userID)
+	}
+
+	tag, err := s.pool.Exec(ctx, `DELETE FROM tenant_memberships WHERE tenant_id = $1 AND user_id = $2`, tenantID, userID)
+	if err != nil {
+		return fmt.Errorf("rbacstore: revoking membership: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TenantMember is one row of ListMembershipsForTenant's result -- joined
+// with users so a caller (e.g. enterprise-auth's -list-memberships-tenant
+// operator flag) can show something more useful than a bare user ID.
+type TenantMember struct {
+	UserID      string
+	Email       string
+	DisplayName string
+	Role        Role
+}
+
+// ListMembershipsForTenant is ListMembershipsForUser's inverse -- "who
+// is in this tenant, and at what role," the shape an admin reviewing or
+// revoking access needs. Joined with users (INNER, not LEFT: a
+// tenant_memberships row's user_id is NOT NULL and FK-constrained, so
+// every membership has a real user).
+func (s *Store) ListMembershipsForTenant(ctx context.Context, tenantID string) ([]TenantMember, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT u.id, u.email, u.display_name, m.role
+		FROM tenant_memberships m
+		JOIN users u ON u.id = m.user_id
+		WHERE m.tenant_id = $1
+		ORDER BY u.email`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("rbacstore: listing tenant members: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TenantMember
+	for rows.Next() {
+		var m TenantMember
+		var role string
+		if err := rows.Scan(&m.UserID, &m.Email, &m.DisplayName, &role); err != nil {
+			return nil, fmt.Errorf("rbacstore: scanning tenant member: %w", err)
+		}
+		m.Role = Role(role)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // ListMembershipsForUser supports "which tenants can this user act in,
 // and at what role" -- the shape a login/session-issuance handler needs
 // when a user belongs to more than one tenant and must pick (or be

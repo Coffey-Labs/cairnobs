@@ -652,3 +652,122 @@ func TestTenantIsActiveNonexistentTenant(t *testing.T) {
 		t.Fatal("a nonexistent tenant must not be reported active")
 	}
 }
+
+func TestRevokeMembership(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	user, err := s.UpsertUserBySSO(ctx, "sub-"+uniqueSuffix(), "user-"+uniqueSuffix()+"@example.com", "User")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO: %v", err)
+	}
+	if err := s.SetMembership(ctx, tenantID, user.ID, RoleEditor); err != nil {
+		t.Fatalf("SetMembership: %v", err)
+	}
+
+	if err := s.RevokeMembership(ctx, tenantID, user.ID); err != nil {
+		t.Fatalf("RevokeMembership: %v", err)
+	}
+	if _, err := s.GetMembership(ctx, tenantID, user.ID); err != ErrNotFound {
+		t.Fatalf("GetMembership after revoke = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRevokeMembershipNotFound(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	if err := s.RevokeMembership(ctx, tenantID, uuid.NewString()); err != ErrNotFound {
+		t.Fatalf("RevokeMembership error = %v, want ErrNotFound", err)
+	}
+}
+
+// TestRevokeMembershipRefusesCurrentOwner is the regression test for
+// RevokeMembership's doc comment: deleting the Owner's membership
+// without transferring ownership first would leave tenants.owner_user_id
+// pointing at a user with no membership in the tenant at all.
+func TestRevokeMembershipRefusesCurrentOwner(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	owner, err := s.UpsertUserBySSO(ctx, "sub-owner-"+uniqueSuffix(), "owner-"+uniqueSuffix()+"@example.com", "Owner")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO: %v", err)
+	}
+	if err := s.SetMembership(ctx, tenantID, owner.ID, RoleOwner); err != nil {
+		t.Fatalf("SetMembership: %v", err)
+	}
+	if err := s.SetOwner(ctx, tenantID, owner.ID); err != nil {
+		t.Fatalf("SetOwner: %v", err)
+	}
+
+	if err := s.RevokeMembership(ctx, tenantID, owner.ID); err == nil {
+		t.Fatal("expected RevokeMembership to refuse revoking the tenant's current Owner")
+	}
+	if _, err := s.GetMembership(ctx, tenantID, owner.ID); err != nil {
+		t.Fatalf("owner's membership must still exist after the refused revoke, GetMembership: %v", err)
+	}
+}
+
+func TestListMembershipsForTenant(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	otherTenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	if _, err := s.CreateTenant(ctx, otherTenantID, "Other Tenant"); err != nil {
+		t.Fatalf("CreateTenant other: %v", err)
+	}
+
+	viewer, err := s.UpsertUserBySSO(ctx, "sub-viewer-"+uniqueSuffix(), "viewer-"+uniqueSuffix()+"@example.com", "Viewer")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO viewer: %v", err)
+	}
+	if err := s.SetMembership(ctx, tenantID, viewer.ID, RoleViewer); err != nil {
+		t.Fatalf("SetMembership viewer: %v", err)
+	}
+	editor, err := s.UpsertUserBySSO(ctx, "sub-editor-"+uniqueSuffix(), "editor-"+uniqueSuffix()+"@example.com", "Editor")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO editor: %v", err)
+	}
+	if err := s.SetMembership(ctx, tenantID, editor.ID, RoleEditor); err != nil {
+		t.Fatalf("SetMembership editor: %v", err)
+	}
+	// A membership in a different tenant must not leak into this list.
+	elsewhere, err := s.UpsertUserBySSO(ctx, "sub-elsewhere-"+uniqueSuffix(), "elsewhere-"+uniqueSuffix()+"@example.com", "Elsewhere")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO elsewhere: %v", err)
+	}
+	if err := s.SetMembership(ctx, otherTenantID, elsewhere.ID, RoleAdmin); err != nil {
+		t.Fatalf("SetMembership elsewhere: %v", err)
+	}
+
+	members, err := s.ListMembershipsForTenant(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("ListMembershipsForTenant: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("len(members) = %d, want 2", len(members))
+	}
+	byEmail := map[string]TenantMember{}
+	for _, m := range members {
+		byEmail[m.Email] = m
+	}
+	if got := byEmail[viewer.Email]; got.Role != RoleViewer || got.UserID != viewer.ID {
+		t.Fatalf("unexpected viewer entry: %+v", got)
+	}
+	if got := byEmail[editor.Email]; got.Role != RoleEditor || got.UserID != editor.ID {
+		t.Fatalf("unexpected editor entry: %+v", got)
+	}
+}
