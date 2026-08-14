@@ -12,11 +12,26 @@ import (
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
+// setAuth attaches SENTRYCTL_TOKEN (see resolveToken) as a Bearer
+// credential, a no-op when token is empty -- matches every backend's
+// nil-authorizer no-op default (see api/internal/authz.RequireRole*).
+func setAuth(req *http.Request, token string) {
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+}
+
 // httpGetJSON GETs path and prints the pretty-printed JSON response to
 // stdout, or the error body/status to stderr. Shared by dashboards/alerts
 // list and get, which otherwise differ only in path and resource name.
-func httpGetJSON(baseURL, path string, stdout, stderr io.Writer) int {
-	resp, err := httpClient.Get(baseURL + path)
+func httpGetJSON(baseURL, path, token string, stdout, stderr io.Writer) int {
+	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "building request: %v\n", err)
+		return 1
+	}
+	setAuth(req, token)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(stderr, "request failed: %v\n", err)
 		return 1
@@ -31,13 +46,20 @@ func httpGetJSON(baseURL, path string, stdout, stderr io.Writer) int {
 // expects (the same JSON the web UI's export button and POST /rules
 // produce/accept respectively). This is what makes "apply" the seed of a
 // future Terraform provider: one JSON contract, multiple callers.
-func httpPostFileJSON(baseURL, path, file string, stdout, stderr io.Writer) int {
+func httpPostFileJSON(baseURL, path, token, file string, stdout, stderr io.Writer) int {
 	body, err := os.ReadFile(file)
 	if err != nil {
 		fmt.Fprintf(stderr, "reading %s: %v\n", file, err)
 		return 1
 	}
-	resp, err := httpClient.Post(baseURL+path, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(stderr, "building request: %v\n", err)
+		return 1
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setAuth(req, token)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(stderr, "request failed: %v\n", err)
 		return 1

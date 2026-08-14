@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sentry/sentry/api/internal/authz"
 	"github.com/sentry/sentry/api/internal/querylang/executor"
 )
 
@@ -50,7 +51,21 @@ func newTestHandler(sqlRunner *fakeSQLRunner, search *fakeSearchClient) *Handler
 	if search == nil {
 		search = &fakeSearchClient{}
 	}
-	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), sqlRunner, search, time.Second)
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), sqlRunner, search, time.Second, nil, nil)
+}
+
+type fakeAuditLogger struct {
+	entries []QueryAuditEntry
+	err     error
+}
+
+func (f *fakeAuditLogger) LogQuery(_ context.Context, entry QueryAuditEntry) error {
+	f.entries = append(f.entries, entry)
+	return f.err
+}
+
+func newTestHandlerWithAudit(sqlRunner *fakeSQLRunner, audit *fakeAuditLogger) *Handler {
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), sqlRunner, &fakeSearchClient{}, time.Second, audit, nil)
 }
 
 func newTestMux(h *Handler) *http.ServeMux {
@@ -205,5 +220,123 @@ func TestHandleHealthz(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestHandleQueryLogsAuditEntryOnSuccess(t *testing.T) {
+	sr := &fakeSQLRunner{result: &executor.Result{Columns: []string{"host"}, Rows: [][]any{{"h1"}, {"h2"}}}}
+	audit := &fakeAuditLogger{}
+	h := newTestHandlerWithAudit(sr, audit)
+
+	rec := postQuery(t, h, `{"query": "SELECT host FROM logs"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	if len(audit.entries) != 1 {
+		t.Fatalf("expected 1 audit entry, got %d", len(audit.entries))
+	}
+	entry := audit.entries[0]
+	if entry.Query != "SELECT host FROM logs" || !entry.Success || entry.RowCount != 2 || entry.Error != "" {
+		t.Fatalf("unexpected audit entry: %+v", entry)
+	}
+}
+
+func TestHandleQueryLogsAuditEntryOnFailure(t *testing.T) {
+	sr := &fakeSQLRunner{err: errors.New("boom")}
+	audit := &fakeAuditLogger{}
+	h := newTestHandlerWithAudit(sr, audit)
+
+	rec := postQuery(t, h, `{"query": "SELECT 1"}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Code)
+	}
+
+	if len(audit.entries) != 1 {
+		t.Fatalf("expected 1 audit entry even on failure, got %d", len(audit.entries))
+	}
+	entry := audit.entries[0]
+	if entry.Success || entry.Error == "" {
+		t.Fatalf("expected a failed audit entry with an error message, got %+v", entry)
+	}
+}
+
+// TestHandleQueryAuditWriteFailureDoesNotFailRequest proves the
+// fail-open design: a request still succeeds even when the audit
+// logger itself errors -- per queryapi.AuditLogger's doc comment and
+// /docs/phase-4-isolation-design.md's audit fail-open/fail-closed policy.
+func TestHandleQueryAuditWriteFailureDoesNotFailRequest(t *testing.T) {
+	sr := &fakeSQLRunner{result: &executor.Result{Columns: []string{}, Rows: [][]any{}}}
+	audit := &fakeAuditLogger{err: errors.New("audit backend unreachable")}
+	h := newTestHandlerWithAudit(sr, audit)
+
+	rec := postQuery(t, h, `{"query": "SELECT 1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 -- an audit write failure must not fail the request", rec.Code)
+	}
+}
+
+func TestHandleQueryNilAuditLoggerIsNoOp(t *testing.T) {
+	sr := &fakeSQLRunner{result: &executor.Result{Columns: []string{}, Rows: [][]any{}}}
+	h := newTestHandler(sr, nil) // audit is nil here
+
+	rec := postQuery(t, h, `{"query": "SELECT 1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+// fakeAuthorizer resolves every request to a fixed identity/error --
+// task 5 wired authz.RequireRoleOrService into RegisterRoutes but every
+// existing test above passes a nil authorizer (a deliberate no-op), so
+// none of them actually exercise the wiring with a real authorizer
+// present. Phase 4 task 8 (adversarial tests) closes that gap: these
+// prove /query's authz boundary holds when a real Authorizer is wired
+// in, not just that the middleware function works in isolation
+// (authz/middleware_test.go already covers that).
+type fakeAuthorizer struct {
+	identity authz.Identity
+	err      error
+}
+
+func (f *fakeAuthorizer) Authorize(*http.Request) (authz.Identity, error) {
+	return f.identity, f.err
+}
+
+func newTestHandlerWithAuthorizer(sqlRunner *fakeSQLRunner, authorizer authz.Authorizer) *Handler {
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), sqlRunner, &fakeSearchClient{}, time.Second, nil, authorizer)
+}
+
+func TestHandleQueryRejectsUnauthenticatedWhenAuthorizerConfigured(t *testing.T) {
+	sr := &fakeSQLRunner{result: &executor.Result{Columns: []string{}, Rows: [][]any{}}}
+	h := newTestHandlerWithAuthorizer(sr, &fakeAuthorizer{err: errors.New("no session")})
+
+	rec := postQuery(t, h, `{"query": "SELECT 1"}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestHandleQueryAllowsViewer(t *testing.T) {
+	sr := &fakeSQLRunner{result: &executor.Result{Columns: []string{}, Rows: [][]any{}}}
+	h := newTestHandlerWithAuthorizer(sr, &fakeAuthorizer{identity: authz.Identity{TenantID: "acme", Role: authz.RoleViewer}})
+
+	rec := postQuery(t, h, `{"query": "SELECT 1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestHandleQueryAllowsServiceIdentity is the other half of the
+// alerting<->api gap's fix (/docs/phase-4-isolation-design.md) --
+// /alerting's evaluator must be able to call POST /query with its
+// RoleService credential even though it's not a human session.
+func TestHandleQueryAllowsServiceIdentity(t *testing.T) {
+	sr := &fakeSQLRunner{result: &executor.Result{Columns: []string{}, Rows: [][]any{}}}
+	h := newTestHandlerWithAuthorizer(sr, &fakeAuthorizer{identity: authz.Identity{Role: authz.RoleService}})
+
+	rec := postQuery(t, h, `{"query": "SELECT 1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 -- RoleService must be allowed on /query; body=%s", rec.Code, rec.Body.String())
 	}
 }

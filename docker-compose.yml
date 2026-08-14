@@ -131,6 +131,11 @@ services:
       POSTGRES_USER: "sentry"
       POSTGRES_PASSWORD: "sentry-dev-only"
       POSTGRES_DATABASE: "sentry_metadata"
+      # Password for the restricted audit_writer Postgres role (Phase 4
+      # task 4) -- INSERT+SELECT only on audit_log, never UPDATE/DELETE,
+      # via its own connection pool distinct from the shared "sentry"
+      # role every other store uses. See /docs/phase-4-isolation-design.md.
+      AUDIT_WRITER_PASSWORD: "audit-writer-dev-only"
 
   ingest:
     build:
@@ -231,6 +236,34 @@ services:
       timeout: 5s
       retries: 30
 
+  # Commercial-license SSO/RBAC service (Phase 4) -- see
+  # /docs/phase-4-isolation-design.md and enterprise/README.md. Included
+  # here so it can be built/run/curled like every other service, but
+  # deliberately NOT wired into api's ENTERPRISE_AUTH_URL or alerting's
+  # API_SERVICE_TOKEN below: turning that on makes every /query and
+  # /dashboards request require a valid session/service token, and there
+  # is no OIDC/SAML login flow built yet to issue a human one (see
+  # enterprise/cmd/enterprise-auth/main.go's doc comment) -- flipping it
+  # on by default would break the web UI and sentryctl with no way to
+  # log in. See enterprise/README.md for how to turn enforcement on for
+  # manual testing (mint a service token, set the two env vars, restart).
+  enterprise-auth:
+    build:
+      context: enterprise
+      dockerfile: Dockerfile
+    container_name: sentry-enterprise-auth
+    ports:
+      - "8082:8082"
+    environment:
+      # Dev-only, same framing as CLICKHOUSE_PASSWORD above -- not a real
+      # secret. Must be at least 32 bytes (see internal/config.Load).
+      ENTERPRISE_SESSION_SIGNING_KEY: "sentry-dev-only-session-signing-key-32bytes+"
+    healthcheck:
+      test: ["CMD", "/enterprise-auth", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   web:
     build:
       context: web
@@ -241,10 +274,12 @@ services:
         # network's service DNS names.
         VITE_API_BASE_URL: "http://localhost:8080"
         VITE_ALERTING_API_BASE_URL: "http://localhost:8081"
+        VITE_ENTERPRISE_AUTH_BASE_URL: "http://localhost:8082"
     container_name: sentry-web
     depends_on:
       - api
       - alerting
+      - enterprise-auth
     ports:
       - "3000:3000"
 

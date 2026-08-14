@@ -1,0 +1,93 @@
+# Hand-written, not `controller-gen crd` output -- see
+# api/v1alpha1/groupversion_info.go's doc comment. Kept in sync with
+# api/v1alpha1/tenant_types.go by hand; api/v1alpha1/api_test.go's
+# round-trip tests catch a Go/YAML drift in the *shape* of the types,
+# but not a drift in this file's field descriptions/validation rules --
+# review both together when either changes.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tenants.sentry.io
+spec:
+  group: sentry.io
+  names:
+    kind: Tenant
+    listKind: TenantList
+    plural: tenants
+    singular: tenant
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            Tenant is the K8s-native representation of one Sentry tenant's
+            deployment-topology state -- see
+            deploy/operator/internal/controller/tenant_controller.go's doc
+            comment for what the controller does and does not manage.
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required: [displayName]
+              properties:
+                displayName:
+                  type: string
+                  description: Human-readable only -- the object's own metadata.name is the stable identifier.
+                suspended:
+                  type: boolean
+                  description: Admin-facing lever for the Suspended phase.
+                  default: false
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Provisioning, Active, Suspended, Deprovisioning]
+                clickHouseDatabaseName:
+                  type: string
+                clickHouseSecretRef:
+                  type: string
+                tantivyIndexPath:
+                  type: string
+                observedGeneration:
+                  type: integer
+                  format: int64
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required: [type, status]
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                      lastTransitionTime:
+                        type: string
+                        format: date-time

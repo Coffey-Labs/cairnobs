@@ -26,8 +26,15 @@ func parsePingArgs(args []string, env func(string) string) string {
 func cmdPing(args []string, stdout, stderr io.Writer) int {
 	apiURL := parsePingArgs(args, os.Getenv)
 
+	req, err := http.NewRequest(http.MethodGet, apiURL+"/healthz", nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "building request: %v\n", err)
+		return 1
+	}
+	setAuth(req, resolveToken(os.Getenv))
+
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(apiURL + "/healthz")
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(stderr, "ping failed: %v\n", err)
 		return 1

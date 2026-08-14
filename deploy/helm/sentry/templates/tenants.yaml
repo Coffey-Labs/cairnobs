@@ -1,0 +1,14 @@
+{{- if .Values.enterprise.enabled }}
+{{- range .Values.tenants }}
+---
+apiVersion: sentry.io/v1alpha1
+kind: Tenant
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "sentry.labels" $ | nindent 4 }}
+spec:
+  displayName: {{ .displayName | default .name | quote }}
+  suspended: {{ .suspended | default false }}
+{{- end }}
+{{- end }}

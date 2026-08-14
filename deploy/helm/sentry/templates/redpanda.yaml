@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-redpanda
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "redpanda") | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-redpanda
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sentry.selectorLabels" (list $ "redpanda") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "redpanda") | nindent 8 }}
+    spec:
+      containers:
+        - name: redpanda
+          image: "{{ .Values.redpanda.image.repository }}:{{ .Values.redpanda.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args:
+            - redpanda
+            - start
+            - --smp=1
+            - --memory=1G
+            - --reserve-memory=0M
+            - --overprovisioned
+            - --node-id=0
+            - --check=false
+            - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr=PLAINTEXT://{{ .Release.Name }}-redpanda:9092
+          ports:
+            - name: kafka
+              containerPort: 9092
+            - name: admin
+              containerPort: 9644
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+          readinessProbe:
+            exec:
+              command: ["rpk", "cluster", "health", "--exit-when-healthy"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.redpanda.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.redpanda.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redpanda
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "redpanda") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "sentry.selectorLabels" (list $ "redpanda") | nindent 4 }}
+  ports:
+    - name: kafka
+      port: 9092
+    - name: admin
+      port: 9644
+---
+# One-shot: creates the sentry.logs.raw topic. Same image
+# transport/Dockerfile builds for docker-compose.yml's redpanda-provision
+# service. Deliberately a plain Job, not a Helm hook -- see
+# deploy/helm/sentry/README.md's "Startup ordering" section for why
+# (StatefulSets-as-hooks breaks helm upgrade/uninstall's ownership
+# tracking of stateful resources). backoffLimit gives it room to retry
+# until redpanda's StatefulSet is actually ready; ingest/search's own
+# crash-and-restart-on-connect-failure covers the rest of the ordering,
+# same as every dependency in this chart.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-redpanda-provision
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "redpanda-provision") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: redpanda-provision
+          image: "{{ .Values.redpanda.provisionImage.repository }}:{{ .Values.redpanda.provisionImage.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: REDPANDA_BROKERS
+              value: "{{ .Release.Name }}-redpanda:9092"
+            - name: REDPANDA_ADMIN_HOSTS
+              value: "{{ .Release.Name }}-redpanda:9644"
+            - name: REDPANDA_TOPIC_PARTITIONS
+              value: "6"

@@ -16,6 +16,7 @@ type Config struct {
 	SearchGRPCAddr    string
 	QueryTimeout      time.Duration
 	CORSAllowedOrigin string
+	EnterpriseAuthURL string
 }
 
 type ClickHouseConfig struct {
@@ -58,6 +59,12 @@ func Load() (Config, error) {
 		// working out of the box. Tighten before this is ever reachable
 		// from outside a trusted dev/homelab network.
 		CORSAllowedOrigin: getenv("CORS_ALLOWED_ORIGIN", "*"),
+		// Empty by default -- a single-tenant deployment without
+		// enterprise/ configured runs with authz.RequireRole* as a
+		// no-op, matching Phase 0-3 behavior. Set to enterprise-auth's
+		// base URL (e.g. "http://enterprise-auth:8081") to turn on
+		// real session/service-token enforcement.
+		EnterpriseAuthURL: getenv("ENTERPRISE_AUTH_URL", ""),
 	}
 
 	timeoutSec, err := strconv.Atoi(getenv("QUERY_TIMEOUT_SECONDS", "30"))

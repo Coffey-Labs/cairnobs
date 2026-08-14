@@ -12,16 +12,17 @@ func cmdAlerts(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	alertingURL, rest := extractAlertingAPIFlag(args[1:], os.Getenv)
+	token := resolveToken(os.Getenv)
 
 	switch args[0] {
 	case "list":
-		return httpGetJSON(alertingURL, "/rules", stdout, stderr)
+		return httpGetJSON(alertingURL, "/rules", token, stdout, stderr)
 	case "get":
 		if len(rest) == 0 {
 			fmt.Fprintln(stderr, "sentryctl alerts get: missing rule id")
 			return 1
 		}
-		return httpGetJSON(alertingURL, "/rules/"+rest[0], stdout, stderr)
+		return httpGetJSON(alertingURL, "/rules/"+rest[0], token, stdout, stderr)
 	case "apply":
 		if len(rest) == 0 {
 			fmt.Fprintln(stderr, "sentryctl alerts apply: missing file path")
@@ -30,7 +31,7 @@ func cmdAlerts(args []string, stdout, stderr io.Writer) int {
 		// POST /rules accepts the same shape it returns -- a rule
 		// definition file (query, condition, interval, notification
 		// target ID) applies directly with no reshaping.
-		return httpPostFileJSON(alertingURL, "/rules", rest[0], stdout, stderr)
+		return httpPostFileJSON(alertingURL, "/rules", token, rest[0], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "sentryctl alerts: unknown subcommand %q (want list, get, apply)\n", args[0])
 		return 1

@@ -12,16 +12,17 @@ func cmdDashboards(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	apiURL, rest := extractAPIFlag(args[1:], os.Getenv)
+	token := resolveToken(os.Getenv)
 
 	switch args[0] {
 	case "list":
-		return httpGetJSON(apiURL, "/dashboards", stdout, stderr)
+		return httpGetJSON(apiURL, "/dashboards", token, stdout, stderr)
 	case "get":
 		if len(rest) == 0 {
 			fmt.Fprintln(stderr, "sentryctl dashboards get: missing dashboard id")
 			return 1
 		}
-		return httpGetJSON(apiURL, "/dashboards/"+rest[0], stdout, stderr)
+		return httpGetJSON(apiURL, "/dashboards/"+rest[0], token, stdout, stderr)
 	case "apply":
 		if len(rest) == 0 {
 			fmt.Fprintln(stderr, "sentryctl dashboards apply: missing file path")
@@ -30,7 +31,7 @@ func cmdDashboards(args []string, stdout, stderr io.Writer) int {
 		// The import endpoint consumes exactly the shape GET
 		// /dashboards/{id}/export produces and the web UI's Export JSON
 		// button downloads -- one JSON contract, three call sites.
-		return httpPostFileJSON(apiURL, "/dashboards/import", rest[0], stdout, stderr)
+		return httpPostFileJSON(apiURL, "/dashboards/import", token, rest[0], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "sentryctl dashboards: unknown subcommand %q (want list, get, apply)\n", args[0])
 		return 1

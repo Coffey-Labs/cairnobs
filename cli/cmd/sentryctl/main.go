@@ -73,7 +73,13 @@ Commands:
 
 --api defaults to $SENTRYCTL_API_URL, or `+defaultAPIURL+` if unset.
 --alerting-api defaults to $SENTRYCTL_ALERTING_API_URL, or `+defaultAlertingURL+` if unset.
---language overrides auto-detection; omit it for the common case.`)
+--language overrides auto-detection; omit it for the common case.
+
+$SENTRYCTL_TOKEN, if set, is sent as "Authorization: Bearer <token>" on
+every request -- required once a deployment configures enterprise-auth
+(see /docs/phase-4-rbac-design.md). No flag equivalent, deliberately:
+unlike --api, a credential shouldn't be typed where shell history or
+`+"`ps`"+` output can capture it.`)
 }
 
 func resolveAPIURL(env func(string) string) string {
@@ -88,6 +94,14 @@ func resolveAlertingURL(env func(string) string) string {
 		return v
 	}
 	return defaultAlertingURL
+}
+
+// resolveToken reads the RoleService/human bearer credential sentryctl
+// presents to api/alerting once enterprise-auth enforcement is turned
+// on (api/internal/authz.RequireRole*) -- empty by default, matching
+// every other Phase 0-3 client's nil-authorizer no-op behavior.
+func resolveToken(env func(string) string) string {
+	return env("SENTRYCTL_TOKEN")
 }
 
 type errorResponseBody struct {

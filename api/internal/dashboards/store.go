@@ -10,13 +10,30 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrNotFound is returned by Get/Delete when the id doesn't exist.
+// ErrNotFound is returned by Get/Delete when the id doesn't exist --
+// including when it exists but belongs to a different tenant (see this
+// file's tenant-scoping comment below): a 404 either way, never a 403
+// that would confirm cross-tenant existence.
 var ErrNotFound = errors.New("not found")
 
 // Store is the pgx-backed CRUD implementation. IDs are assigned
 // server-side (google/uuid), matching how /ingest assigns record_id --
 // one place (Go) generates IDs, not split between the app and the
 // database via a Postgres extension.
+//
+// Every method below except CreateDashboard/ImportDashboard takes a
+// tenantID and filters by it (`WHERE ... AND tenant_id = $N`, or a join
+// through dashboards for the panel methods, since dashboard_panels has
+// no tenant_id column of its own). This is Phase 4 task 5/8 tenant
+// scoping, added after the authz RBAC wiring shipped without it -- see
+// /docs/security/threat-model.md's "application-layer tenant scoping"
+// section for why that gap mattered even with RBAC live: a role check
+// alone answers "is this identity allowed to edit *some* dashboard,"
+// not "is this identity allowed to touch *this* dashboard." The
+// handler (handler.go) resolves tenantID from the authenticated
+// identity (authz.IdentityFromContext) -- never from a client-supplied
+// request field, since Dashboard.TenantID is a JSON field a request
+// body can set arbitrarily.
 type Store struct {
 	pool *pgxpool.Pool
 }
@@ -25,6 +42,10 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+// CreateDashboard trusts d.TenantID -- callers (handler.go) must set it
+// from the authenticated identity before calling, never from client
+// input. Not itself tenant-scoped (there's nothing to scope against
+// yet; the row doesn't exist).
 func (s *Store) CreateDashboard(ctx context.Context, d *Dashboard) error {
 	d.ID = uuid.NewString()
 	if d.TenantID == "" {
@@ -47,10 +68,10 @@ func (s *Store) CreateDashboard(ctx context.Context, d *Dashboard) error {
 	return row.Scan(&d.CreatedAt, &d.UpdatedAt)
 }
 
-func (s *Store) ListDashboards(ctx context.Context) ([]Dashboard, error) {
+func (s *Store) ListDashboards(ctx context.Context, tenantID string) ([]Dashboard, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, tenant_id, name, description, default_earliest, default_latest, created_by, created_at, updated_at
-		FROM dashboards ORDER BY created_at DESC`)
+		FROM dashboards WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +88,11 @@ func (s *Store) ListDashboards(ctx context.Context) ([]Dashboard, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) GetDashboard(ctx context.Context, id string) (*Dashboard, error) {
+func (s *Store) GetDashboard(ctx context.Context, tenantID, id string) (*Dashboard, error) {
 	var d Dashboard
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, name, description, default_earliest, default_latest, created_by, created_at, updated_at
-		FROM dashboards WHERE id = $1`, id)
+		FROM dashboards WHERE id = $1 AND tenant_id = $2`, id, tenantID)
 	if err := row.Scan(&d.ID, &d.TenantID, &d.Name, &d.Description, &d.DefaultEarliest, &d.DefaultLatest, &d.CreatedBy, &d.CreatedAt, &d.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -87,6 +108,10 @@ func (s *Store) GetDashboard(ctx context.Context, id string) (*Dashboard, error)
 	return &d, nil
 }
 
+// listPanels doesn't itself take a tenantID -- every call site first
+// resolves the owning dashboard via a tenant-scoped query (GetDashboard
+// above, or dashboardTenantMatches below), so by the time this runs,
+// dashboardID is already known to belong to the caller's tenant.
 func (s *Store) listPanels(ctx context.Context, dashboardID string) ([]Panel, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, dashboard_id, title, query, query_language, viz_type, viz_config,
@@ -111,7 +136,21 @@ func (s *Store) listPanels(ctx context.Context, dashboardID string) ([]Panel, er
 	return out, rows.Err()
 }
 
-func (s *Store) UpdateDashboard(ctx context.Context, d *Dashboard) error {
+// dashboardTenantMatches is the join every panel-mutating method below
+// uses in place of a tenant_id column dashboard_panels doesn't have --
+// "does this dashboard exist AND belong to this tenant." A plain
+// EXISTS query, not a full row fetch: the panel methods that call this
+// only need a yes/no gate, not the dashboard's data.
+func (s *Store) dashboardTenantMatches(ctx context.Context, tenantID, dashboardID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM dashboards WHERE id = $1 AND tenant_id = $2)`,
+		dashboardID, tenantID,
+	).Scan(&exists)
+	return exists, err
+}
+
+func (s *Store) UpdateDashboard(ctx context.Context, tenantID string, d *Dashboard) error {
 	if d.DefaultEarliest == "" {
 		d.DefaultEarliest = "-1h"
 	}
@@ -120,9 +159,9 @@ func (s *Store) UpdateDashboard(ctx context.Context, d *Dashboard) error {
 	}
 	row := s.pool.QueryRow(ctx, `
 		UPDATE dashboards SET name = $1, description = $2, default_earliest = $3, default_latest = $4, updated_at = now()
-		WHERE id = $5
+		WHERE id = $5 AND tenant_id = $6
 		RETURNING tenant_id, created_by, created_at, updated_at`,
-		d.Name, d.Description, d.DefaultEarliest, d.DefaultLatest, d.ID)
+		d.Name, d.Description, d.DefaultEarliest, d.DefaultLatest, d.ID, tenantID)
 	if err := row.Scan(&d.TenantID, &d.CreatedBy, &d.CreatedAt, &d.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
@@ -132,8 +171,8 @@ func (s *Store) UpdateDashboard(ctx context.Context, d *Dashboard) error {
 	return nil
 }
 
-func (s *Store) DeleteDashboard(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM dashboards WHERE id = $1`, id)
+func (s *Store) DeleteDashboard(ctx context.Context, tenantID, id string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM dashboards WHERE id = $1 AND tenant_id = $2`, id, tenantID)
 	if err != nil {
 		return err
 	}
@@ -143,7 +182,14 @@ func (s *Store) DeleteDashboard(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Store) AddPanel(ctx context.Context, dashboardID string, p *Panel) error {
+func (s *Store) AddPanel(ctx context.Context, tenantID, dashboardID string, p *Panel) error {
+	ok, err := s.dashboardTenantMatches(ctx, tenantID, dashboardID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
 	p.ID = uuid.NewString()
 	p.DashboardID = dashboardID
 	row := s.pool.QueryRow(ctx, `
@@ -156,7 +202,14 @@ func (s *Store) AddPanel(ctx context.Context, dashboardID string, p *Panel) erro
 	return row.Scan(&p.CreatedAt, &p.UpdatedAt)
 }
 
-func (s *Store) UpdatePanel(ctx context.Context, p *Panel) error {
+func (s *Store) UpdatePanel(ctx context.Context, tenantID string, p *Panel) error {
+	ok, err := s.dashboardTenantMatches(ctx, tenantID, p.DashboardID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE dashboard_panels SET
 			title = $1, query = $2, query_language = $3, viz_type = $4, viz_config = $5,
@@ -175,7 +228,14 @@ func (s *Store) UpdatePanel(ctx context.Context, p *Panel) error {
 	return nil
 }
 
-func (s *Store) DeletePanel(ctx context.Context, dashboardID, panelID string) error {
+func (s *Store) DeletePanel(ctx context.Context, tenantID, dashboardID, panelID string) error {
+	ok, err := s.dashboardTenantMatches(ctx, tenantID, dashboardID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
 	tag, err := s.pool.Exec(ctx, `DELETE FROM dashboard_panels WHERE id = $1 AND dashboard_id = $2`, panelID, dashboardID)
 	if err != nil {
 		return err
@@ -191,8 +251,12 @@ func (s *Store) DeletePanel(ctx context.Context, dashboardID, panelID string) er
 // importing an exported dashboard into a different environment (or
 // re-importing into the same one) never collides with the source IDs.
 // Runs in one transaction: either the whole dashboard lands, or none of
-// it does.
-func (s *Store) ImportDashboard(ctx context.Context, d *Dashboard) (*Dashboard, error) {
+// it does. tenantID comes from the caller (the authenticated identity),
+// never from d.TenantID -- an exported dashboard JSON file carries
+// whatever tenant_id it was exported from, and importing it must not
+// let that value silently re-assign the dashboard to a different
+// tenant than the importing user's own.
+func (s *Store) ImportDashboard(ctx context.Context, tenantID string, d *Dashboard) (*Dashboard, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -200,10 +264,6 @@ func (s *Store) ImportDashboard(ctx context.Context, d *Dashboard) (*Dashboard, 
 	defer tx.Rollback(ctx)
 
 	id := uuid.NewString()
-	tenantID := d.TenantID
-	if tenantID == "" {
-		tenantID = "default"
-	}
 	createdBy := d.CreatedBy
 	if createdBy == "" {
 		createdBy = "anonymous"

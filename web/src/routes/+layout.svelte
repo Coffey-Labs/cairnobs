@@ -16,6 +16,7 @@
 	<a href="/">Query</a>
 	<a href="/dashboards">Dashboards</a>
 	<a href="/alerts">Alerts</a>
+	<a href="/settings">Settings</a>
 </nav>
 
 {@render children()}
