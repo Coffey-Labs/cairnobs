@@ -557,11 +557,14 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   identity either (refused outright) for either protocol.
 - No admin UI to create a `tenant_memberships` row, but §3a/§3b's manual
   SQL bootstrap is gone -- `enterprise-auth -create-tenant`/
-  `-grant-membership-*` (offline operator flags, same shape as
-  `-mint-service-token`) replace it. Nothing yet for revoking a
-  membership, listing a tenant's members, or changing a role after the
-  fact (SetMembership's upsert supports it at the storage layer; there's
-  just no flag exposing it).
+  `-grant-membership-*`/`-revoke-membership-*`/`-list-memberships-tenant`
+  (offline operator flags, same shape as `-mint-service-token`) cover
+  create/grant/revoke/list. Changing a role after the fact is just
+  re-running `-grant-membership-*` with a different `-grant-membership-
+  role` (`SetMembership`'s upsert already supports it). `RevokeMembership`
+  refuses a tenant's current Owner (would leave `tenants.owner_user_id`
+  dangling) -- transferring ownership first has no flag yet, only
+  `rbacstore.SetOwner` at the storage layer.
 - **Per-resource dashboard grants are now enforced** (`api/dashboards`'
   handler reads `dashboard_permissions` via
   `enterprise/internal/rbacstore.DashboardPermissions`, only when
