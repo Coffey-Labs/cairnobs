@@ -97,7 +97,7 @@ once built.
 
 ## What "done" looks like for Phase 3
 
-A user can build a multi-panel dashboard from saved Phase 2 queries (at
+**Status: shipped.** A user can build a multi-panel dashboard from saved Phase 2 queries (at
 least a line chart panel and a table panel, working end-to-end against
 live data), save an alert rule that fires a Slack webhook when a
 condition is met (threshold comparison, or "absence" — the query returned
@@ -119,9 +119,16 @@ ClickHouse/Tantivy only, unchanged.
 
 Non-goals for this phase (same discipline as every phase so far):
 - No multi-tenancy enforcement and no `enterprise/` module work — single
-  tenant/org assumed. New tables carry a `tenant_id` column so Phase 4's
-  retrofit doesn't require a schema migration + backfill, but nothing
-  reads or enforces it yet.
+  tenant/org assumed. Most new tables (`dashboards`, `alert_rules`,
+  `notification_targets`) carry a `tenant_id` column so part of Phase 4's
+  retrofit doesn't require a migration + backfill — but `alert_state` and
+  `delivery_log` do not (an inconsistency found during Phase 4 planning,
+  not caught at the time); Phase 4 adds `tenant_id` to those two and
+  backfills via a join through `alert_rules.id`, and — per
+  `/docs/phase-4-isolation-design.md` — tenant isolation itself turned
+  out to live at the ClickHouse/Tantivy connection layer, not via these
+  columns at all, since Phase 2's raw-SQL escape hatch can never be
+  covered by a row filter regardless of which tables carry one.
 - No raw-SQL dashboard panels (time-range injection isn't reliable
   against arbitrary SQL) — pipe-syntax queries only.
 - No per-group/multi-row threshold alerting (e.g. "alert separately per
@@ -130,6 +137,70 @@ Non-goals for this phase (same discipline as every phase so far):
   false evaluation, no symmetric "stay firing for N more minutes" hold.
 - No Kubernetes Operator/Helm deployment work — still docker-compose,
   `/deploy` remains stubbed.
+
+## What "done" looks like for Phase 4
+
+**Status: in progress, not shipped.** Through task 8: RBAC enforcement
+(`api/internal/authz`), the `alerting`↔`api` service-identity credential,
+tenant-scoped dashboards, and append-only audit logging are built and
+tested (including live-Postgres verification for audit logging and
+rbacstore). The two items this phase's exit criteria below actually
+hinge on are **not** built: SSO login (OIDC/SAML protocol wiring exists;
+no HTTP login handler calls it) and — the highest-risk one — tenant
+isolation for log data itself (every tenant's `/query` still executes
+against one shared ClickHouse connection and Tantivy index; RBAC
+controls who can query, not what a query can see). Full accounting:
+`/docs/security/threat-model.md`; step-by-step verification procedure
+(not yet run against a live cluster in this environment):
+`/docs/phase-4-runbook.md`. The rest of this section describes the exit
+bar this phase is aiming at, not a completed state.
+
+Two tenants can be provisioned with SSO (OIDC or SAML), each with their
+own users, roles, dashboards, and alert rules, fully isolated at the
+ClickHouse/Tantivy connection layer — not by a row filter — with
+adversarial integration tests proving no cross-tenant data leakage,
+including via the raw-SQL escape hatch and ClickHouse's own `system.*`
+tables. A tenant admin can see a query audit trail for their tenant,
+backed by append-only storage a compromised application credential
+cannot alter (enforced by database grants, not just convention) and
+periodically anchored outside the database so tampering is detectable
+even against a privileged attacker. See `/docs/phase-4-isolation-design.md`
+for the tenant isolation model and why it lives at the connection layer,
+`/docs/phase-4-rbac-design.md` for the role/permission model, and
+`/docs/security/threat-model.md` for the auth flows and audit-log
+integrity guarantees, written for a prospective enterprise customer's
+security team.
+
+The tenant-isolation, provisioning, SSO, and RBAC-enforcement mechanisms
+live entirely in `enterprise/` (commercial license), confirmed
+explicitly rather than assumed: AGPL core (`/api`, `/alerting`, `/web`)
+stays genuinely single-tenant, with no multi-tenant mechanism present at
+all — `enterprise/` supplies tenant-scoped implementations of core's
+already-shipped `querylang/executor.SQLRunner`/`SearchClient` interfaces
+rather than core growing tenant awareness. Query-compiler-level "compile
+time" enforcement, as originally proposed, turned out not to be
+achievable in any module once Phase 2's opaque raw-SQL passthrough is
+accounted for — the honest, implemented guarantee is that every code
+path (compiled query or raw SQL) is forced through a tenant-scoped
+database connection/index that the database's own access control
+enforces, not a compiler-injected filter.
+
+Non-goals for this phase (same discipline as every phase so far):
+- No deny-override permissions — per-resource grants (e.g. a specific
+  user getting edit access to one dashboard) are additive only; a full
+  allow/deny ACL system is future work.
+- No data retention/deletion policy design for tenant deprovisioning —
+  the provisioning state machine includes a `deprovisioning` state, but
+  what actually happens to a deprovisioned tenant's data is a separate,
+  not-yet-designed compliance question.
+- No general multi-cluster orchestration in `/deploy` — scoped to
+  proving the per-tenant ClickHouse/Tantivy isolation model works, not a
+  fully general multi-cluster system.
+- No protection against a privileged ClickHouse/Postgres administrator —
+  the isolation and audit-log guarantees in this phase are structural
+  defenses against application-layer bugs and injection, not against
+  someone with database superuser access; that's an operational control,
+  out of scope here and named explicitly, not silently assumed away.
 
 ## When in doubt
 Ask before: changing the pinned stack, adding a new external dependency

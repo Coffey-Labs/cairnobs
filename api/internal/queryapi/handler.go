@@ -19,19 +19,58 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sentry/sentry/api/internal/authz"
 	"github.com/sentry/sentry/api/internal/querylang/executor"
 	"github.com/sentry/sentry/api/internal/querylang/planner"
 )
+
+// AuditLogger is core's extension point for query audit logging --
+// deliberately minimal and tenant-agnostic, since core has no concept of
+// tenants (see /docs/phase-4-isolation-design.md: that mechanism lives
+// entirely in enterprise/). enterprise/internal/audit implements this
+// against the real hash-chained, append-only store; a nil AuditLogger
+// (the default for a single-tenant deployment without enterprise/
+// configured) means no audit logging happens and core behaves exactly
+// as it did in Phases 0-3.
+//
+// Tenant/user identity is deliberately NOT a field on QueryAuditEntry --
+// once Phase 4 task 5's auth middleware wraps this handler, it attaches
+// that identity to the request's context.Context via
+// enterprise/internal/tenant, and LogQuery's ctx parameter is the same
+// context the request carried, so an enterprise-side implementation
+// reads identity from ctx rather than this interface growing
+// tenant-awareness. Per /docs/phase-4-isolation-design.md's audit
+// section, this is a fail-open path: a LogQuery error is logged but
+// never fails the HTTP response for a routine read query.
+type AuditLogger interface {
+	LogQuery(ctx context.Context, entry QueryAuditEntry) error
+}
+
+type QueryAuditEntry struct {
+	Query    string
+	Language string
+	RowCount int
+	Duration time.Duration
+	Success  bool
+	Error    string
+}
 
 type Handler struct {
 	logger       *slog.Logger
 	sqlRunner    executor.SQLRunner
 	search       executor.SearchClient
 	queryTimeout time.Duration
+	audit        AuditLogger
+	authorizer   authz.Authorizer
 }
 
-func NewHandler(logger *slog.Logger, sqlRunner executor.SQLRunner, search executor.SearchClient, queryTimeout time.Duration) *Handler {
-	return &Handler{logger: logger, sqlRunner: sqlRunner, search: search, queryTimeout: queryTimeout}
+// audit and authorizer may both be nil -- see AuditLogger's doc comment
+// and authz.RequireRoleOrService's nil-safety. /query allows RoleViewer
+// (human sessions) or the alerting service identity (RoleService) --
+// it's the one endpoint /alerting's evaluator legitimately calls, per
+// /docs/phase-4-isolation-design.md's alerting service-identity design.
+func NewHandler(logger *slog.Logger, sqlRunner executor.SQLRunner, search executor.SearchClient, queryTimeout time.Duration, audit AuditLogger, authorizer authz.Authorizer) *Handler {
+	return &Handler{logger: logger, sqlRunner: sqlRunner, search: search, queryTimeout: queryTimeout, audit: audit, authorizer: authorizer}
 }
 
 // RegisterRoutes adds this handler's routes onto a shared mux. Phase 3
@@ -40,7 +79,7 @@ func NewHandler(logger *slog.Logger, sqlRunner executor.SQLRunner, search execut
 // than by each handler wrapping itself individually -- see
 // httpserver.WithCORS.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /query", h.handleQuery)
+	mux.HandleFunc("POST /query", authz.RequireRoleOrService(h.authorizer, authz.RoleViewer, h.handleQuery))
 	mux.HandleFunc("GET /healthz", h.handleHealthz)
 }
 
@@ -98,14 +137,41 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.queryTimeout)
 	defer cancel()
 
+	start := time.Now()
 	result, err := executor.Execute(ctx, plan, h.sqlRunner, h.search)
+	duration := time.Since(start)
+
 	if err != nil {
 		h.logger.Error("query execution failed", "query", req.Query, "error", err)
+		h.logAudit(r.Context(), req, 0, duration, err)
 		writeError(w, http.StatusBadGateway, "query failed: "+err.Error())
 		return
 	}
 
+	h.logAudit(r.Context(), req, len(result.Rows), duration, nil)
 	writeJSON(w, queryResponse{Columns: result.Columns, Rows: result.Rows})
+}
+
+// logAudit is fail-open by design (see AuditLogger's doc comment): a
+// write failure here is logged and otherwise ignored, never surfaced to
+// the HTTP caller. Uses r.Context() (the original request context, not
+// the query-execution one with its own deadline) so a slow/cancelled
+// query's context.WithTimeout expiring doesn't also cancel the audit
+// write for it.
+func (h *Handler) logAudit(ctx context.Context, req queryRequest, rowCount int, duration time.Duration, execErr error) {
+	if h.audit == nil {
+		return
+	}
+	entry := QueryAuditEntry{
+		Query: req.Query, Language: req.Language, RowCount: rowCount,
+		Duration: duration, Success: execErr == nil,
+	}
+	if execErr != nil {
+		entry.Error = execErr.Error()
+	}
+	if err := h.audit.LogQuery(ctx, entry); err != nil {
+		h.logger.Error("audit log write failed", "error", err)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -11,6 +11,13 @@ POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 POSTGRES_USER="${POSTGRES_USER:-sentry}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 POSTGRES_DATABASE="${POSTGRES_DATABASE:-sentry_metadata}"
+# Password for the restricted audit-log-writer Postgres role (Phase 4
+# task 4, see /docs/phase-4-isolation-design.md's audit logging
+# section) -- a second, narrower-granted role, not the shared
+# POSTGRES_PASSWORD above. Passed to psql via -v so the migration SQL
+# file can reference it as :'audit_writer_password' without ever
+# hardcoding a credential in a file checked into git.
+AUDIT_WRITER_PASSWORD="${AUDIT_WRITER_PASSWORD:-audit-writer-dev-only}"
 
 export PGPASSWORD="$POSTGRES_PASSWORD"
 
@@ -18,7 +25,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIGRATIONS_DIR="${SCRIPT_DIR}/migrations"
 
 psql_exec() {
-    psql -v ON_ERROR_STOP=1 -X -q -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" "$@"
+    psql -v ON_ERROR_STOP=1 -X -q -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" \
+        -v audit_writer_password="$AUDIT_WRITER_PASSWORD" "$@"
 }
 
 echo "Ensuring schema_migrations table exists..."

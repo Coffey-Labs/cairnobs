@@ -72,8 +72,16 @@ func cmdQuery(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	req, err := http.NewRequest(http.MethodPost, qa.apiURL+"/query", bytes.NewReader(reqBody))
+	if err != nil {
+		fmt.Fprintf(stderr, "building request: %v\n", err)
+		return 1
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setAuth(req, resolveToken(os.Getenv))
+
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(qa.apiURL+"/query", "application/json", bytes.NewReader(reqBody))
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(stderr, "query failed: %v\n", err)
 		return 1

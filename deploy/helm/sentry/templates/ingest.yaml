@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-ingest
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "ingest") | nindent 4 }}
+spec:
+  replicas: {{ .Values.ingest.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sentry.selectorLabels" (list $ "ingest") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "ingest") | nindent 8 }}
+    spec:
+      initContainers:
+        {{- include "sentry.waitForTCP" (list "redpanda" (printf "%s-redpanda" .Release.Name) "9092") | nindent 8 }}
+        {{- include "sentry.waitForTCP" (list "clickhouse" (printf "%s-clickhouse" .Release.Name) "9000") | nindent 8 }}
+      containers:
+        - name: ingest
+          image: "{{ .Values.ingest.image.repository }}:{{ .Values.ingest.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: REDPANDA_BROKERS
+              value: "{{ .Release.Name }}-redpanda:9092"
+            - name: CLICKHOUSE_ADDR
+              value: "{{ .Release.Name }}-clickhouse:9000"
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-clickhouse
+                  key: password
+          ports:
+            - name: grpc
+              containerPort: 4317
+          {{- if .Values.ingest.tlsSecretName }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/sentry-ingest
+              readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.ingest.resources | nindent 12 }}
+      {{- if .Values.ingest.tlsSecretName }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.ingest.tlsSecretName }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ingest
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "ingest") | nindent 4 }}
+spec:
+  selector:
+    {{- include "sentry.selectorLabels" (list $ "ingest") | nindent 4 }}
+  ports:
+    - name: grpc
+      port: 4317

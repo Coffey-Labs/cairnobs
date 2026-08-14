@@ -13,6 +13,7 @@ type Config struct {
 	HTTPListenAddr    string
 	Postgres          PostgresConfig
 	APIQueryURL       string // base URL of /api, e.g. http://api:8080 -- alerting never talks to ClickHouse/Tantivy directly
+	APIServiceToken   string // RoleService credential presented to /api's POST /query -- see queryclient.New's doc comment
 	CORSAllowedOrigin string
 	Evaluator         EvaluatorConfig
 }
@@ -52,6 +53,10 @@ func Load() (Config, error) {
 			Password: getenv("POSTGRES_PASSWORD", ""),
 		},
 		APIQueryURL: getenv("API_QUERY_URL", "http://localhost:8080"),
+		// Empty by default -- matches Phase 0-3 behavior for a
+		// single-tenant deployment with no enterprise/ deployed (api's
+		// authorizer is nil there, so an absent token is fine).
+		APIServiceToken: getenv("API_SERVICE_TOKEN", ""),
 		// Same "no auth yet" tradeoff as api's CORSAllowedOrigin default --
 		// see api/internal/config/config.go's comment, same reasoning here.
 		CORSAllowedOrigin: getenv("CORS_ALLOWED_ORIGIN", "*"),

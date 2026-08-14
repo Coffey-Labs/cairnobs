@@ -19,6 +19,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/internal/authz"
 	"github.com/sentry/sentry/api/internal/config"
 	"github.com/sentry/sentry/api/internal/dashboards"
 	"github.com/sentry/sentry/api/internal/httpserver"
@@ -88,9 +89,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// authorizer is nil (RequireRole* becomes a no-op) unless
+	// ENTERPRISE_AUTH_URL is configured -- matches Phase 0-3 behavior
+	// for a single-tenant deployment with no enterprise/ deployed.
+	var authorizer authz.Authorizer
+	if cfg.EnterpriseAuthURL != "" {
+		authorizer = authz.NewHTTPAuthorizer(cfg.EnterpriseAuthURL)
+	}
+
 	sqlRunner := executor.NewChRunner(conn)
-	queryHandler := queryapi.NewHandler(logger, sqlRunner, search, cfg.QueryTimeout)
-	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool))
+	// audit logging is nil (a no-op) until Phase 4 task 5 wires in
+	// enterprise/internal/audit -- see queryapi.AuditLogger's doc comment.
+	queryHandler := queryapi.NewHandler(logger, sqlRunner, search, cfg.QueryTimeout, nil, authorizer)
+	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer)
 
 	// One shared mux, CORS applied once around the whole thing -- see
 	// internal/httpserver's doc comment for why this changed from each

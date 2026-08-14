@@ -1,0 +1,85 @@
+# deploy/helm/sentry
+
+A Helm chart covering every `docker-compose.yml` service (Redpanda,
+ClickHouse, Postgres, ingest, search, api, alerting, web) plus, when
+`enterprise.enabled: true`: enterprise-auth, the `deploy/operator`
+tenant-operator, and `Tenant` CRs from `values.tenants`. See
+`/deploy/README.md` for what "multi-tenant-aware" does and doesn't mean
+at this layer, and its verification-status section before trusting this
+against a real cluster.
+
+This chart never builds images -- push every image its `values.yaml`
+references to a registry the cluster can pull from first, same division
+of labor as `docker compose build` vs. `docker compose up`.
+
+## Startup ordering
+
+`docker-compose.yml` uses `depends_on: condition: service_healthy` /
+`service_completed_successfully` to sequence startup (e.g. `api` waits
+for `clickhouse-migrate` to actually finish, not just for `clickhouse` to
+be reachable). This chart approximates that more loosely:
+
+- Migration Jobs (`clickhouse-migrate`, `metadata-migrate`,
+  `redpanda-provision`) are plain `Job` resources (not Helm hooks --
+  making the StatefulSets they depend on into hooks too, to get
+  ordering, would break `helm upgrade`/`helm uninstall`'s normal
+  ownership tracking of stateful resources, a worse tradeoff), with
+  `backoffLimit: 6` so they retry a few times if their dependency isn't
+  up yet.
+- App Deployments get an `initContainer` that busy-waits for their
+  dependency's **TCP port**, not for a specific Job's completion (see
+  `templates/_helpers.tpl`'s `sentry.waitForTCP`) -- this covers "is
+  ClickHouse/Postgres/Redpanda up" but not "has the migration Job
+  actually finished."
+- The gap that leaves (a pod starts before its migration has completed)
+  is covered by every Go service here already calling `os.Exit(1)` on a
+  failed startup DB ping (see e.g. `api/cmd/api/main.go`) --
+  Kubernetes' pod restart policy retries with backoff until the schema
+  is ready. This is a real, working, but *looser* guarantee than
+  docker-compose's explicit ordering -- documented here rather than
+  implied to be equivalent.
+
+## Trying the two-tenant example
+
+```sh
+# Quote each --set value -- zsh globs an unquoted tenants[0] as a
+# pattern and fails with "no matches found."
+helm install sentry . --include-crds \
+  --set enterprise.enabled=true \
+  --set tenantOperator.enabled=true \
+  --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
+  --set 'tenants[1].name=globex' --set 'tenants[1].displayName=Globex Corporation'
+
+kubectl get tenants
+kubectl get secret sentry-tenant-acme-clickhouse sentry-tenant-globex-clickhouse
+```
+
+This proves the K8s-side half of Phase 4's "two tenants... with their
+own users, roles, dashboards" exit criteria (`/CLAUDE.md`) -- a real
+per-tenant credential Secret exists for each. It does **not** by itself
+give either tenant a working login, dashboard, or ClickHouse database:
+those need the OIDC/SAML login handlers, `internal/tenantprovision`, and
+`internal/rbacstore` wiring the Phase 4 task 5 summary names as deferred.
+
+## `web`'s image needs rebuilding per environment
+
+`web` is a static SvelteKit build (`adapter-static`) -- its three API
+base URLs (`VITE_API_BASE_URL`/`VITE_ALERTING_API_BASE_URL`/
+`VITE_ENTERPRISE_AUTH_BASE_URL`) are baked in at **image build time**
+(`web/Dockerfile`'s build args), not read from the container's
+environment at runtime. `values.yaml`'s `web.builtWithApiBaseURL` etc.
+document what the image you point `web.image` at needs to have been
+built with (an Ingress hostname, a LoadBalancer IP, etc.) -- this chart
+has no Ingress resources and can't itself act on those values; rebuild
+`web`'s image with the right build args for wherever this release is
+actually reachable from a browser before pointing real users at it.
+
+## Validating without a cluster
+
+```sh
+helm lint .
+helm template sentry . --include-crds > /tmp/rendered.yaml
+```
+
+See `/deploy/README.md`'s verification section for what was actually
+checked this way (and what wasn't -- no live cluster was available).

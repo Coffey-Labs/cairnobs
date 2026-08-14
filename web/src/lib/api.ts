@@ -5,6 +5,12 @@
 
 export const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 export const alertingBase = import.meta.env.VITE_ALERTING_API_BASE_URL ?? 'http://localhost:8081';
+// Optional third backend (Phase 4, commercial-license) -- undefined in a
+// deployment that hasn't built/deployed enterprise-auth, same "runtime
+// capability check" shape /docs/phase-4-rbac-design.md's Web UI boundary
+// section describes. getAuthFeatures below treats a missing base URL the
+// same as a failed fetch: everything reports disabled, no broken links.
+export const enterpriseAuthBase = import.meta.env.VITE_ENTERPRISE_AUTH_BASE_URL as string | undefined;
 
 export type Language = '' | 'sql' | 'spl';
 
@@ -116,6 +122,31 @@ export function updatePanel(dashboardId: string, panel: Partial<Panel>): Promise
 
 export function deletePanel(dashboardId: string, panelId: string): Promise<void> {
 	return request(`/dashboards/${dashboardId}/panels/${panelId}`, { method: 'DELETE' });
+}
+
+export type AuthFeatures = { sso_configured: boolean; oidc_enabled: boolean; saml_enabled: boolean };
+
+// getAuthFeatures never throws -- an absent/unreachable enterprise-auth
+// is a normal, expected deployment shape (Phase 0-3-style single-tenant,
+// no enterprise/ deployed), not an error condition the settings page
+// should surface. Deliberately no `credentials: 'include'` here: this
+// endpoint needs no session, and CORS_ALLOWED_ORIGIN's dev default of
+// "*" can't be combined with credentialed fetches anyway (the browser
+// rejects that combination) -- the same reason api.ts's other requests
+// don't send credentials yet. Wiring session cookies through is part of
+// the deferred login-flow work, alongside tightening CORS_ALLOWED_ORIGIN
+// to a real origin, done together as one change so neither breaks the
+// other.
+export async function getAuthFeatures(): Promise<AuthFeatures> {
+	const disabled = { sso_configured: false, oidc_enabled: false, saml_enabled: false };
+	if (!enterpriseAuthBase) return disabled;
+	try {
+		const res = await fetch(`${enterpriseAuthBase}/auth/features`);
+		if (!res.ok) return disabled;
+		return await res.json();
+	} catch {
+		return disabled;
+	}
 }
 
 export function exportDashboard(id: string): Promise<Dashboard> {

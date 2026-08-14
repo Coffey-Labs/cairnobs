@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-clickhouse
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "clickhouse") | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sentry.selectorLabels" (list $ "clickhouse") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "clickhouse") | nindent 8 }}
+    spec:
+      containers:
+        - name: clickhouse
+          image: "{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            # Required to avoid the official image's network lockdown of
+            # the implicit `default` user -- see values.yaml's comment on
+            # this password and docker-compose.yml's original.
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-clickhouse
+                  key: password
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-clickhouse
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "clickhouse") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "sentry.selectorLabels" (list $ "clickhouse") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8123
+    - name: native
+      port: 9000
+---
+# One-shot: applies /storage/migrations/*.sql -- same image
+# storage/Dockerfile builds for docker-compose.yml's clickhouse-migrate
+# service. Plain Job, not a Helm hook -- see redpanda.yaml's comment and
+# deploy/helm/sentry/README.md's "Startup ordering" section.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-clickhouse-migrate
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "clickhouse-migrate") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: clickhouse-migrate
+          image: "{{ .Values.clickhouse.migrateImage.repository }}:{{ .Values.clickhouse.migrateImage.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: CLICKHOUSE_HTTP
+              value: "http://{{ .Release.Name }}-clickhouse:8123"
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-clickhouse
+                  key: password

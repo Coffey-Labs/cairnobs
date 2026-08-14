@@ -23,12 +23,20 @@ type errorResponse struct {
 }
 
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL      string
+	serviceToken string
+	http         *http.Client
 }
 
-func New(baseURL string) *Client {
-	return &Client{baseURL: baseURL, http: &http.Client{}}
+// New builds a client for /api's POST /query. serviceToken, if non-empty,
+// is sent as a Bearer credential on every request -- api's authz
+// middleware resolves it (via enterprise-auth) to the RoleService
+// identity described in /docs/phase-4-isolation-design.md's alerting↔api
+// gap. An empty serviceToken matches Phase 0-3 behavior (no
+// enterprise/ deployed, api's authorizer is nil, every request is
+// allowed).
+func New(baseURL, serviceToken string) *Client {
+	return &Client{baseURL: baseURL, serviceToken: serviceToken, http: &http.Client{}}
 }
 
 // Query runs query (already time-range-injected by the caller, if
@@ -51,6 +59,9 @@ func (c *Client) Query(ctx context.Context, query, language string, timeout time
 		return nil, fmt.Errorf("building query request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.serviceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.serviceToken)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {

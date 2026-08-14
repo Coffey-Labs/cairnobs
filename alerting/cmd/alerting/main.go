@@ -66,7 +66,7 @@ func main() {
 
 	rules := rulestore.NewStore(pgPool)
 	targets := notifystore.NewStore(pgPool)
-	qc := queryclient.New(cfg.APIQueryURL)
+	qc := queryclient.New(cfg.APIQueryURL, cfg.APIServiceToken)
 
 	handler := httpapi.NewHandler(logger, rules, targets, rules)
 	mux := http.NewServeMux()
