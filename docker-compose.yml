@@ -241,11 +241,15 @@ services:
   # here so it can be built/run/curled like every other service, but
   # deliberately NOT wired into api's ENTERPRISE_AUTH_URL or alerting's
   # API_SERVICE_TOKEN below: turning that on makes every /query and
-  # /dashboards request require a valid session/service token, and there
-  # is no OIDC/SAML login flow built yet to issue a human one (see
-  # enterprise/cmd/enterprise-auth/main.go's doc comment) -- flipping it
-  # on by default would break the web UI and sentryctl with no way to
-  # log in. See enterprise/README.md for how to turn enforcement on for
+  # /dashboards request require a valid session/service token. Both
+  # OIDC and SAML login flows now exist (enterprise/internal/loginhandler),
+  # but this compose file sets neither OIDC_ISSUER_URL nor
+  # SAML_IDP_METADATA_URL, so both stay disabled here, and there's still
+  # no admin UI to create the first tenant_memberships row -- see
+  # /docs/phase-4-runbook.md sections 3a/3b for wiring a real IdP and
+  # bootstrapping that row by hand. Flipping enforcement on by default
+  # without that would break the web UI and sentryctl with no way to log
+  # in. See enterprise/README.md for how to turn enforcement on for
   # manual testing (mint a service token, set the two env vars, restart).
   enterprise-auth:
     build:

@@ -48,11 +48,14 @@ func TestLoginURLBuildsAgainstRealIDPMetadata(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	redirectURL, err := sp.LoginURL("relay-state-123")
+	redirectURL, requestID, err := sp.LoginURL("relay-state-123")
 	if err != nil {
 		t.Fatalf("LoginURL: %v", err)
 	}
 	if redirectURL == "" {
 		t.Fatalf("expected a non-empty redirect URL")
+	}
+	if requestID == "" {
+		t.Fatalf("expected a non-empty AuthnRequest ID -- callers need this for ParseResponse's possibleRequestIDs")
 	}
 }

@@ -24,6 +24,20 @@ of what was already run and passed. Two genuine exceptions:
   all, so this one was actually run in this runbook's own session, not
   just an earlier one. What's still unverified is wiring it into a real
   running `enterprise-auth` container against a real external IdP.
+- `enterprise/internal/loginhandler`'s full SAML login flow (§3b) --
+  same bar as OIDC above, verified against a real fake SAML IdP
+  (`crewjam/saml/samlidp`: genuine XML signing and signature
+  verification, a real `AuthnRequest`/`Response` round trip), no Docker
+  needed. Writing this test caught two real bugs in
+  `enterprise/internal/saml`, now fixed: `ParseResponse` never called
+  `r.ParseForm()` before reading the POSTed `SAMLResponse` field (every
+  real ACS POST would have silently decoded to nothing), and the email-
+  attribute matching didn't recognize `urn:oid:0.9.2342.19200300.100.1.3`
+  (the standard LDAP "mail" OID), which is what an IdP sends by default
+  when the SP doesn't explicitly request an attribute literally named
+  "email" -- crewjam's own fake IdP hit this path. Same remaining gap as
+  OIDC: not yet tried against a real external IdP or a running
+  `enterprise-auth` container.
 
 Everything else — `internal/rbacstore`'s CRUD, the auth-enforcement
 walkthrough, the dashboards tenant-scoping fix, the Helm chart, the
@@ -145,6 +159,44 @@ to create the first tenant membership) is exactly the kind of rough
 edge an admin UI would smooth over -- named as real future work, not
 hidden.
 
+## 3b. `enterprise-auth`: human login via SAML (new -- same "verified
+live in this session, not against a real running container or a real
+external IdP" caveat as §3a)
+
+`enterprise/internal/loginhandler`'s SAML tests already prove the
+mechanism works end to end against a real fake SAML IdP (`go test
+./internal/loginhandler/... -run SAML -v` from `enterprise/`, no Docker
+needed). What's still unverified is wiring it into this actual running
+stack. To try that for real, point `docker-compose.yml`'s
+`enterprise-auth` service at a real SAML IdP (many identity providers
+offer a free developer/trial tenant with SAML app support):
+
+```sh
+# Add to enterprise-auth's environment in docker-compose.yml (or a
+# docker-compose.override.yml):
+#   SAML_ENTITY_ID: "http://localhost:8082/saml/metadata"
+#   SAML_ACS_URL: "http://localhost:8082/auth/saml/acs"
+#   SAML_IDP_METADATA_URL: "https://your-idp.example.com/metadata"
+# Register SAML_ENTITY_ID/SAML_ACS_URL with the IdP's application config
+# -- the IdP needs Sentry's ACS URL to know where to POST the assertion.
+
+docker compose up -d --build enterprise-auth
+curl -s http://localhost:8082/auth/features
+# expect: {"sso_configured":true,"oidc_enabled":false,"saml_enabled":true}
+```
+
+Bootstrapping the first `tenant_memberships` row is the same manual-SQL
+dance as §3a (log in once, it fails with 403, insert the membership
+using the `users` row that got created, log in again). Then visit
+`http://localhost:8082/auth/saml/login` in a real browser, complete the
+IdP's login, and confirm a `sentry_session` cookie lands after redirect
+to `POST_LOGIN_REDIRECT_URL`. Note SAML's `sentry_saml_request` cookie
+is `SameSite=None`, which requires `Secure` -- i.e. this only works over
+HTTPS in a real deployment, unlike OIDC's redirect-based callback which
+tolerates plain HTTP for local dev (see
+`enterprise/internal/loginhandler/loginhandler.go`'s `handleSAMLLogin`
+doc comment for why).
+
 ## 4. Turn on RBAC enforcement and prove it actually blocks/allows
 
 Without touching the main stack's `api` container (so step 2's baseline
@@ -164,11 +216,11 @@ docker stop sentry-api-enforced
 ```
 
 `GET /dashboards` on the same enforced instance should return 401
-without a token — there's no way to mint a human (Viewer/Editor/etc.)
-session yet (no OIDC/SAML login handler exists — see
-`enterprise/cmd/enterprise-auth/main.go`'s doc comment), so this
-runbook can't walk through a real human RBAC scenario end to end. That
-gap is real, not an oversight in this runbook.
+without a token — this section only demonstrates the service-token path
+(§3/§3a/§3b cover minting a real human session via OIDC or SAML); walking
+that session cookie through this same enforced instance to get a 200 is
+left as the natural next verification step once real Docker/K8s access
+exists, not yet done in this runbook.
 
 ## 5. Dashboards tenant scoping
 
@@ -363,11 +415,11 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   and the one shared Tantivy index no matter what. A newly-provisioned
   tenant's storage is real, isolated at query time, and permanently
   empty until this changes — undesigned, not just unbuilt.
-- **Human SSO login now works for OIDC** (§3a) -- verified with a real
-  fake IdP, not yet a real external one or a running `enterprise-auth`
-  container. **SAML login still doesn't exist** -- protocol wiring only,
-  no ACS handler. No tenant-picker UI for a multi-membership identity
-  either (refused outright).
+- **Human SSO login now works for both OIDC (§3a) and SAML (§3b)** --
+  each verified with a real fake IdP (genuine cryptographic signing and
+  verification), not yet a real external IdP or a running
+  `enterprise-auth` container. No tenant-picker UI for a multi-membership
+  identity either (refused outright) for either protocol.
 - No admin UI to create a `tenant_memberships` row -- §3a's manual SQL
   bootstrap is the only way to grant a logged-in identity access today.
 - **No per-resource dashboard grants** (`dashboard_permissions` has a

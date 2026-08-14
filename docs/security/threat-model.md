@@ -130,7 +130,7 @@ to `enterprise-auth` — see "Deployment/network assumptions" below.
 
 ## Authentication
 
-**Implemented for OIDC, still missing for SAML.**
+**Implemented for both OIDC and SAML, to the same verification bar.**
 `enterprise/internal/loginhandler` serves `GET /auth/oidc/login`
 (redirects to the configured IdP, with a short-lived HttpOnly cookie
 carrying CSRF-protection state) and `GET /auth/oidc/callback`
@@ -138,29 +138,46 @@ carrying CSRF-protection state) and `GET /auth/oidc/callback`
 `enterprise/internal/oidc`'s real `coreos/go-oidc` wiring, upserts a
 `users` row keyed by SSO subject, resolves tenant/role from
 `tenant_memberships`, and issues a `session.Manager`-signed session
-cookie). Verified end-to-end with real cryptography, not mocked: the
-tests spin up a real fake IdP (`coreos/go-oidc`'s own `oidctest`
-package) that signs genuine RS256 ID tokens, and
-`enterprise/internal/loginhandler`'s handler verifies them for real via
-the same code path production uses — every test in
-`loginhandler_test.go` passes, including the full login→callback→
-session-cookie round trip. **Not yet verified**: wiring this into a
-running `enterprise-auth` container against a *real* external IdP
-(Google/Okta/etc.) — that needs real IdP credentials and a reachable
-callback URL neither of which this environment has; see
-`/docs/phase-4-runbook.md`.
+cookie), plus the SAML equivalent, `GET /auth/saml/login` (redirects to
+the configured IdP via `enterprise/internal/saml`'s
+`ServiceProvider.LoginURL`, persisting the AuthnRequest ID in a
+short-lived cookie — SAML's replay/unsolicited-response defense,
+standing in for OIDC's `state`) and `POST /auth/saml/acs` (validates the
+assertion's signature and `InResponseTo` against that cookie via
+`ServiceProvider.ParseResponse`, then converges on the same
+upsert/resolve/issue-session path OIDC uses). Both are verified
+end-to-end with real cryptography, not mocked: OIDC's tests spin up a
+real fake IdP (`coreos/go-oidc`'s own `oidctest` package) that signs
+genuine RS256 ID tokens; SAML's tests spin up a real fake IdP
+(`crewjam/saml/samlidp`) that builds and signs genuine SAML assertions
+and XML-signs the response, exercising the same `ServiceProvider.
+ParseResponse` signature-verification path production uses. Every test
+in `loginhandler_test.go` and `saml_test.go` passes, including the full
+login→callback/ACS→session-cookie round trip for both protocols, and
+negative-path tests for each (state/`InResponseTo` mismatch, missing/
+expired credential, missing required claim, no/multiple tenant
+memberships). Writing the SAML test caught two real bugs in
+`enterprise/internal/saml`'s `ParseResponse`, both fixed before this
+verification was considered complete: it never called `r.ParseForm()`
+before reading the POSTed `SAMLResponse` field (every real ACS POST
+would have decoded an empty response), and its email-attribute matching
+missed `urn:oid:0.9.2342.19200300.100.1.3` (the standard LDAP "mail"
+OID) — what an IdP sends by default when the SP hasn't explicitly
+requested an attribute literally named "email", which is exactly what
+`samlidp`'s own default assertion builder does. **Not yet verified for
+either protocol**: wiring this into a running `enterprise-auth`
+container against a *real* external IdP (Google/Okta/etc.) — that needs
+real IdP credentials and a reachable callback/ACS URL neither of which
+this environment has; see `/docs/phase-4-runbook.md`.
 
 A user with zero or more than one `tenant_memberships` row is refused
 outright (403 / 501 respectively) rather than guessed at — a
 tenant-selection UI for the multi-membership case is real, undesigned
-future work, not silently approximated. `enterprise/internal/saml` still
-only does the protocol mechanics (AuthnRequest generation, assertion
-validation) with no ACS HTTP handler calling it — SAML login remains
-unimplemented, following `loginhandler`'s OIDC pattern once it is built.
+future work, not silently approximated, for either protocol.
 `GET /auth/features` (`enterprise/internal/authhandler`) reports whether
 OIDC/SAML are *configured*, for `/web`'s settings page to conditionally
 render — independent of whether a login button actually exists yet in
-the UI (it doesn't; only the two HTTP endpoints do).
+the UI (it doesn't; only the HTTP endpoints do).
 
 **Implemented for the one machine caller.** `/alerting`'s evaluator is
 the sole service-to-service caller (`POST /query`, to evaluate rule
@@ -370,7 +387,7 @@ terms:
 | Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Not implemented** — `docker-compose.yml` runs plain `api` unconditionally |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
-| Human SSO login — SAML | **Not implemented** |
+| Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |
 | Per-resource dashboard grants (`own/granted`) | **Not implemented** |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |

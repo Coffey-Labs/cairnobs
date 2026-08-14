@@ -37,13 +37,11 @@ type OIDCConfig struct {
 	RedirectURL  string
 }
 
-// SAMLConfig is likewise optional. Note this only records *presence* --
-// enough for /auth/features (internal/authhandler) to report
-// saml_enabled -- it does not itself fetch/parse IDPMetadataURL into the
-// *saml.EntityDescriptor internal/saml.New requires; that fetch (and the
-// login/ACS HTTP handlers that would use it) is deferred, same as OIDC's
-// login/callback handlers -- see cmd/enterprise-auth/main.go's doc
-// comment.
+// SAMLConfig is likewise optional. cmd/enterprise-auth/main.go fetches
+// and parses IDPMetadataURL into the *saml.EntityDescriptor
+// internal/saml.New requires at startup (crewjam/saml's
+// samlsp.FetchMetadata) -- this struct just carries the raw config
+// values this package's job (env-var loading) is scoped to.
 type SAMLConfig struct {
 	EntityID       string
 	ACSURL         string

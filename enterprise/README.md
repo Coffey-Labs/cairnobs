@@ -86,12 +86,27 @@ section for exactly what "not yet run" means here and why. Don't read
   same "offline action, not a network endpoint" shape as
   `enterprise-auth -mint-service-token`.
 
+OIDC and SAML login are both now fully wired: `internal/loginhandler`
+serves `GET /auth/oidc/login`+`GET /auth/oidc/callback` and
+`GET /auth/saml/login`+`POST /auth/saml/acs`, converging on the same
+upsert-user/resolve-tenant/issue-session path. Both are verified the
+same way -- a real fake IdP with genuine cryptographic signing and
+verification (`coreos/go-oidc`'s `oidctest` for OIDC,
+`crewjam/saml/samlidp` for SAML), no Docker needed, every test in
+`loginhandler_test.go`/`saml_test.go` passing including the full login
+round trip and negative paths (bad state/`InResponseTo`, expired/missing
+credential, no/multiple tenant memberships). Writing the SAML test
+caught two real bugs in `internal/saml.ParseResponse`, both fixed:
+missing `r.ParseForm()` before reading the POSTed `SAMLResponse` field,
+and email-attribute matching that missed the standard LDAP "mail" OID
+(`urn:oid:0.9.2342.19200300.100.1.3`) that IdPs send by default absent
+an explicit `AttributeConsumingService` request for "email" -- exactly
+what `samlidp`'s own default assertion builder does. Neither protocol
+has been tried against a real external IdP or a running
+`enterprise-auth` container -- see `/docs/phase-4-runbook.md` §3a/§3b.
+
 **Deliberately deferred, not half-built** -- named explicitly rather than
 silently left out:
-- SAML's login handler (the ACS endpoint) -- `internal/saml` does the
-  protocol mechanics (AuthnRequest generation, assertion validation);
-  nothing calls it from an HTTP handler, following `internal/
-  loginhandler`'s now-built OIDC pattern once someone builds it.
 - A tenant-picker UI/flow for an identity with more than one
   `tenant_memberships` row -- `loginhandler` refuses these logins
   outright rather than guessing (`ErrMultipleMemberships`).
@@ -123,7 +138,7 @@ internal/oidc/           coreos/go-oidc wiring: discovery, login redirect, code 
 internal/saml/            crewjam/saml wiring: SP setup, login redirect, response parsing/validation
 internal/session/          issues/validates signed session + RoleService tokens
 internal/authhandler/       POST /internal/authorize, GET /auth/features
-internal/loginhandler/       GET /auth/oidc/login, GET /auth/oidc/callback -- the human login flow
+internal/loginhandler/       GET /auth/oidc/{login,callback} + GET /auth/saml/login + POST /auth/saml/acs -- the human login flow
 internal/rbacstore/          users/tenants/tenant_memberships/data_sources CRUD (pgx against sentry_metadata)
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
@@ -134,9 +149,9 @@ internal/apiconfig/       enterprise-api's own env-var config
 internal/config/          enterprise-auth's env-var config
 ```
 
-Future additions: SAML's login handler, `dashboard_permissions` CRUD,
-ingest tenant-awareness (undesigned), and real deployment-topology
-wiring for `enterprise-api` -- see "Status" above.
+Future additions: `dashboard_permissions` CRUD, ingest tenant-awareness
+(undesigned), and real deployment-topology wiring for `enterprise-api`
+-- see "Status" above.
 
 ## Why OIDC and SAML aren't hand-rolled
 
@@ -246,7 +261,7 @@ edit today, not a supported flag.
 | `OIDC_REDIRECT_URL` | (empty — must be `<enterprise-auth base URL>/auth/oidc/callback`, registered with the IdP) |
 | `SAML_ENTITY_ID` | (empty) |
 | `SAML_ACS_URL` | (empty) |
-| `SAML_IDP_METADATA_URL` | (empty — presence only feeds `GET /auth/features`; not yet fetched/parsed) |
+| `SAML_IDP_METADATA_URL` | (empty — SAML disabled if unset; if set, fetched and parsed at startup via `samlsp.FetchMetadata`, same trust level as `OIDC_ISSUER_URL`'s discovery fetch) |
 | `ENTERPRISE_SESSION_SIGNING_KEY` | **required**, min 32 bytes |
 | `POST_LOGIN_REDIRECT_URL` | `http://localhost:3000` — where the browser lands after `internal/loginhandler` sets a session cookie |
 
