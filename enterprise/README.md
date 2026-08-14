@@ -105,15 +105,34 @@ what `samlidp`'s own default assertion builder does. Neither protocol
 has been tried against a real external IdP or a running
 `enterprise-auth` container -- see `/docs/phase-4-runbook.md` §3a/§3b.
 
+`dashboard_permissions` is now wired end to end: `rbacstore/
+dashboard_permissions.go` is the raw CRUD, `rbacstore/
+dashboards_adapter.go`'s `DashboardPermissions` implements
+`api/dashboards.PermissionStore` (the interface core defines and
+carries as a nil-by-default field, same shape as
+`queryapi.AuditLogger`), and `enterprise-api`'s `main.go` wires it in.
+`api/dashboards`' handler now enforces the matrix's "(own/granted)"
+qualifier: an Editor may edit/delete a dashboard (or its panels) they
+created, or one where a grant raises their effective role to Editor;
+managing grants themselves is stricter still -- creator or Admin/Owner
+only, closing a self-escalation path where a granted-but-not-creator
+Editor could otherwise extend their own access. `metadata/migrations/
+0033_restrict_dashboard_permissions_role.sql` fixes a divergence
+between 0024's actual CHECK constraint (allowed `role='admin'`, nullable
+`granted_by`) and the design doc's schema (viewer/editor only,
+`granted_by` required) found while wiring this up. Verified against a
+fake `PermissionStore` in `api/dashboards/handler_test.go` (the full
+own/granted/admin/creator matrix, including the granted-editor-cannot-
+manage-grants regression); real integration tests exist in
+`rbacstore_test.go` but haven't run against a live Postgres in this
+environment, same disclosed gap as the rest of this package's
+Postgres-backed pieces.
+
 **Deliberately deferred, not half-built** -- named explicitly rather than
 silently left out:
 - A tenant-picker UI/flow for an identity with more than one
   `tenant_memberships` row -- `loginhandler` refuses these logins
   outright rather than guessing (`ErrMultipleMemberships`).
-- `dashboard_permissions` CRUD (schema exists,
-  `metadata/migrations/0024`; no caller reads per-resource grants
-  yet -- `dashboards`' handler enforces tenant-baseline role only, not
-  the matrix's "(own/granted)" qualifier).
 - **Ingest tenant-awareness, for either storage engine** -- `chrunner`/
   `searchclient` prove read isolation given tenant-scoped data exists,
   but nothing writes it: every record `ingest` produces still lands in
@@ -139,7 +158,7 @@ internal/saml/            crewjam/saml wiring: SP setup, login redirect, respons
 internal/session/          issues/validates signed session + RoleService tokens
 internal/authhandler/       POST /internal/authorize, GET /auth/features
 internal/loginhandler/       GET /auth/oidc/{login,callback} + GET /auth/saml/login + POST /auth/saml/acs -- the human login flow
-internal/rbacstore/          users/tenants/tenant_memberships/data_sources CRUD (pgx against sentry_metadata)
+internal/rbacstore/          users/tenants/tenant_memberships/data_sources/dashboard_permissions CRUD (pgx against sentry_metadata)
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
 internal/searchclient/          tenant-scoped api/querylang/executor.SearchClient
@@ -149,9 +168,8 @@ internal/apiconfig/       enterprise-api's own env-var config
 internal/config/          enterprise-auth's env-var config
 ```
 
-Future additions: `dashboard_permissions` CRUD, ingest tenant-awareness
-(undesigned), and real deployment-topology wiring for `enterprise-api`
--- see "Status" above.
+Future additions: ingest tenant-awareness (undesigned), and real
+deployment-topology wiring for `enterprise-api` -- see "Status" above.
 
 ## Why OIDC and SAML aren't hand-rolled
 

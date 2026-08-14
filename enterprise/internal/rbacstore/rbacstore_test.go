@@ -18,6 +18,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/sentry/sentry/api/authz"
 )
 
 func testStore(t *testing.T) *Store {
@@ -344,5 +346,234 @@ func TestListProvisionedDataSourcesExcludesUnprovisionedAndInactive(t *testing.T
 	}
 	if !foundOurs {
 		t.Fatal("expected the active, provisioned data source to be in the list")
+	}
+}
+
+// createTestDashboard inserts directly into the dashboards table (owned
+// by api/dashboards, not this package) -- dashboard_permissions.
+// dashboard_id has a real foreign-key constraint
+// (metadata/migrations/0024), so a permission row for a dashboard that
+// doesn't exist is rejected by Postgres itself. Mirrors
+// api/dashboards/store_integration_test.go's createTestTenant, which
+// does the same thing in reverse (inserting into tenants, a table that
+// package doesn't own either).
+func createTestDashboard(t *testing.T, s *Store, tenantID, createdBy string) string {
+	t.Helper()
+	id := uuid.NewString()
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO dashboards (id, tenant_id, name, default_earliest, default_latest, created_by)
+		VALUES ($1, $2, $3, '-1h', 'now', $4)`, id, tenantID, "Test Dashboard "+uniqueSuffix(), createdBy)
+	if err != nil {
+		t.Fatalf("inserting test dashboard: %v", err)
+	}
+	return id
+}
+
+func TestSetDashboardPermissionThenGet(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	creator, err := s.UpsertUserBySSO(ctx, "sub-creator-"+uniqueSuffix(), "creator-"+uniqueSuffix()+"@example.com", "Creator")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO creator: %v", err)
+	}
+	grantee, err := s.UpsertUserBySSO(ctx, "sub-grantee-"+uniqueSuffix(), "grantee-"+uniqueSuffix()+"@example.com", "Grantee")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO grantee: %v", err)
+	}
+	dashboardID := createTestDashboard(t, s, tenantID, creator.ID)
+
+	if err := s.SetDashboardPermission(ctx, dashboardID, grantee.ID, RoleEditor, creator.ID); err != nil {
+		t.Fatalf("SetDashboardPermission: %v", err)
+	}
+	got, err := s.GetDashboardPermission(ctx, dashboardID, grantee.ID)
+	if err != nil {
+		t.Fatalf("GetDashboardPermission: %v", err)
+	}
+	if got.Role != RoleEditor || got.GrantedBy != creator.ID {
+		t.Fatalf("unexpected permission: %+v", got)
+	}
+
+	// Re-setting (e.g. a role change from viewer to editor) must update
+	// in place, not create a duplicate row for the same (dashboard, user).
+	if err := s.SetDashboardPermission(ctx, dashboardID, grantee.ID, RoleViewer, creator.ID); err != nil {
+		t.Fatalf("SetDashboardPermission (update): %v", err)
+	}
+	got, err = s.GetDashboardPermission(ctx, dashboardID, grantee.ID)
+	if err != nil {
+		t.Fatalf("GetDashboardPermission after update: %v", err)
+	}
+	if got.Role != RoleViewer {
+		t.Fatalf("role after update = %q, want viewer", got.Role)
+	}
+}
+
+func TestSetDashboardPermissionRequiresGrantedBy(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	user, err := s.UpsertUserBySSO(ctx, "sub-"+uniqueSuffix(), "user-"+uniqueSuffix()+"@example.com", "User")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO: %v", err)
+	}
+	dashboardID := createTestDashboard(t, s, tenantID, user.ID)
+
+	if err := s.SetDashboardPermission(ctx, dashboardID, user.ID, RoleEditor, ""); err == nil {
+		t.Fatal("expected an error for an empty grantedBy -- every grant must be attributable")
+	}
+}
+
+func TestGetDashboardPermissionNotFound(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.GetDashboardPermission(context.Background(), uuid.NewString(), uuid.NewString()); err != ErrNotFound {
+		t.Fatalf("GetDashboardPermission error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRevokeDashboardPermission(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	creator, err := s.UpsertUserBySSO(ctx, "sub-creator-"+uniqueSuffix(), "creator-"+uniqueSuffix()+"@example.com", "Creator")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO creator: %v", err)
+	}
+	grantee, err := s.UpsertUserBySSO(ctx, "sub-grantee-"+uniqueSuffix(), "grantee-"+uniqueSuffix()+"@example.com", "Grantee")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO grantee: %v", err)
+	}
+	dashboardID := createTestDashboard(t, s, tenantID, creator.ID)
+	if err := s.SetDashboardPermission(ctx, dashboardID, grantee.ID, RoleEditor, creator.ID); err != nil {
+		t.Fatalf("SetDashboardPermission: %v", err)
+	}
+
+	if err := s.RevokeDashboardPermission(ctx, dashboardID, grantee.ID); err != nil {
+		t.Fatalf("RevokeDashboardPermission: %v", err)
+	}
+	if _, err := s.GetDashboardPermission(ctx, dashboardID, grantee.ID); err != ErrNotFound {
+		t.Fatalf("GetDashboardPermission after revoke = %v, want ErrNotFound", err)
+	}
+}
+
+func TestListDashboardPermissions(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	creator, err := s.UpsertUserBySSO(ctx, "sub-creator-"+uniqueSuffix(), "creator-"+uniqueSuffix()+"@example.com", "Creator")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO creator: %v", err)
+	}
+	dashboardID := createTestDashboard(t, s, tenantID, creator.ID)
+	otherDashboardID := createTestDashboard(t, s, tenantID, creator.ID)
+
+	for i := 0; i < 2; i++ {
+		grantee, err := s.UpsertUserBySSO(ctx, fmt.Sprintf("sub-grantee-%d-%s", i, uniqueSuffix()), fmt.Sprintf("grantee-%d-%s@example.com", i, uniqueSuffix()), "Grantee")
+		if err != nil {
+			t.Fatalf("UpsertUserBySSO grantee %d: %v", i, err)
+		}
+		if err := s.SetDashboardPermission(ctx, dashboardID, grantee.ID, RoleEditor, creator.ID); err != nil {
+			t.Fatalf("SetDashboardPermission %d: %v", i, err)
+		}
+	}
+	// A grant on a different dashboard must not leak into this one's list.
+	otherGrantee, err := s.UpsertUserBySSO(ctx, "sub-other-"+uniqueSuffix(), "other-"+uniqueSuffix()+"@example.com", "Other")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO otherGrantee: %v", err)
+	}
+	if err := s.SetDashboardPermission(ctx, otherDashboardID, otherGrantee.ID, RoleViewer, creator.ID); err != nil {
+		t.Fatalf("SetDashboardPermission otherDashboard: %v", err)
+	}
+
+	list, err := s.ListDashboardPermissions(ctx, dashboardID)
+	if err != nil {
+		t.Fatalf("ListDashboardPermissions: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("len(list) = %d, want 2", len(list))
+	}
+}
+
+// TestDashboardPermissionsAdapterImplementsPermissionStore drives the
+// adapter (dashboards_adapter.go) end to end -- the same interface
+// api/dashboards.Handler actually calls -- rather than only testing the
+// raw Store methods above, so a mismatch between the two (e.g. a bad
+// authz.Role<->Role conversion) would be caught here.
+func TestDashboardPermissionsAdapterImplementsPermissionStore(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	creator, err := s.UpsertUserBySSO(ctx, "sub-creator-"+uniqueSuffix(), "creator-"+uniqueSuffix()+"@example.com", "Creator")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO creator: %v", err)
+	}
+	grantee, err := s.UpsertUserBySSO(ctx, "sub-grantee-"+uniqueSuffix(), "grantee-"+uniqueSuffix()+"@example.com", "Grantee")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO grantee: %v", err)
+	}
+	dashboardID := createTestDashboard(t, s, tenantID, creator.ID)
+
+	adapter := NewDashboardPermissions(s)
+
+	if _, ok, err := adapter.GrantedRole(ctx, dashboardID, grantee.ID); err != nil || ok {
+		t.Fatalf("GrantedRole before any grant = (_, %v, %v), want (_, false, nil)", ok, err)
+	}
+	if err := adapter.SetPermission(ctx, dashboardID, grantee.ID, authz.RoleEditor, creator.ID); err != nil {
+		t.Fatalf("SetPermission: %v", err)
+	}
+	role, ok, err := adapter.GrantedRole(ctx, dashboardID, grantee.ID)
+	if err != nil || !ok || role != authz.RoleEditor {
+		t.Fatalf("GrantedRole = (%v, %v, %v), want (editor, true, nil)", role, ok, err)
+	}
+
+	list, err := adapter.ListPermissions(ctx, dashboardID)
+	if err != nil || len(list) != 1 || list[0].Role != authz.RoleEditor {
+		t.Fatalf("ListPermissions = (%+v, %v), want one editor grant", list, err)
+	}
+
+	if err := adapter.RevokePermission(ctx, dashboardID, grantee.ID); err != nil {
+		t.Fatalf("RevokePermission: %v", err)
+	}
+	if _, ok, _ := adapter.GrantedRole(ctx, dashboardID, grantee.ID); ok {
+		t.Fatal("expected the grant to be revoked")
+	}
+}
+
+// TestDashboardPermissionsAdapterRejectsAdminRole is the regression test
+// for Permission's doc comment: Admin/Owner already have tenant-wide
+// dashboard access, so a resource-level grant of "admin" is meaningless
+// under this design and metadata/migrations/0033 tightened the CHECK
+// constraint to match -- the adapter must reject it before it ever
+// reaches SQL, not rely on the constraint alone.
+func TestDashboardPermissionsAdapterRejectsAdminRole(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	creator, err := s.UpsertUserBySSO(ctx, "sub-creator-"+uniqueSuffix(), "creator-"+uniqueSuffix()+"@example.com", "Creator")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO creator: %v", err)
+	}
+	dashboardID := createTestDashboard(t, s, tenantID, creator.ID)
+
+	adapter := NewDashboardPermissions(s)
+	if err := adapter.SetPermission(ctx, dashboardID, uuid.NewString(), authz.RoleAdmin, creator.ID); err == nil {
+		t.Fatal("expected an error granting role=admin via a dashboard permission")
 	}
 }

@@ -101,7 +101,13 @@ func main() {
 	// audit logging is nil (a no-op) until Phase 4 task 5 wires in
 	// enterprise/internal/audit -- see queryapi.AuditLogger's doc comment.
 	queryHandler := queryapi.NewHandler(logger, sqlRunner, search, cfg.QueryTimeout, nil, authorizer)
-	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer)
+	// permissions is nil -- api/cmd/api is single-tenant/core; the
+	// enterprise-supplied dashboard_permissions store is only wired in
+	// by enterprise/cmd/enterprise-api (see dashboards.PermissionStore's
+	// doc comment). Ownership/Admin access still work via
+	// canEditDashboard's nil-permissions fallback -- only the "granted"
+	// half of the matrix's "(own/granted)" qualifier is unavailable here.
+	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer, nil)
 
 	// One shared mux, CORS applied once around the whole thing -- see
 	// httpserver's doc comment for why this changed from each

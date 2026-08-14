@@ -232,14 +232,42 @@ tenant. Verify the real SQL, not just the fake-store unit tests:
 docker run --rm --network sentry_default -v $(pwd)/api:/src -w /src \
   -e DASHBOARDS_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e DASHBOARDS_TEST_POSTGRES_PASSWORD=sentry-dev-only \
-  golang:1.25-alpine go test ./internal/dashboards/... -run Integration -v
+  golang:1.25-alpine go test ./dashboards/... -run Integration -v
 ```
+
+(Path fixed from an earlier `./internal/dashboards/...` -- stale since
+`dashboards` moved from `api/internal/dashboards` to `api/dashboards`
+earlier in Phase 4, once `enterprise/cmd/enterprise-api` needed to
+import it: Go's compiler-enforced `internal/` visibility rule meant a
+separate module like `enterprise/` could never import anything under
+`api/internal/...`, regardless of the AGPL/commercial licensing
+boundary, which only forbids the reverse direction.)
 
 Expect all `TestIntegration*` tests to pass, including
 `TestIntegrationDashboardTenantForeignKeyRejectsUnknownTenant` (the
 `tenant_id` foreign key added in
 `metadata/migrations/0027_add_dashboards_tenant_fk.sql` rejecting a
 dashboard for a tenant that doesn't exist).
+
+## 5a. Per-resource dashboard grants (new -- built and unit-tested, not yet run live)
+
+`enterprise/internal/rbacstore`'s `dashboard_permissions` CRUD and its
+`DashboardPermissions` adapter (implementing `api/dashboards.
+PermissionStore`) have real integration tests, same skip-gated shape as
+§6 below:
+
+```sh
+docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+  -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
+  -e RBACSTORE_TEST_POSTGRES_PASSWORD=sentry-dev-only \
+  golang:1.25-alpine go test ./internal/rbacstore/... -run DashboardPermission -v
+```
+
+Expect all `TestDashboardPermission*`/`TestSetDashboardPermission*`/
+`TestGetDashboardPermission*`/`TestRevokeDashboardPermission*`/
+`TestListDashboardPermissions` tests to pass. This only takes effect
+when `enterprise-api` (not plain `api`) is serving traffic -- see
+§8/§10.
 
 ## 6. `enterprise/internal/rbacstore` and `internal/audit` (already verified — reconfirm here)
 
@@ -422,8 +450,16 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   identity either (refused outright) for either protocol.
 - No admin UI to create a `tenant_memberships` row -- §3a's manual SQL
   bootstrap is the only way to grant a logged-in identity access today.
-- **No per-resource dashboard grants** (`dashboard_permissions` has a
-  schema, no handler reads it).
+- **Per-resource dashboard grants are now enforced** (`api/dashboards`'
+  handler reads `dashboard_permissions` via
+  `enterprise/internal/rbacstore.DashboardPermissions`, only when
+  `enterprise-api` -- not plain `api` -- serves traffic), but there's
+  still no UI or `sentryctl` command to create a grant -- `PUT
+  /dashboards/{id}/permissions/{userId}` has to be called directly.
+  Verified against a fake store; the real-Postgres integration tests
+  (`enterprise/internal/rbacstore/rbacstore_test.go`) haven't run
+  against a live database in this environment, same gap as the rest of
+  this phase's Postgres-backed pieces.
 - Three of the four adversarial ClickHouse/Tantivy probes named in
   `/docs/phase-4-isolation-design.md`'s verification plan are closed
   (§8, §9); the last (mid-provisioning-race handling) is still stubbed

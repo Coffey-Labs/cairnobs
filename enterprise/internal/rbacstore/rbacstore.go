@@ -8,17 +8,15 @@
 // append-only ledger, so it has no analogous reason to restrict its own
 // write access.
 //
-// This package is the storage building block a future OIDC/SAML login
-// HTTP handler would call to resolve "which tenant/role does this SSO
-// identity map to" and issue a session (internal/session) accordingly --
-// that handler itself isn't built yet (see cmd/enterprise-auth/main.go's
-// doc comment), so today rbacstore's only production caller is
-// -mint-service-token's future tenant-aware successor and its own tests.
-// dashboard_permissions doesn't have CRUD here yet -- no caller reads
-// per-resource grants (see api/dashboards/handler.go's doc
-// comment). data_sources CRUD was added once enterprise/internal/
-// chrunner needed a real place to read per-tenant ClickHouse credentials
-// from at startup (see that package's doc comment).
+// This package is the storage building block internal/loginhandler's
+// OIDC/SAML handlers call to resolve "which tenant/role does this SSO
+// identity map to" and issue a session (internal/session) accordingly.
+// dashboard_permissions CRUD (dashboard_permissions.go) is wrapped by
+// DashboardPermissions (dashboards_adapter.go) to implement
+// api/dashboards.PermissionStore -- see that adapter's doc comment.
+// data_sources CRUD was added once enterprise/internal/chrunner needed a
+// real place to read per-tenant ClickHouse credentials from at startup
+// (see that package's doc comment).
 package rbacstore
 
 import (

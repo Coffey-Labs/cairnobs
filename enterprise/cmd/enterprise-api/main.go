@@ -153,7 +153,7 @@ func main() {
 	auditLogger := audit.NewQueryAPILogger(audit.NewStore(auditPool), audit.SourceAPI)
 
 	queryHandler := queryapi.NewHandler(logger, registry, search, cfg.QueryTimeout, auditLogger, authorizer)
-	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer)
+	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer, rbacstore.NewDashboardPermissions(rbac))
 
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux)
