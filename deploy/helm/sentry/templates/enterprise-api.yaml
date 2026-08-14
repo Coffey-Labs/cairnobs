@@ -1,0 +1,111 @@
+{{/*
+Mutually exclusive with api.yaml's Deployment+Service -- see that file's
+doc comment. This is the concrete fix for the deployment-topology gap
+/docs/security/threat-model.md names as the single largest remaining
+Phase 4 issue once both storage engines' isolation mechanisms were
+built: "nothing forces or flags whether a deployment runs the isolated
+binary." With this file, it's not a separate knob to forget -- the same
+enterprise.enabled that turns on RBAC/audit/SSO also swaps which query
+binary actually serves traffic. Uses the "api" selector label (not
+"enterprise-api") deliberately, so the shared Service name+port below
+routes to whichever Deployment is actually rendered, with zero
+conditional logic needed in any consumer (alerting, web).
+*/}}
+{{- if .Values.enterprise.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "api") | nindent 4 }}
+    app.kubernetes.io/component: enterprise-api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sentry.selectorLabels" (list $ "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "api") | nindent 8 }}
+    spec:
+      initContainers:
+        {{- include "sentry.waitForTCP" (list "clickhouse" (printf "%s-clickhouse" .Release.Name) "9000") | nindent 8 }}
+        {{- include "sentry.waitForTCP" (list "postgres" (printf "%s-postgres" .Release.Name) "5432") | nindent 8 }}
+        {{- include "sentry.waitForTCP" (list "search" (printf "%s-search" .Release.Name) "50052") | nindent 8 }}
+        {{- include "sentry.waitForTCP" (list "enterprise-auth" (printf "%s-enterprise-auth" .Release.Name) "8082") | nindent 8 }}
+      containers:
+        - name: enterprise-api
+          image: "{{ .Values.enterprise.apiImage.repository }}:{{ .Values.enterprise.apiImage.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            # :8080, not enterprise-api's own :8083 default -- this
+            # container occupies the same Service/port every consumer
+            # (alerting's API_QUERY_URL, web's build args) already
+            # expects "-api:8080" to mean. See this file's doc comment.
+            - name: HTTP_LISTEN_ADDR
+              value: ":8080"
+            - name: CLICKHOUSE_ADDR
+              value: "{{ .Release.Name }}-clickhouse:9000"
+            # tenantprovision's admin connection -- the same credential
+            # clickhouse-migrate uses, needs access_management, never a
+            # tenant-scoped grant. See enterprise/internal/tenantprovision's
+            # doc comment.
+            - name: CLICKHOUSE_ADMIN_USERNAME
+              value: "default"
+            - name: CLICKHOUSE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-clickhouse
+                  key: password
+            - name: SEARCH_GRPC_ADDR
+              value: "{{ .Release.Name }}-search:50052"
+            - name: POSTGRES_ADDR
+              value: "{{ .Release.Name }}-postgres:5432"
+            - name: POSTGRES_DATABASE
+              value: sentry_metadata
+            - name: POSTGRES_USERNAME
+              value: sentry
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: password
+            # Restricted audit_writer Postgres role (Phase 4 task 4) --
+            # its own pool, never the shared "sentry" credential above.
+            # See enterprise/internal/audit's doc comment.
+            - name: AUDIT_WRITER_USERNAME
+              value: "audit_writer"
+            - name: AUDIT_WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: auditWriterPassword
+            - name: ENTERPRISE_AUTH_URL
+              value: "http://{{ .Release.Name }}-enterprise-auth:8082"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            exec:
+              command: ["/enterprise-api", "-healthcheck"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "api") | nindent 4 }}
+spec:
+  selector:
+    {{- include "sentry.selectorLabels" (list $ "api") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+{{- end }}

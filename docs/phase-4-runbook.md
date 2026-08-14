@@ -314,17 +314,50 @@ Docker access, alongside `enterprise/internal/loginhandler`'s OIDC
 tests (§3a) — both are unusually strong evidence precisely because they
 needed no infrastructure this environment lacked.
 
+## 10. Confirm the Helm chart actually enforces the binary swap
+
+No live cluster needed for this either — `helm template`'s output is
+plain YAML, parseable without a cluster:
+
+```sh
+cd deploy/helm/sentry
+helm template sentry . --include-crds > /tmp/default.yaml
+helm template sentry . --include-crds --set enterprise.enabled=true \
+  --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
+  > /tmp/enterprise.yaml
+
+python3 -c "
+import yaml
+for f in ['/tmp/default.yaml', '/tmp/enterprise.yaml']:
+    docs = list(yaml.safe_load_all(open(f)))
+    deploys = [d for d in docs if d and d.get('kind')=='Deployment' and d.get('metadata',{}).get('name')=='sentry-api']
+    print(f, '->', [d['spec']['template']['spec']['containers'][0]['image'] for d in deploys])
+"
+# expect: default.yaml -> ['sentry-api:latest'], enterprise.yaml -> ['sentry-enterprise-api:latest']
+# and exactly one Deployment named sentry-api in each file.
+```
+
+Real cluster (`kind create cluster`, or similar): `helm install` with
+each set of values and confirm `kubectl get deploy sentry-api -o
+jsonpath='{.spec.template.spec.containers[0].image}'` matches, and that
+`kubectl get svc sentry-api` routes to whichever one is actually running.
+
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
 
-- **Both storage engines' isolation exists but is opt-in.**
-  `enterprise-api` (§8, §9) gives real per-tenant ClickHouse *and*
-  Tantivy isolation, but plain `api` (still the default in
-  `docker-compose.yml`/`web`'s base URL) has neither, and nothing flags
-  which one a given deployment is actually running. This is now the
-  single largest gap — not a missing mechanism, a missing enforcement/
-  default.
+- **Both storage engines' isolation exists, and the Helm chart now
+  enforces which binary runs.** `deploy/helm/sentry/templates/api.yaml`/
+  `enterprise-api.yaml` are mutually exclusive on `enterprise.enabled`
+  (§10) -- a Helm-deployed cluster can't accidentally run the
+  non-isolated binary once that flag is set. `docker-compose.yml` still
+  runs plain `api` unconditionally alongside a separately-started
+  `enterprise-api` (§8), so this enforcement doesn't extend to local/dev
+  yet.
+- The `Tenant` CRD (`deploy/operator`) and `enterprise-api
+  -provision-tenant` are still two independent provisioning mechanisms
+  -- running both for the same tenant ID today takes two separate
+  operator actions, not one.
 - **Ingest has no tenant concept for either storage engine.** Every
   record `ingest` produces lands in the one shared ClickHouse database
   and the one shared Tantivy index no matter what. A newly-provisioned

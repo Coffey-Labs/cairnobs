@@ -147,15 +147,22 @@ escape hatch is opaque to any compiler-injected filter.
   `chrunner`/`searchclient` becomes tenant-aware on the write side,
   which is undesigned, not merely unbuilt.
 - `deploy/operator`'s `Tenant` CRD still manages only the K8s-side
-  artifact (a credential Secret); the Helm chart has no service
-  definition for `enterprise-api` yet.
+  artifact (a credential Secret); it doesn't call
+  `enterprise-api -provision-tenant` or otherwise trigger ClickHouse-side
+  provisioning. The two mechanisms are independent today, not reconciled
+  into one state machine.
 
-The deployment-topology gap — giving the system an actual way to route
-traffic to `enterprise-api` instead of `api` (a Helm service, or at
-minimum a documented, enforced convention) — is now the single largest
-remaining gap between this system and the isolation model it was
-designed to have; both storage engines' connection/index-layer
-mechanisms themselves are built.
+**The deployment-topology gap is closed for the Helm chart**: `deploy/
+helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are mutually
+exclusive on `enterprise.enabled`, rendering to the same Service name
+and port either way, so a Helm-deployed cluster can't accidentally run
+the wrong binary — the same flag that turns on RBAC/audit/SSO now also
+chooses the query binary. `docker-compose.yml` still runs plain `api`
+unconditionally, so this enforcement doesn't yet extend to local/dev.
+With both storage engines' connection/index-layer mechanisms built and
+deployment topology enforced at the Helm layer, the largest remaining
+gaps are ingest's lack of tenant-awareness (undesigned) and unifying the
+`Tenant` CRD with `-provision-tenant` into one provisioning flow.
 
 ## Licensing boundary
 

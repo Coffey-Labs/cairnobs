@@ -164,16 +164,23 @@ container. Tantivy per-tenant index routing is now built too
 **genuinely verified**, like the OIDC login flow: Tantivy is an embedded
 library, not a networked service, so the isolation probe (three tenants,
 same search term, scoped search returns only that tenant's document)
-actually ran in this environment, no Docker needed. What still keeps
-this phase from being done: SAML login (protocol wiring exists, no ACS
-handler calls it, following OIDC's now-built pattern), ingest itself has
-no tenant concept for either storage engine (every record lands in the
-one shared ClickHouse database and Tantivy index no matter what —
-undesigned, not just unbuilt), and a deployment-topology gap that's now
-the single largest one: nothing yet forces or even flags whether a given
-deployment is actually running the isolated binary (`enterprise-api`)
-versus the plain single-tenant one (`api`); both still exist and nothing
-currently prevents mixing them up. Full accounting:
+actually ran in this environment, no Docker needed. The deployment-
+topology gap that briefly was the largest one is now closed for Helm:
+`deploy/helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are
+mutually exclusive on the same `enterprise.enabled` flag that turns on
+RBAC/audit/SSO, rendering to the same Service name/port either way — a
+Helm-deployed cluster can't accidentally run the wrong one.
+`docker-compose.yml` still runs plain `api` unconditionally, though
+(local/dev parity with the Helm chart's enforcement is real remaining
+work). What still keeps this phase from being done: SAML login (protocol
+wiring exists, no ACS handler calls it, following OIDC's now-built
+pattern), ingest itself has no tenant concept for either storage engine
+(every record lands in the one shared ClickHouse database and Tantivy
+index no matter what — undesigned, not just unbuilt), and the two
+provisioning mechanisms (`deploy/operator`'s `Tenant` CRD and
+`enterprise-api -provision-tenant`) still aren't unified — running both
+for the same tenant ID is two separate operator actions today. Full
+accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit

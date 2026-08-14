@@ -13,28 +13,34 @@ non-goals). Two pieces:
 ## What "multi-tenant-aware" means here, precisely
 
 Per `/docs/phase-4-isolation-design.md`, tenant isolation itself lives at
-the **application layer** inside `enterprise/` (one `api` process holds a
-map of per-tenant ClickHouse connection pools; one `search` process holds
-a map of per-tenant Tantivy indices) -- not at the Kubernetes layer. This
-directory is **not** "one Deployment per tenant" or a general
-multi-cluster system; that's an explicit Phase 4 non-goal (see
-`/CLAUDE.md`). What it *does* add, matching that same document's exit
-criteria ("real per-tenant secret management, replacing today's single
-shared `CLICKHOUSE_PASSWORD`"):
+the **application layer** inside `enterprise/` (`enterprise-api` holds a
+map of per-tenant ClickHouse connection pools via `internal/chrunner`;
+`search` holds a map of per-tenant Tantivy indices via
+`src/registry.rs`) -- not at the Kubernetes layer. This directory is
+**not** "one Deployment per tenant" or a general multi-cluster system;
+that's an explicit Phase 4 non-goal (see `/CLAUDE.md`). What it *does*
+add:
 
 - A `Tenant` CRD + controller that generates and manages one dedicated
   ClickHouse credential Secret per tenant (`operator/internal/controller`).
 - A Helm chart that can install zero-or-more `Tenant` CRs
-  (`values.tenants`) alongside the rest of the stack.
+  (`values.tenants`) alongside the rest of the stack, and — the newer
+  piece — swaps `api`'s Deployment for `enterprise-api`'s whenever
+  `enterprise.enabled` is true, so which query binary actually serves
+  traffic is no longer a separately-forgettable decision (see
+  `helm/sentry/README.md`'s "`api` vs `enterprise-api`" section).
 
-The Operator does **not** call ClickHouse (no `CREATE DATABASE`/`CREATE
-USER`/`GRANT`) and does not touch the Tantivy filesystem or
-`enterprise/internal/rbacstore` -- that's `enterprise/internal/
-tenantprovision`, still unbuilt (see the Phase 4 task 5 summary). A
-`Tenant` reaching `status.phase: Active` here means "this tenant has a
-K8s Secret," not "this tenant's ClickHouse database/grants exist" --
-those are two different systems' state machines that aren't reconciled
-together yet, named explicitly rather than implied.
+**Two still-separate mechanisms, not yet unified**: the Operator's
+`Tenant` CRD manages only the K8s-side credential Secret — it does not
+call ClickHouse (no `CREATE DATABASE`/`CREATE USER`/`GRANT`) or touch
+the Tantivy filesystem. `enterprise-api -provision-tenant=<id>` is what
+actually does that (`enterprise/internal/tenantprovision`, built and
+tested — see `/enterprise/README.md`), driven independently via
+`rbacstore`, not from the `Tenant` CRD's reconcile loop. A `Tenant`
+reaching `status.phase: Active` here means "this tenant has a K8s
+Secret," not "this tenant's ClickHouse database/grants exist" — running
+both mechanisms for the same tenant ID today requires two separate
+operator actions, named explicitly rather than implied to be one.
 
 ## Verification status -- read before trusting this against a real cluster
 
@@ -62,11 +68,15 @@ access was available to fetch these tools, but no cluster):
   cleanly under both default values and a `enterprise.enabled: true` +
   two-tenant override; the rendered output was checked with `kubeconform
   -strict` against the real Kubernetes 1.31 OpenAPI schema for every
-  built-in resource kind (22-29 resources depending on values, 0
+  built-in resource kind (22-31 resources depending on values, 0
   invalid) -- this catches schema mistakes (wrong field names, wrong
   types) but not whether the resources actually reconcile correctly
   together on a live cluster (Job/StatefulSet startup ordering, PVC
-  provisioning, actual pod scheduling).
+  provisioning, actual pod scheduling). Specifically confirmed by
+  parsing the rendered YAML (not just eyeballing it): exactly one
+  `Deployment`/`Service` named `sentry-api` renders in each mode, with
+  the `enterprise.enabled: true` render using the `enterprise-api` image
+  and the default render using plain `api`'s.
 - Docker image builds (`operator/Dockerfile` and every other
   `Dockerfile` this chart references) were **not** verified in this
   session -- Docker's daemon wasn't reachable here either (see the
