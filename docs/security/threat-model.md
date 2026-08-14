@@ -9,58 +9,61 @@ for the full design rationale behind the controls described here.
 
 ## Read this first: the single most important open finding
 
-**Updated**: this section originally read "log data queried through
-`POST /query` is not tenant-isolated at all." That's now only half
-true, and the half that's no longer true matters — read carefully,
-because the remaining gap (Tantivy/free-text) is easy to miss if you
-stop at "ClickHouse is isolated now."
+**Updated a second time.** This section originally read "log data
+queried through `POST /query` is not tenant-isolated at all," then
+"ClickHouse is isolated but Tantivy isn't." Both ClickHouse *and*
+Tantivy connection/index-layer isolation are now built. What's left is
+narrower but still real: **whether a given deployment actually runs the
+isolated binary**, and **whether ingest itself is tenant-aware** (it
+isn't, for either storage engine).
 
-**ClickHouse (the SQL path) is now built, but only if you run the right
-binary — and it has not yet been confirmed against a real ClickHouse.**
-`enterprise/internal/tenantprovision` (real `CREATE DATABASE`/`CREATE
-USER`/`GRANT` against ClickHouse) and `enterprise/internal/chrunner` (a
-per-tenant `driver.Conn` registry implementing api's
-`querylang/executor.SQLRunner`, resolving which tenant's connection to
-use from the authenticated identity in request context — never from a
-client-suppliable field) now exist, and a new binary,
-`enterprise/cmd/enterprise-api`, wires them into the same
-`api/queryapi.Handler`/`api/dashboards.Handler` core already ships. Real
-integration tests exist and would prove the core adversarial claim —
-`enterprise/internal/tenantprovision/tenantprovision_test.go`'s
-`TestProvisionedUserCannotReadOtherTenantDatabase` and
-`TestProvisionedUserCannotReadSystemTables`,
-`enterprise/internal/chrunner/chrunner_test.go`'s
-`TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL` — but this
-environment had no Docker/ClickHouse access while these were written, so
-they've only been confirmed to skip cleanly offline, not to pass for
-real. See `/docs/phase-4-runbook.md`'s verification-status section
-before treating "the test exists" as "isolation is confirmed."
+**ClickHouse (the SQL path) is built.** `enterprise/internal/
+tenantprovision` (real `CREATE DATABASE`/`CREATE USER`/`GRANT`) and
+`enterprise/internal/chrunner` (a per-tenant connection registry
+implementing `api/querylang/executor.SQLRunner`, resolving the tenant
+from request identity, never a parameter) are wired into
+`enterprise/cmd/enterprise-api`. **Not yet confirmed against a real
+ClickHouse** — this environment had no Docker/database access while
+these were written; the tests exist and are correct Go, but "the test
+exists" is not the same claim as "isolation is confirmed" (see
+`/docs/phase-4-runbook.md`).
 
-**But plain `api/cmd/api` still runs with one shared connection**, and
-nothing in this repo automatically routes traffic to `enterprise-api`
-instead — `docker-compose.yml` includes it "available, not defaulted
-into the traffic path" (same shape as `enterprise-auth`'s own addition),
-and the Helm chart has no service for it at all yet. **A deployment is
-only as isolated as which binary is actually serving traffic** — this
-is an operational decision nothing currently enforces or even surfaces
-as a warning.
+**Tantivy (the free-text path) is also built, and — unlike the
+ClickHouse pieces — genuinely verified in this environment.**
+`search/src/registry.rs`'s `IndexRegistry` resolves a `SearchRequest.
+tenant_id` to its own on-disk Tantivy index, opened on demand;
+`enterprise/internal/searchclient` sets that field from the
+authenticated request identity, mirroring `chrunner`'s exact "read from
+ctx, fail closed, never a parameter" shape. Because Tantivy is an
+embedded library (no external service to fake or skip), both sides could
+actually be run: `search/src/registry.rs`'s
+`tenant_index_is_isolated_from_default_and_other_tenants` seeds three
+real indices with the same search term and confirms a tenant-scoped
+search returns only that tenant's document; `enterprise/internal/
+searchclient`'s tests run a real in-process gRPC server and confirm the
+wire-level `SearchRequest` carries the right `tenant_id`. All pass, for
+real, no disclaimer needed for this specific claim.
 
-**Tantivy (the free-text path) is still fully unisolated.** There is no
-`enterprise/internal/searchclient` (the Tantivy-side equivalent of
-chrunner) — `search`'s gRPC service and
-`proto/sentry/search/v1/search.proto`'s `SearchRequest` still carry no
-tenant field anywhere, confirmed by reading the code. Every tenant's
-free-text queries hit the same shared Tantivy index regardless of which
-binary (`api` or `enterprise-api`) serves the HTTP request. A query that
-resolves to a pure pipe-syntax free-text search (e.g. `message:"error"`)
-is not protected by chrunner at all.
+**But plain `api/cmd/api` still runs with one shared ClickHouse
+connection and no tenant-scoped search client**, and nothing in this
+repo automatically routes traffic to `enterprise-api` instead —
+`docker-compose.yml` includes it "available, not defaulted into the
+traffic path" (same shape as `enterprise-auth`'s own addition), and the
+Helm chart has no service for it at all yet. **A deployment is only as
+isolated as which binary is actually serving traffic** — this is an
+operational decision nothing currently enforces or even surfaces as a
+warning. This is now the single largest gap in the isolation story, not
+a missing mechanism.
 
-**What this means concretely**: treat a deployment as tenant-isolated
-for structured/SQL queries *only if* it runs `enterprise-api` fronting
-provisioned tenants, and treat it as **not isolated at all** for
-free-text search regardless of which binary runs. RBAC (below) and
-dashboard tenant-scoping (below) hold regardless of which binary is
-running; the ClickHouse/Tantivy split above is what changed.
+**Ingest is not tenant-aware for either storage engine**, and this is
+more load-bearing than it sounds: `chrunner`/`searchclient` prove *read*
+isolation given tenant-scoped data exists, but nothing writes
+tenant-scoped data yet. Every record `ingest` produces lands in the one
+shared ClickHouse database and the one shared (default) Tantivy index,
+regardless of tenant. A newly-provisioned tenant's ClickHouse database
+and Tantivy index are real, isolated, and queryable through
+`enterprise-api` — and permanently empty, until ingest itself becomes
+tenant-aware, which is undesigned, not just unbuilt.
 
 ## System overview
 
@@ -73,12 +76,15 @@ Browser ──▶ api OR enterprise-api ──▶ ClickHouse (log data, SQL path
               └─▶ Postgres (control plane: dashboards, alert_rules,
                              tenants, users, tenant_memberships, audit_log)
 
-# api: one shared ClickHouse connection, nil AuditLogger -- Phase 0-3 behavior.
+# api: one shared ClickHouse connection, one shared (default) Tantivy
+# index via api/searchclient, nil AuditLogger -- Phase 0-3 behavior.
 # enterprise-api: enterprise/internal/chrunner (per-tenant ClickHouse
-# connections) + enterprise/internal/audit.QueryAPILogger (real audit
-# writes) wired into the SAME api/queryapi.Handler/api/dashboards.Handler
-# core -- see this document's "Read this first" section. Either binary
-# can be running; nothing forces the isolated one.
+# connections) + enterprise/internal/searchclient (per-tenant Tantivy
+# index, via search's SearchRequest.tenant_id) + enterprise/internal/
+# audit.QueryAPILogger (real audit writes) wired into the SAME
+# api/queryapi.Handler/api/dashboards.Handler core -- see this
+# document's "Read this first" section. Either binary can be running;
+# nothing forces the isolated one.
 
 alerting ──▶ api or enterprise-api (POST /query, RoleService credential)
 alerting ──▶ Postgres (rulestore, notifystore)
@@ -351,8 +357,10 @@ terms:
 | ClickHouse per-tenant provisioning (`tenantprovision`) | **Built, not live-verified** — real integration test exists, not yet run against ClickHouse |
 | ClickHouse query routing (`chrunner`) | **Built, not live-verified** — and only applies when `enterprise-api` serves traffic, not plain `api` |
 | `system.*` ClickHouse metadata isolation | **Built, not live-verified** — same caveat as above |
-| Tantivy/free-text tenant isolation | **Not implemented** — no per-tenant index routing at all |
-| Deployment actually routing traffic to `enterprise-api` | **Not implemented** — no Helm service, no default wiring |
+| Tantivy per-tenant index routing (`search/src/registry.rs`) | **Enforced, verified live** — real Tantivy indices, real cross-tenant probe, all passing |
+| Tantivy tenant_id resolution (`enterprise/internal/searchclient`) | **Enforced, verified live** — real gRPC wire-level test |
+| Ingest tenant-awareness (ClickHouse and Tantivy both) | **Not implemented, undesigned** — every ingested record lands in the single shared database/index regardless of tenant |
+| Deployment actually routing traffic to `enterprise-api` | **Not implemented** — no Helm service, no default wiring; now the largest gap in the isolation story |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Not implemented** |
 | Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |

@@ -22,6 +22,17 @@ message SearchRequest {
 
   // Max results to return. 0 (unset) uses the service's own default.
   uint32 limit = 2;
+
+  // tenant_id (Phase 4) selects which per-tenant Tantivy index to search
+  // -- resolved server-side by the caller (enterprise/internal/
+  // searchclient, from the authenticated identity in request context),
+  // never a value a browser/client supplies directly. Empty selects the
+  // single default index every Phase 0-3 deployment (and every
+  // ingest-written record today, regardless of tenant -- see
+  // /docs/security/threat-model.md's ingest-tenancy caveat) already
+  // uses, so this field is purely additive: an old caller that never
+  // sets it keeps today's behavior exactly.
+  string tenant_id = 3;
 }
 
 message SearchResponse {

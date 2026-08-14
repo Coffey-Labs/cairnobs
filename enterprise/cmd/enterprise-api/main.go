@@ -2,10 +2,10 @@
 // api/cmd/api -- same POST /query and /dashboards surface (it reuses
 // api/queryapi and api/dashboards's actual Handler types unchanged), but
 // backed by a per-tenant ClickHouse connection registry
-// (enterprise/internal/chrunner) instead of the single shared connection
-// api/cmd/api opens, and a real audit logger
-// (enterprise/internal/audit.QueryAPILogger) instead of the nil api's
-// binary has carried since Phase 4 task 4.
+// (enterprise/internal/chrunner), a per-tenant Tantivy search client
+// (enterprise/internal/searchclient), and a real audit logger
+// (enterprise/internal/audit.QueryAPILogger) instead of the single
+// shared connections and nil audit logger api/cmd/api's binary carries.
 //
 // Why a second binary, not a flag on api/cmd/api: api is AGPL core and
 // must never import enterprise/ (hack/check-tenant-boundary.sh enforces
@@ -17,12 +17,13 @@
 // keeps running plain api/cmd/api, unchanged; a real multi-tenant
 // deployment runs this one instead.
 //
-// Not built yet: per-tenant Tantivy routing (search stays the single
-// shared api/searchclient.Dial connection every tenant shares --
-// see /docs/security/threat-model.md), and the actual K8s/Helm wiring
-// to run this binary in place of api's (docker-compose.yml adds it
-// available, not defaulted into the traffic path, same shape as
-// enterprise-auth's own addition in Phase 4 task 5).
+// Not built yet: the actual K8s/Helm wiring to run this binary in place
+// of api's (docker-compose.yml adds it available, not defaulted into
+// the traffic path, same shape as enterprise-auth's own addition in
+// Phase 4 task 5), and `search`'s write side (ingest, and by extension
+// the Redpanda consumer search itself runs) is still not tenant-aware --
+// see enterprise/internal/searchclient and search/src/registry.rs's doc
+// comments, and /docs/security/threat-model.md.
 package main
 
 import (
@@ -44,12 +45,12 @@ import (
 	"github.com/sentry/sentry/api/dashboards"
 	"github.com/sentry/sentry/api/httpserver"
 	"github.com/sentry/sentry/api/queryapi"
-	"github.com/sentry/sentry/api/searchclient"
 
 	"github.com/sentry/sentry/enterprise/internal/apiconfig"
 	"github.com/sentry/sentry/enterprise/internal/audit"
 	"github.com/sentry/sentry/enterprise/internal/chrunner"
 	"github.com/sentry/sentry/enterprise/internal/rbacstore"
+	"github.com/sentry/sentry/enterprise/internal/searchclient"
 	"github.com/sentry/sentry/enterprise/internal/tenantprovision"
 )
 

@@ -243,11 +243,15 @@ provisions ClickHouse.
 
 ## 8. `enterprise-api`: real per-tenant ClickHouse isolation
 
-This is new since this runbook was first written — `enterprise/internal/
-tenantprovision` and `enterprise/internal/chrunner` now exist, closing
-the headline gap §"Known gaps" below used to describe as completely
-unbuilt. It's still a second binary you have to choose to run, though —
-see `/docs/security/threat-model.md`'s "Read this first" section.
+`enterprise/internal/tenantprovision` and `enterprise/internal/chrunner`
+close the ClickHouse half of the headline gap §"Known gaps" below used
+to describe as completely unbuilt. It's still a second binary you have
+to choose to run, though — see `/docs/security/threat-model.md`'s "Read
+this first" section. With OIDC login now built (§3a), a real
+`curl -X POST http://localhost:8083/query` walkthrough as a logged-in
+tenant is *possible* now, but still needs the manual `tenant_memberships`
+bootstrap from §3a — a full end-to-end curl walkthrough isn't included
+here yet.
 
 ```sh
 docker compose build enterprise-api
@@ -257,14 +261,11 @@ docker compose up -d enterprise-api
 curl -s http://localhost:8083/healthz
 ```
 
-There's still no OIDC/SAML login handler and no CLI for minting a human
-session token (see `/docs/security/threat-model.md`) -- so a real
-`curl -X POST http://localhost:8083/query` walkthrough as tenant acme
-isn't possible yet. Confirm isolation end to end against the live stack (this is the same
+Confirm isolation end to end against the live stack (this is the same
 assertion `enterprise/internal/chrunner/chrunner_test.go`'s
 `TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL` makes, run here
-as an integration test instead of a curl walkthrough since there's no
-login flow to drive it through curl yet):
+as an integration test instead of a curl walkthrough since a full login
+walkthrough isn't scripted yet):
 
 ```sh
 docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
@@ -285,17 +286,50 @@ pass) and `TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL` (item 1,
 closed through the actual production code path, not just
 tenantprovision's raw grants).
 
+## 9. Tantivy per-tenant isolation — no Docker needed, actually run this one
+
+Unlike everything above, this one doesn't need a live stack at all —
+Tantivy is an embedded library, not a networked service, so both halves
+(the Rust index registry and the Go client that talks to it) can be
+verified with nothing but a local toolchain:
+
+```sh
+cd search
+cargo build
+cargo clippy --all-targets -- -D warnings
+cargo test
+# expect 14 tests passing, including
+# registry::tests::tenant_index_is_isolated_from_default_and_other_tenants
+# -- item 3 of /docs/phase-4-isolation-design.md's verification plan.
+
+cd ../enterprise
+go test ./internal/searchclient/... -v
+# real in-process gRPC server, confirms SearchRequest.tenant_id is set
+# correctly and that a request with no/invalid tenant identity is refused.
+```
+
+This is the one piece of Phase 4's tenant isolation work that has
+**actually been run and confirmed passing** in an environment without
+Docker access, alongside `enterprise/internal/loginhandler`'s OIDC
+tests (§3a) — both are unusually strong evidence precisely because they
+needed no infrastructure this environment lacked.
+
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
 
-- **ClickHouse isolation exists but is opt-in.** `enterprise-api`
-  (§8) gives real per-tenant ClickHouse isolation, but plain `api`
-  (still the default in `docker-compose.yml`/`web`'s base URL) has none,
-  and nothing flags which one a given deployment is actually running.
-- **No Tantivy/free-text isolation at all**, regardless of which binary
-  serves the request -- `enterprise/internal/searchclient` (chrunner's
-  Tantivy-side sibling) doesn't exist.
+- **Both storage engines' isolation exists but is opt-in.**
+  `enterprise-api` (§8, §9) gives real per-tenant ClickHouse *and*
+  Tantivy isolation, but plain `api` (still the default in
+  `docker-compose.yml`/`web`'s base URL) has neither, and nothing flags
+  which one a given deployment is actually running. This is now the
+  single largest gap — not a missing mechanism, a missing enforcement/
+  default.
+- **Ingest has no tenant concept for either storage engine.** Every
+  record `ingest` produces lands in the one shared ClickHouse database
+  and the one shared Tantivy index no matter what. A newly-provisioned
+  tenant's storage is real, isolated at query time, and permanently
+  empty until this changes — undesigned, not just unbuilt.
 - **Human SSO login now works for OIDC** (§3a) -- verified with a real
   fake IdP, not yet a real external one or a running `enterprise-auth`
   container. **SAML login still doesn't exist** -- protocol wiring only,
@@ -305,10 +339,10 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   bootstrap is the only way to grant a logged-in identity access today.
 - **No per-resource dashboard grants** (`dashboard_permissions` has a
   schema, no handler reads it).
-- Two of the four adversarial ClickHouse/Tantivy probes named in
+- Three of the four adversarial ClickHouse/Tantivy probes named in
   `/docs/phase-4-isolation-design.md`'s verification plan are closed
-  (§8); the other two (Tantivy cross-tenant search, mid-provisioning-race
-  handling) are still stubbed as explicitly-skipped tests in
+  (§8, §9); the last (mid-provisioning-race handling) is still stubbed
+  as an explicitly-skipped test in
   `api/queryapi/tenant_isolation_gap_test.go`.
 
 ## Tearing down

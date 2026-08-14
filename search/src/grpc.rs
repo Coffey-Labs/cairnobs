@@ -1,18 +1,18 @@
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
-use crate::index::SearchIndex;
+use crate::registry::IndexRegistry;
 use crate::searchv1;
 
 const DEFAULT_LIMIT: usize = 100;
 
 pub struct SearchServer {
-    index: Arc<SearchIndex>,
+    registry: Arc<IndexRegistry>,
 }
 
 impl SearchServer {
-    pub fn new(index: Arc<SearchIndex>) -> Self {
-        Self { index }
+    pub fn new(registry: Arc<IndexRegistry>) -> Self {
+        Self { registry }
     }
 }
 
@@ -33,7 +33,17 @@ impl searchv1::search_service_server::SearchService for SearchServer {
             req.limit as usize
         };
 
-        let index = Arc::clone(&self.index);
+        // Resolves (opening on first use) the caller's tenant index, or
+        // the single default index when tenant_id is empty -- see
+        // registry.rs's doc comment. Never falls back to a *different*
+        // tenant's index on error; an unsafe/unknown tenant_id is a
+        // hard failure, not a silent default.
+        let index = self
+            .registry
+            .resolve(&req.tenant_id)
+            .await
+            .map_err(|e| Status::invalid_argument(format!("resolving tenant index: {e}")))?;
+
         let query = req.query.clone();
         // Tantivy's searcher is synchronous; run it on a blocking thread
         // so it doesn't stall the async runtime alongside the consumer

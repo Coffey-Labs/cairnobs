@@ -76,10 +76,10 @@ This split is not to be changed without discussion — see CLAUDE.md.
 | `transport` | Redpanda docker-compose + topic provisioning scripts. No application code. |
 | `ingest` (Go) | gRPC server accepting agent connections; produces normalized OTel-log-like records to Redpanda; separate consumer reads from Redpanda and batch-writes to ClickHouse. No tenant concept — every record lands in the one shared `logs` table regardless of source (see "Tenant isolation" below). |
 | `storage` | ClickHouse schema migrations + docker-compose for local/homelab. |
-| `search` (Rust, Phase 1) | Consumes the same Redpanda topic `ingest` does (own offset tracking), builds a Tantivy full-text index over `message`, serves matches over gRPC. One shared index for every tenant today — see "Tenant isolation" below. |
+| `search` (Rust, Phase 1) | Consumes the same Redpanda topic `ingest` does (own offset tracking), builds a Tantivy full-text index over `message`, serves matches over gRPC. Writes always go to one shared (default) index (`ingest` isn't tenant-aware); reads can be scoped per-tenant via `SearchRequest.tenant_id` and `src/registry.rs`'s `IndexRegistry` (Phase 4) — see "Tenant isolation" below. |
 | `api` (Go) | gRPC + REST gateway. `POST /query` compiles pipe-syntax or raw SQL to one IR, executed across ClickHouse/Tantivy (`/docs/query-language-design.md`). `internal/dashboards` is CRUD only — panel query execution happens client-side, reusing `/query`. `internal/authz` (Phase 4) enforces RBAC via a network call to `enterprise-auth`, never an import. |
 | `alerting` (Go, Phase 3) | Evaluates alert rules on an interval, calls `api`'s `POST /query` (via a `RoleService` credential once Phase 4 auth is configured — see `/docs/phase-4-isolation-design.md`'s alerting↔api gap), delivers firing/resolved notifications (webhook/Slack/PagerDuty). |
-| `enterprise` (Go, commercial license, Phase 4) | OIDC login (`internal/loginhandler`'s `/auth/oidc/login`+`/auth/oidc/callback`, real IdP round trip, verified with a fake IdP but not a real external one), RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`), per-tenant ClickHouse provisioning (`internal/tenantprovision`) and query routing (`internal/chrunner`), and `cmd/enterprise-api` — a second binary combining core's `api/queryapi`/`api/dashboards` handlers with these tenant-aware implementations. Never imported by core — see "Licensing boundary" below. Does **not** yet include per-tenant Tantivy routing or SAML's login ACS handler (protocol mechanics only) — see `/docs/security/threat-model.md`. |
+| `enterprise` (Go, commercial license, Phase 4) | OIDC login (`internal/loginhandler`'s `/auth/oidc/login`+`/auth/oidc/callback`, real IdP round trip, verified with a fake IdP but not a real external one), RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`), per-tenant ClickHouse provisioning (`internal/tenantprovision`) and query routing (`internal/chrunner`), and `cmd/enterprise-api` — a second binary combining core's `api/queryapi`/`api/dashboards` handlers with these tenant-aware implementations. Never imported by core — see "Licensing boundary" below. Also `internal/searchclient` (per-tenant Tantivy routing, wired the same way into `search`). Does **not** yet include SAML's login ACS handler (protocol mechanics only) — see `/docs/security/threat-model.md`. |
 | `web` (SvelteKit, static build) | Query bar, dashboards, alerts, and (Phase 4) a settings page that renders SSO status via a runtime capability check (`GET /auth/features`) rather than bundling enterprise-licensed components. |
 | `cli` (`sentryctl`) | `ping`, `query`, `dashboards` (list/get/apply), `alerts` (list/get/apply). `$SENTRYCTL_TOKEN`, if set, is forwarded as a Bearer credential (Phase 4). |
 | `deploy` | A Helm chart covering every `docker-compose.yml` service, plus (Phase 4) a small Go Operator managing one CRD (`Tenant`) that provisions a per-tenant ClickHouse credential Secret. Never applied to a live cluster in the environment this was built in — see `/deploy/README.md`'s verification section before trusting it. |
@@ -129,20 +129,33 @@ escape hatch is opaque to any compiler-injected filter.
   unchanged, with its single shared connection — nothing forces a
   deployment to run `enterprise-api` instead, and nothing flags it if it
   doesn't.
-- **Tantivy connection-layer isolation is not built.** `search`'s gRPC
-  service and `proto/sentry/search/v1/search.proto`'s `SearchRequest`
-  still carry no tenant field. Every tenant's free-text queries hit the
-  same shared Tantivy index regardless of which binary serves the
-  request.
+- **Tantivy index-layer isolation is built, and verified.**
+  `search/src/registry.rs`'s `IndexRegistry` resolves
+  `SearchRequest.tenant_id` (added to `proto/sentry/search/v1/
+  search.proto`) to its own on-disk index, opened on demand;
+  `enterprise/internal/searchclient` sets that field from the
+  authenticated request identity, the same "read from ctx, fail closed"
+  shape `chrunner` uses. Unlike the ClickHouse pieces, this one actually
+  ran in the environment it was built in — Tantivy is an embedded
+  library, so the cross-tenant isolation probe needed no live database
+  or Docker to execute for real, and it passed.
+- Neither storage engine's isolation extends to *ingest*: every record
+  `ingest` produces lands in the one shared ClickHouse database and the
+  one shared (default) Tantivy index regardless of tenant. A
+  newly-provisioned tenant's database/index are real and isolated at
+  query time — and permanently empty until something upstream of
+  `chrunner`/`searchclient` becomes tenant-aware on the write side,
+  which is undesigned, not merely unbuilt.
 - `deploy/operator`'s `Tenant` CRD still manages only the K8s-side
   artifact (a credential Secret); the Helm chart has no service
   definition for `enterprise-api` yet.
 
-Building `enterprise/internal/searchclient` (the Tantivy-side sibling of
-`chrunner`) and giving the deployment topology (Helm chart, or at least
-clear documentation) an actual way to route traffic to `enterprise-api`
-instead of `api` are the two largest remaining gaps between this system
-and the isolation model it was designed to have.
+The deployment-topology gap — giving the system an actual way to route
+traffic to `enterprise-api` instead of `api` (a Helm service, or at
+minimum a documented, enforced convention) — is now the single largest
+remaining gap between this system and the isolation model it was
+designed to have; both storage engines' connection/index-layer
+mechanisms themselves are built.
 
 ## Licensing boundary
 
