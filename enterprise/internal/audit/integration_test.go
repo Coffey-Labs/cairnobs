@@ -18,8 +18,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/sentry/sentry/api/authz"
+	"github.com/sentry/sentry/api/queryapi"
 )
 
 func testPool(t *testing.T, user, password string) *pgxpool.Pool {
@@ -89,6 +93,50 @@ func TestAppendAndVerifyChainRealPostgres(t *testing.T) {
 	}
 	if result.RowsChecked != 5 {
 		t.Fatalf("RowsChecked = %d, want 5", result.RowsChecked)
+	}
+}
+
+// TestQueryAPILoggerWritesAttributedToContextIdentity proves the
+// adapter queryapi.Handler actually calls in production (via
+// enterprise-api's wiring) reads tenant/user from context, not from any
+// field on QueryAuditEntry -- matching that type's own doc comment.
+func TestQueryAPILoggerWritesAttributedToContextIdentity(t *testing.T) {
+	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
+	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	cleanupAuditLog(t, adminPool)
+	defer cleanupAuditLog(t, adminPool)
+
+	logger := NewQueryAPILogger(NewStore(writerPool), SourceAPI)
+	ctx := authz.WithIdentity(context.Background(), authz.Identity{TenantID: "acme", UserID: "11111111-1111-1111-1111-111111111111", Role: authz.RoleViewer})
+
+	err := logger.LogQuery(ctx, queryapi.QueryAuditEntry{
+		Query: "stats count", Language: "spl", RowCount: 3, Duration: 42 * time.Millisecond, Success: true,
+	})
+	if err != nil {
+		t.Fatalf("LogQuery: %v", err)
+	}
+
+	var tenantID, userID, queryText string
+	row := adminPool.QueryRow(context.Background(),
+		`SELECT tenant_id, user_id, query_text FROM audit_log ORDER BY id DESC LIMIT 1`)
+	if err := row.Scan(&tenantID, &userID, &queryText); err != nil {
+		t.Fatalf("reading back the written row: %v", err)
+	}
+	if tenantID != "acme" || userID != "11111111-1111-1111-1111-111111111111" || queryText != "stats count" {
+		t.Fatalf("got tenant_id=%q user_id=%q query_text=%q, want acme/11111111-.../\"stats count\"", tenantID, userID, queryText)
+	}
+}
+
+func TestQueryAPILoggerRefusesWithoutIdentity(t *testing.T) {
+	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
+	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	cleanupAuditLog(t, adminPool)
+	defer cleanupAuditLog(t, adminPool)
+
+	logger := NewQueryAPILogger(NewStore(writerPool), SourceAPI)
+	err := logger.LogQuery(context.Background(), queryapi.QueryAuditEntry{Query: "stats count", Success: true})
+	if err == nil {
+		t.Fatal("expected LogQuery to refuse writing an entry with no tenant identity in context")
 	}
 }
 

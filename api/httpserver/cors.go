@@ -1,6 +1,6 @@
 // Package httpserver holds cross-handler HTTP concerns for /api. Phase 3
-// introduced a second handler package (internal/dashboards) alongside
-// internal/queryapi, so CORS moved out of individual handlers into one
+// introduced a second handler package (dashboards) alongside
+// queryapi, so CORS moved out of individual handlers into one
 // wrap applied around the fully-assembled mux in cmd/api/main.go, rather
 // than each handler package wrapping itself.
 package httpserver

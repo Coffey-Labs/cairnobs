@@ -79,7 +79,7 @@ This split is not to be changed without discussion — see CLAUDE.md.
 | `search` (Rust, Phase 1) | Consumes the same Redpanda topic `ingest` does (own offset tracking), builds a Tantivy full-text index over `message`, serves matches over gRPC. One shared index for every tenant today — see "Tenant isolation" below. |
 | `api` (Go) | gRPC + REST gateway. `POST /query` compiles pipe-syntax or raw SQL to one IR, executed across ClickHouse/Tantivy (`/docs/query-language-design.md`). `internal/dashboards` is CRUD only — panel query execution happens client-side, reusing `/query`. `internal/authz` (Phase 4) enforces RBAC via a network call to `enterprise-auth`, never an import. |
 | `alerting` (Go, Phase 3) | Evaluates alert rules on an interval, calls `api`'s `POST /query` (via a `RoleService` credential once Phase 4 auth is configured — see `/docs/phase-4-isolation-design.md`'s alerting↔api gap), delivers firing/resolved notifications (webhook/Slack/PagerDuty). |
-| `enterprise` (Go, commercial license, Phase 4) | SSO (OIDC/SAML protocol mechanics), RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), and `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`). Never imported by core — see "Licensing boundary" below. Does **not** yet include per-tenant ClickHouse/Tantivy connection routing or the OIDC/SAML login HTTP handlers — see `/docs/security/threat-model.md`. |
+| `enterprise` (Go, commercial license, Phase 4) | SSO (OIDC/SAML protocol mechanics), RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`), per-tenant ClickHouse provisioning (`internal/tenantprovision`) and query routing (`internal/chrunner`), and `cmd/enterprise-api` — a second binary combining core's `api/queryapi`/`api/dashboards` handlers with these tenant-aware implementations. Never imported by core — see "Licensing boundary" below. Does **not** yet include per-tenant Tantivy routing or the OIDC/SAML login HTTP handlers — see `/docs/security/threat-model.md`. |
 | `web` (SvelteKit, static build) | Query bar, dashboards, alerts, and (Phase 4) a settings page that renders SSO status via a runtime capability check (`GET /auth/features`) rather than bundling enterprise-licensed components. |
 | `cli` (`sentryctl`) | `ping`, `query`, `dashboards` (list/get/apply), `alerts` (list/get/apply). `$SENTRYCTL_TOKEN`, if set, is forwarded as a Bearer credential (Phase 4). |
 | `deploy` | A Helm chart covering every `docker-compose.yml` service, plus (Phase 4) a small Go Operator managing one CRD (`Tenant`) that provisions a per-tenant ClickHouse credential Secret. Never applied to a live cluster in the environment this was built in — see `/deploy/README.md`'s verification section before trusting it. |
@@ -101,32 +101,48 @@ through a tenant-scoped connection the database's own access control
 enforces — not at the query-compiler layer, since Phase 2's raw-SQL
 escape hatch is opaque to any compiler-injected filter.
 
-**As built, through Phase 4 task 8:**
+**As built, currently:**
 
-- Role-based access control (`api/internal/authz`) is live on `/query`
+- Role-based access control (`api/authz`) is live on `/query`
   and `/dashboards`, resolved via `enterprise-auth` over HTTP.
 - Control-plane tenant scoping is live for dashboards
-  (`api/internal/dashboards`'s store filters every query by the
+  (`api/dashboards`'s store filters every query by the
   authenticated identity's tenant, never a client-supplied field).
 - The `alerting`↔`api` service-identity gap (task 2's finding) is
   closed: a `RoleService` credential, distinct from every human role.
-- **The connection-layer isolation itself — the actual design above —
-  is not built.** `api/internal/querylang/executor.SQLRunner`/
-  `SearchClient` and `search`'s gRPC service carry no tenant field
-  anywhere. There is one shared ClickHouse connection and one shared
-  Tantivy index for every tenant. RBAC controls *who* can run a query;
-  nothing yet controls *what data* that query can see.
-- `deploy/operator`'s `Tenant` CRD manages only the K8s-side artifact (a
-  credential Secret) — it doesn't call ClickHouse or provision anything
-  ClickHouse-side. `enterprise/internal/tenantprovision` (the piece that
-  would) is unbuilt.
+- **ClickHouse connection-layer isolation is built**, but lives in a
+  second binary: `enterprise/internal/tenantprovision` (real `CREATE
+  DATABASE`/`CREATE USER`/`GRANT` against ClickHouse) and
+  `enterprise/internal/chrunner` (a per-tenant connection registry
+  implementing `api/querylang/executor.SQLRunner`, resolving the
+  right tenant's connection from the authenticated identity in request
+  context) are wired into `enterprise/cmd/enterprise-api` — a binary
+  that imports both `api`'s handler packages and enterprise's
+  tenant-aware implementations (the allowed `enterprise → api` import
+  direction; core still never imports `enterprise/`). Real integration
+  tests assert a tenant cannot read another tenant's database by
+  fully-qualified name, and that `system.query_log`/`system.tables`/
+  `SHOW DATABASES` don't leak across tenants either — written but not
+  yet run against a live ClickHouse in this environment, see
+  `/docs/security/threat-model.md` and `/docs/phase-4-runbook.md`'s
+  verification-status sections. Plain `api/cmd/api` still exists,
+  unchanged, with its single shared connection — nothing forces a
+  deployment to run `enterprise-api` instead, and nothing flags it if it
+  doesn't.
+- **Tantivy connection-layer isolation is not built.** `search`'s gRPC
+  service and `proto/sentry/search/v1/search.proto`'s `SearchRequest`
+  still carry no tenant field. Every tenant's free-text queries hit the
+  same shared Tantivy index regardless of which binary serves the
+  request.
+- `deploy/operator`'s `Tenant` CRD still manages only the K8s-side
+  artifact (a credential Secret); the Helm chart has no service
+  definition for `enterprise-api` yet.
 
-Building `enterprise/internal/chrunner` + `internal/searchclient` (the
-tenant-scoped implementations of the two interfaces above) and wiring
-them into `api/internal/queryapi.Handler` in place of the single shared
-connection `api/cmd/api/main.go` opens today is the single largest
-remaining gap between this system and the isolation model it was
-designed to have.
+Building `enterprise/internal/searchclient` (the Tantivy-side sibling of
+`chrunner`) and giving the deployment topology (Helm chart, or at least
+clear documentation) an actual way to route traffic to `enterprise-api`
+instead of `api` are the two largest remaining gaps between this system
+and the isolation model it was designed to have.
 
 ## Licensing boundary
 
@@ -137,7 +153,7 @@ CI by `hack/check-tenant-boundary.sh`, which greps every build for the
 import edge. Where core needs a decision only `enterprise/` can make
 (is this request authorized, what SSO is configured), it calls
 `enterprise-auth` over plain HTTP instead
-(`api/internal/authz.HTTPAuthorizer`, `web`'s `GET /auth/features`) —
+(`api/authz.HTTPAuthorizer`, `web`'s `GET /auth/features`) —
 the same "network boundary, not import boundary" shape `/alerting`↔`api`
 already used before `enterprise/` existed.
 

@@ -74,7 +74,7 @@ func (FreeText) isTerm()   {}
 type TimeExpr struct {
 	Absolute     string
 	IsRelative   bool
-	RelativeSign int    // -1 or +1
+	RelativeSign int // -1 or +1
 	RelativeN    int
 	RelativeUnit string // "s" | "m" | "h" | "d" | "w"
 }

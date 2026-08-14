@@ -46,7 +46,7 @@ spec:
                   key: password
             {{- if .Values.enterprise.enabled }}
             # Turns on authz.RequireRole*/RequireRoleOrService enforcement
-            # on /query and /dashboards -- see api/internal/authz and
+            # on /query and /dashboards -- see api/authz and
             # /docs/phase-4-rbac-design.md. Off (unset) when
             # enterprise.enabled is false, matching every nil-authorizer
             # no-op default in this codebase.

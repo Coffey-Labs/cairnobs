@@ -75,6 +75,13 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 	return id, ok
 }
 
-func withIdentity(ctx context.Context, id Identity) context.Context {
+// WithIdentity attaches an already-resolved Identity to ctx -- exported
+// (not just middleware.go's internal use) so packages that construct
+// their own request context outside an HTTP handler -- e.g. enterprise/
+// internal/chrunner's tests, or a future non-HTTP caller -- can put a
+// real Identity in context the same way RequireRole/RequireRoleOrService
+// do, rather than reaching for an unexported field via reflection or
+// duplicating this one-line function.
+func WithIdentity(ctx context.Context, id Identity) context.Context {
 	return context.WithValue(ctx, identityContextKey{}, id)
 }

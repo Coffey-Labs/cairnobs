@@ -140,18 +140,29 @@ Non-goals for this phase (same discipline as every phase so far):
 
 ## What "done" looks like for Phase 4
 
-**Status: in progress, not shipped.** Through task 8: RBAC enforcement
-(`api/internal/authz`), the `alerting`↔`api` service-identity credential,
-tenant-scoped dashboards, and append-only audit logging are built and
-tested (including live-Postgres verification for audit logging and
-rbacstore). The two items this phase's exit criteria below actually
-hinge on are **not** built: SSO login (OIDC/SAML protocol wiring exists;
-no HTTP login handler calls it) and — the highest-risk one — tenant
-isolation for log data itself (every tenant's `/query` still executes
-against one shared ClickHouse connection and Tantivy index; RBAC
-controls who can query, not what a query can see). Full accounting:
-`/docs/security/threat-model.md`; step-by-step verification procedure
-(not yet run against a live cluster in this environment):
+**Status: in progress, not shipped.** RBAC enforcement (`api/authz`), the
+`alerting`↔`api` service-identity credential, tenant-scoped dashboards,
+append-only audit logging, and — since the second pass on this phase —
+real per-tenant ClickHouse provisioning and query routing
+(`enterprise/internal/tenantprovision`, `enterprise/internal/chrunner`,
+wired into a new `enterprise/cmd/enterprise-api` binary alongside plain
+`api/cmd/api`) are all built and tested — real integration tests exist
+for the ClickHouse pieces, but this environment lost Docker/database
+access partway through the phase, so only the audit-logging guarantees
+were actually confirmed against a live database; the rest is untested
+beyond "compiles, and skips cleanly when no live database is
+configured" (see `/docs/phase-4-runbook.md`'s verification-status
+section). Two things still keep this phase from being done: SSO login
+(OIDC/SAML protocol wiring exists, no
+HTTP login handler calls it), and Tantivy/free-text queries have no
+per-tenant index routing at all (`enterprise-api` closes the ClickHouse
+half of tenant isolation, not the Tantivy half) — plus a deployment gap
+worth naming explicitly: nothing yet forces or even flags whether a
+given deployment is actually running the isolated binary
+(`enterprise-api`) versus the plain single-tenant one (`api`); both
+still exist and nothing currently prevents mixing them up. Full
+accounting: `/docs/security/threat-model.md`; step-by-step verification
+procedure (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit
 bar this phase is aiming at, not a completed state.
 

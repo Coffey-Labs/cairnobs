@@ -20,7 +20,7 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 )
 
-// Claims mirrors api/internal/authz.Identity's fields (TenantID, UserID,
+// Claims mirrors api/authz.Identity's fields (TenantID, UserID,
 // Role as a string) plus the standard registered JWT claims. Role is
 // deliberately a plain string, not enterprise's own type, since its only
 // consumer -- authz.Role -- is defined in core and this package must not

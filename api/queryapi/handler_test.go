@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/authz"
-	"github.com/sentry/sentry/api/internal/querylang/executor"
+	"github.com/sentry/sentry/api/authz"
+	"github.com/sentry/sentry/api/querylang/executor"
 )
 
 type fakeSQLRunner struct {

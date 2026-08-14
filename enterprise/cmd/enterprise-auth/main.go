@@ -3,7 +3,7 @@
 // /docs/phase-4-isolation-design.md and /docs/phase-4-rbac-design.md.
 //
 // Phase 4 task 5 adds session issuance/validation (internal/session) and
-// the POST /internal/authorize endpoint api/internal/authz.HTTPAuthorizer
+// the POST /internal/authorize endpoint api/authz.HTTPAuthorizer
 // calls -- the piece that actually turns on RBAC enforcement in /api.
 // Still deliberately missing: the OIDC/SAML login/callback HTTP handlers
 // that would issue a *human* session after a real IdP round trip, and

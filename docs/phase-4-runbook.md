@@ -8,28 +8,33 @@ logging, and a Kubernetes deployment path. Read those first.
 
 Every prior phase's runbook documents claims **checked against the live
 stack**, not asserted. This one is different, and says so plainly rather
-than papering over it: **this session had no working Docker daemon
-access and no reachable Kubernetes cluster**, so most of what follows is
-a *procedure to run*, not a report of what was already run and passed.
-Two exceptions, genuinely verified live against a real Postgres during
-earlier Phase 4 tasks (see their own doc comments for the exact `docker
-run` invocations):
+than papering over it: for the great majority of this phase's work,
+**there was no working Docker daemon access and no reachable Kubernetes
+cluster**, so most of what follows is a *procedure to run*, not a report
+of what was already run and passed. One genuine exception, verified live
+against a real Postgres earlier in this phase's work (see its own doc
+comments for the exact `docker run` invocations, and note this was
+before the environment lost Docker access, not a claim about this
+runbook's own session):
 
 - `enterprise/internal/audit`'s hash-chain, tamper-detection, and
   concurrent-write guarantees (task 4).
-- `enterprise/internal/rbacstore`'s CRUD, run against a live Postgres
-  the same way.
 
-Everything else below — the auth-enforcement walkthrough, the dashboards
-tenant-scoping fix, the Helm chart, the tenant-operator — has unit/fake-
-client/`helm template` coverage (all passing, see each component's own
-`go test`/`helm lint` output) but has **not** been exercised against a
-real running stack in this session. If you're reading this to decide
-whether Phase 4 is production-ready: it isn't yet, independent of this
-gap — see `/docs/security/threat-model.md`'s headline finding (log-data
-query isolation isn't built). This runbook exists so the first person
-with real Docker/K8s access can actually close the loop, not to claim
-that already happened.
+Everything else — `internal/rbacstore`'s CRUD, the auth-enforcement
+walkthrough, the dashboards tenant-scoping fix, the Helm chart, the
+tenant-operator, and (newest) `internal/tenantprovision`/
+`internal/chrunner`'s live-ClickHouse tests — has unit/fake-client/
+`helm template` coverage (all passing, see each component's own `go
+test`/`helm lint` output, including every `Skip*`-gated integration test
+confirmed to skip cleanly offline) but has **not** been exercised
+against a real running stack. Be specific when citing this runbook: "the
+tests exist and pass structurally" is a true, verified claim; "isolation
+was confirmed against real ClickHouse" is not, yet. If you're reading
+this to decide whether Phase 4 is production-ready: it isn't yet,
+independent of this gap — see `/docs/security/threat-model.md`'s
+headline finding. This runbook exists so the first person with real
+Docker/K8s access can actually close the loop, not to claim that already
+happened.
 
 ## 1. Bring up the stack
 
@@ -172,28 +177,74 @@ kubectl get secret sentry-tenant-acme-clickhouse -o yaml
 Expect `kubectl get tenants` to show `acme` reach `status.phase: Active`
 and the Secret to contain a generated `username`/`password`/`database`.
 This proves the K8s-side half of a real two-tenant deployment — it does
-**not** prove either tenant has a working ClickHouse database, since
-`enterprise/internal/tenantprovision` (the piece that would create one)
-isn't built. See `/deploy/README.md` and
-`/docs/security/threat-model.md`.
+**not** provision a working ClickHouse database itself (the Operator
+manages the K8s Secret only); §8 below is the piece that actually
+provisions ClickHouse.
+
+## 8. `enterprise-api`: real per-tenant ClickHouse isolation
+
+This is new since this runbook was first written — `enterprise/internal/
+tenantprovision` and `enterprise/internal/chrunner` now exist, closing
+the headline gap §"Known gaps" below used to describe as completely
+unbuilt. It's still a second binary you have to choose to run, though —
+see `/docs/security/threat-model.md`'s "Read this first" section.
+
+```sh
+docker compose build enterprise-api
+docker compose run --rm enterprise-api -provision-tenant=acme -display-name="Acme Corp"
+docker compose run --rm enterprise-api -provision-tenant=globex -display-name="Globex Corporation"
+docker compose up -d enterprise-api
+curl -s http://localhost:8083/healthz
+```
+
+There's still no OIDC/SAML login handler and no CLI for minting a human
+session token (see `/docs/security/threat-model.md`) -- so a real
+`curl -X POST http://localhost:8083/query` walkthrough as tenant acme
+isn't possible yet. Confirm isolation end to end against the live stack (this is the same
+assertion `enterprise/internal/chrunner/chrunner_test.go`'s
+`TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL` makes, run here
+as an integration test instead of a curl walkthrough since there's no
+login flow to drive it through curl yet):
+
+```sh
+docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+  -e CHRUNNER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
+  -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=sentry-dev-only \
+  golang:1.25-alpine go test ./internal/chrunner/... -v
+
+docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+  -e TENANTPROVISION_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
+  -e TENANTPROVISION_TEST_CLICKHOUSE_PASSWORD=sentry-dev-only \
+  golang:1.25-alpine go test ./internal/tenantprovision/... -v
+```
+
+Expect all tests to pass, including
+`TestProvisionedUserCannotReadSystemTables` (item 2 of
+`/docs/phase-4-isolation-design.md`'s verification plan, closed this
+pass) and `TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL` (item 1,
+closed through the actual production code path, not just
+tenantprovision's raw grants).
 
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
 
-- **No tenant isolation on log data.** `POST /query` executes against
-  one shared ClickHouse connection and one shared Tantivy index for
-  every tenant, regardless of RBAC. This is Phase 4's originally-stated
-  highest-risk item and it is not resolved.
+- **ClickHouse isolation exists but is opt-in.** `enterprise-api`
+  (§8) gives real per-tenant ClickHouse isolation, but plain `api`
+  (still the default in `docker-compose.yml`/`web`'s base URL) has none,
+  and nothing flags which one a given deployment is actually running.
+- **No Tantivy/free-text isolation at all**, regardless of which binary
+  serves the request -- `enterprise/internal/searchclient` (chrunner's
+  Tantivy-side sibling) doesn't exist.
 - **No human SSO login.** OIDC/SAML protocol wiring exists;
   the HTTP login/callback handlers that would use it don't.
 - **No per-resource dashboard grants** (`dashboard_permissions` has a
   schema, no handler reads it).
-- Four adversarial ClickHouse/Tantivy probes named in
-  `/docs/phase-4-isolation-design.md`'s verification plan are stubbed as
-  explicitly-skipped tests in `api/internal/queryapi/
-  tenant_isolation_gap_test.go`, blocked on the tenant-scoped connection
-  work above.
+- Two of the four adversarial ClickHouse/Tantivy probes named in
+  `/docs/phase-4-isolation-design.md`'s verification plan are closed
+  (§8); the other two (Tantivy cross-tenant search, mid-provisioning-race
+  handling) are still stubbed as explicitly-skipped tests in
+  `api/queryapi/tenant_isolation_gap_test.go`.
 
 ## Tearing down
 
@@ -214,13 +265,13 @@ be too.
 set.**
 Check `api/cmd/api/main.go` actually left `authorizer` nil when
 `cfg.EnterpriseAuthURL == ""` — a nil `Authorizer` must be a no-op
-(`api/internal/authz.RequireRole`'s doc comment). If this regresses, it
+(`api/authz.RequireRole`'s doc comment). If this regresses, it
 breaks every existing Phase 0-3 deployment silently.
 
 **A dashboard created by one tenant is visible to another.**
 This is the exact bug found and fixed in task 7 — see
 `/docs/security/threat-model.md`'s "application-layer tenant scoping"
-section and `api/internal/dashboards/handler_test.go`'s
+section and `api/dashboards/handler_test.go`'s
 `TestCrossTenant*` tests. If this regresses, `Handler.tenantID` or
 `store.go`'s `WHERE tenant_id = ...` filters have been bypassed
 somewhere — check every store method still takes and uses a `tenantID`

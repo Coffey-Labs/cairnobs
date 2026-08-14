@@ -225,3 +225,124 @@ func TestListMembershipsForUserAcrossTenants(t *testing.T) {
 		t.Fatalf("got %d memberships, want 2: %+v", len(memberships), memberships)
 	}
 }
+
+func TestCreateDataSourceThenSetCredentials(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+
+	ds, err := s.CreateDataSource(ctx, tenantID, "default", tenantID, "/var/lib/sentry-search/tenants/"+tenantID)
+	if err != nil {
+		t.Fatalf("CreateDataSource: %v", err)
+	}
+	if ds.ClickHouseUsername != nil || ds.ClickHousePassword != nil {
+		t.Fatalf("new data source must have no credentials yet, got %+v", ds)
+	}
+
+	got, err := s.GetDataSourceForTenant(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("GetDataSourceForTenant: %v", err)
+	}
+	if got.ID != ds.ID || got.ClickHouseUsername != nil {
+		t.Fatalf("unexpected data source: %+v", got)
+	}
+
+	if err := s.SetDataSourceClickHouseCredentials(ctx, ds.ID, "tenant_"+tenantID, "secret-password"); err != nil {
+		t.Fatalf("SetDataSourceClickHouseCredentials: %v", err)
+	}
+	got, err = s.GetDataSourceForTenant(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("GetDataSourceForTenant after credentials set: %v", err)
+	}
+	if got.ClickHouseUsername == nil || *got.ClickHouseUsername != "tenant_"+tenantID {
+		t.Fatalf("ClickHouseUsername = %v, want tenant_%s", got.ClickHouseUsername, tenantID)
+	}
+	if got.ClickHousePassword == nil || *got.ClickHousePassword != "secret-password" {
+		t.Fatalf("ClickHousePassword = %v, want secret-password", got.ClickHousePassword)
+	}
+}
+
+func TestSetDataSourceClickHouseCredentialsNotFound(t *testing.T) {
+	s := testStore(t)
+	if err := s.SetDataSourceClickHouseCredentials(context.Background(), "does-not-exist-"+uniqueSuffix(), "u", "p"); err != ErrNotFound {
+		t.Fatalf("SetDataSourceClickHouseCredentials error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestGetDataSourceForTenantNotFound(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.GetDataSourceForTenant(context.Background(), "does-not-exist-"+uniqueSuffix()); err != ErrNotFound {
+		t.Fatalf("GetDataSourceForTenant error = %v, want ErrNotFound", err)
+	}
+}
+
+// TestListProvisionedDataSourcesExcludesUnprovisionedAndInactive proves
+// the two filters ListProvisionedDataSources documents: a data source
+// with no ClickHouse credentials yet is excluded (nothing safe to
+// connect with), and a data source belonging to a non-active tenant is
+// excluded too (a suspended/provisioning tenant must not show up in
+// chrunner's connection registry).
+func TestListProvisionedDataSourcesExcludesUnprovisionedAndInactive(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	activeProvisioned := "test-tenant-" + uniqueSuffix()
+	activeUnprovisioned := "test-tenant-" + uniqueSuffix()
+	suspended := "test-tenant-" + uniqueSuffix()
+
+	for _, id := range []string{activeProvisioned, activeUnprovisioned, suspended} {
+		if _, err := s.CreateTenant(ctx, id, id); err != nil {
+			t.Fatalf("CreateTenant %s: %v", id, err)
+		}
+	}
+	if err := s.SetTenantStatus(ctx, activeProvisioned, "active"); err != nil {
+		t.Fatalf("SetTenantStatus activeProvisioned: %v", err)
+	}
+	if err := s.SetTenantStatus(ctx, activeUnprovisioned, "active"); err != nil {
+		t.Fatalf("SetTenantStatus activeUnprovisioned: %v", err)
+	}
+	// suspended stays in 'provisioning' (CreateTenant's default) -- not active.
+
+	dsProvisioned, err := s.CreateDataSource(ctx, activeProvisioned, "default", activeProvisioned, "/idx")
+	if err != nil {
+		t.Fatalf("CreateDataSource activeProvisioned: %v", err)
+	}
+	if err := s.SetDataSourceClickHouseCredentials(ctx, dsProvisioned.ID, "u", "p"); err != nil {
+		t.Fatalf("SetDataSourceClickHouseCredentials: %v", err)
+	}
+
+	if _, err := s.CreateDataSource(ctx, activeUnprovisioned, "default", activeUnprovisioned, "/idx"); err != nil {
+		t.Fatalf("CreateDataSource activeUnprovisioned: %v", err)
+	}
+
+	dsSuspended, err := s.CreateDataSource(ctx, suspended, "default", suspended, "/idx")
+	if err != nil {
+		t.Fatalf("CreateDataSource suspended: %v", err)
+	}
+	if err := s.SetDataSourceClickHouseCredentials(ctx, dsSuspended.ID, "u", "p"); err != nil {
+		t.Fatalf("SetDataSourceClickHouseCredentials suspended: %v", err)
+	}
+
+	list, err := s.ListProvisionedDataSources(ctx)
+	if err != nil {
+		t.Fatalf("ListProvisionedDataSources: %v", err)
+	}
+	foundOurs := false
+	for _, ds := range list {
+		if ds.TenantID == activeUnprovisioned {
+			t.Fatalf("unprovisioned data source leaked into the list: %+v", ds)
+		}
+		if ds.TenantID == suspended {
+			t.Fatalf("non-active tenant's data source leaked into the list: %+v", ds)
+		}
+		if ds.TenantID == activeProvisioned {
+			foundOurs = true
+		}
+	}
+	if !foundOurs {
+		t.Fatal("expected the active, provisioned data source to be in the list")
+	}
+}

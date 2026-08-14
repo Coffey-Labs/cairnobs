@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sentry/sentry/api/internal/authz"
+	"github.com/sentry/sentry/api/authz"
 )
 
 // fakeStore enforces tenant scoping the same way store.go's real
@@ -431,7 +431,7 @@ func TestCreateDashboardStoreErrorReturns500(t *testing.T) {
 
 // TestServiceIdentityCannotAccessDashboards is the other half of the
 // service-identity boundary (the /query half is
-// api/internal/queryapi's own tests) -- api/internal/authz's own tests
+// api/queryapi's own tests) -- api/authz's own tests
 // already prove RequireRole rejects RoleService in isolation
 // (TestRequireRolePlainDoesNotAllowService); this proves it holds
 // through the real dashboards handler, wired the way it's actually

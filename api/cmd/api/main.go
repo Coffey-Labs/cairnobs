@@ -1,7 +1,7 @@
 // Command api is Sentry's query API: a single POST /query endpoint
 // accepting either the pipe syntax or raw SQL, compiled and routed
 // across ClickHouse and search by internal/querylang. See
-// internal/queryapi and /docs/query-language-design.md for why this is
+// queryapi and /docs/query-language-design.md for why this is
 // plain REST rather than the pinned gRPC+gateway pattern.
 package main
 
@@ -19,13 +19,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/internal/authz"
+	"github.com/sentry/sentry/api/authz"
+	"github.com/sentry/sentry/api/dashboards"
+	"github.com/sentry/sentry/api/httpserver"
 	"github.com/sentry/sentry/api/internal/config"
-	"github.com/sentry/sentry/api/internal/dashboards"
-	"github.com/sentry/sentry/api/internal/httpserver"
-	"github.com/sentry/sentry/api/internal/queryapi"
-	"github.com/sentry/sentry/api/internal/querylang/executor"
-	"github.com/sentry/sentry/api/internal/searchclient"
+	"github.com/sentry/sentry/api/queryapi"
+	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/sentry/sentry/api/searchclient"
 )
 
 func main() {
@@ -104,7 +104,7 @@ func main() {
 	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer)
 
 	// One shared mux, CORS applied once around the whole thing -- see
-	// internal/httpserver's doc comment for why this changed from each
+	// httpserver's doc comment for why this changed from each
 	// handler wrapping itself individually.
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux)
