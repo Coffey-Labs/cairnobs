@@ -41,6 +41,13 @@ type Config struct {
 	// "never break a simpler deployment shape" reasoning used
 	// throughout this codebase.
 	EnterpriseAuthURL string
+	// TenantCRDNamespace enables enterprise/internal/tenantcrd syncing
+	// for -provision-tenant (cmd/enterprise-api/main.go's
+	// runProvisionTenant) -- empty (the default) means skip it entirely,
+	// same "off unless configured" shape as EnterpriseAuthURL above.
+	// Deployments with no Kubernetes cluster at all (docker-compose)
+	// never set this.
+	TenantCRDNamespace string
 }
 
 type ClickHouseAdminConfig struct {
@@ -81,9 +88,10 @@ func Load() (Config, error) {
 			Username: getenv("AUDIT_WRITER_USERNAME", "audit_writer"),
 			Password: getenv("AUDIT_WRITER_PASSWORD", ""),
 		},
-		SearchGRPCAddr:    getenv("SEARCH_GRPC_ADDR", "localhost:50052"),
-		CORSAllowedOrigin: getenv("CORS_ALLOWED_ORIGIN", "*"),
-		EnterpriseAuthURL: getenv("ENTERPRISE_AUTH_URL", ""),
+		SearchGRPCAddr:     getenv("SEARCH_GRPC_ADDR", "localhost:50052"),
+		CORSAllowedOrigin:  getenv("CORS_ALLOWED_ORIGIN", "*"),
+		EnterpriseAuthURL:  getenv("ENTERPRISE_AUTH_URL", ""),
+		TenantCRDNamespace: getenv("TENANT_CRD_NAMESPACE", ""),
 	}
 
 	timeoutSec, err := strconv.Atoi(getenv("QUERY_TIMEOUT_SECONDS", "30"))

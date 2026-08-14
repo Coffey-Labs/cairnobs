@@ -146,23 +146,29 @@ escape hatch is opaque to any compiler-injected filter.
   query time — and permanently empty until something upstream of
   `chrunner`/`searchclient` becomes tenant-aware on the write side,
   which is undesigned, not merely unbuilt.
-- `deploy/operator`'s `Tenant` CRD still manages only the K8s-side
-  artifact (a credential Secret); it doesn't call
-  `enterprise-api -provision-tenant` or otherwise trigger ClickHouse-side
-  provisioning. The two mechanisms are independent today, not reconciled
-  into one state machine.
+- `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
+  are now unified, deliberately lightweight: `-provision-tenant` stays
+  the sole real actor (ClickHouse + `rbacstore`), and now also syncs its
+  real result into the `Tenant` CRD (`enterprise/internal/tenantcrd`) --
+  a real credential Secret, and status fields the reconciler
+  (`deploy/operator/internal/controller`) derives `Phase`/`Ready` from
+  rather than independently guessing. The reconciler itself gained no
+  new credentials and still never touches ClickHouse/Postgres.
 
-**The deployment-topology gap is closed for the Helm chart**: `deploy/
-helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are mutually
-exclusive on `enterprise.enabled`, rendering to the same Service name
-and port either way, so a Helm-deployed cluster can't accidentally run
-the wrong binary — the same flag that turns on RBAC/audit/SSO now also
-chooses the query binary. `docker-compose.yml` still runs plain `api`
-unconditionally, so this enforcement doesn't yet extend to local/dev.
-With both storage engines' connection/index-layer mechanisms built and
-deployment topology enforced at the Helm layer, the largest remaining
-gaps are ingest's lack of tenant-awareness (undesigned) and unifying the
-`Tenant` CRD with `-provision-tenant` into one provisioning flow.
+**The deployment-topology gap is closed for both Helm and
+docker-compose**: `deploy/helm/sentry/templates/api.yaml`/
+`enterprise-api.yaml` are mutually exclusive on `enterprise.enabled`,
+rendering to the same Service name and port either way, so a
+Helm-deployed cluster can't accidentally run the wrong binary — the same
+flag that turns on RBAC/audit/SSO now also chooses the query binary.
+`docker-compose.yml`'s `api`/`enterprise-api` services are the same
+mutually-exclusive choice via `COMPOSE_PROFILES` (`.env` defaults to
+plain `api`), sharing a host-port/network-alias trick so `alerting`/
+`web` need no conditional config either way. With both storage engines'
+connection/index-layer mechanisms built, deployment topology enforced at
+both the Helm and docker-compose layers, and the two provisioning
+mechanisms unified, the largest remaining gap is ingest's lack of
+tenant-awareness, which is undesigned, not merely unbuilt.
 
 ## Licensing boundary
 

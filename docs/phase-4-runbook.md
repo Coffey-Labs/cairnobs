@@ -482,6 +482,45 @@ against a real daemon in this environment — the `config` rendering above
 proves the compose file's *shape* is correct, not that containers
 actually start and route traffic correctly end to end.
 
+## 11. `Tenant` CRD unified with `-provision-tenant`
+
+`deploy/helm/sentry/README.md`'s "Trying the two-tenant example" section
+has the full `helm install` → `-provision-tenant` → `kubectl get
+tenants` walkthrough. What was actually run in this environment (no
+live cluster, same limitation as §10):
+
+```sh
+cd enterprise && go test ./internal/tenantcrd/... -v
+# real k8s.io/client-go fake dynamic + typed clientsets, no cluster
+# needed -- proves Sync() creates/updates the Tenant object and Secret
+# correctly, is idempotent, never overwrites a pre-existing
+# spec.displayName, and never rotates a credential across a re-sync.
+
+cd deploy/operator && go test ./... -v
+# tenant_controller_test.go rewritten for the new split: proves an
+# unprovisioned tenant reports Provisioning (not Active -- the
+# regression test for the pre-unification bug where this controller
+# claimed Active on its own say-so), that setting
+# status.clickHouseDatabaseName (simulating what -provision-tenant
+# writes) flips it to Active, and that un-suspending an
+# already-provisioned tenant returns straight to Active rather than
+# being demoted to Provisioning.
+```
+
+Helm-side wiring confirmed via `helm template` + parsing the rendered
+YAML (not eyeballing it): with `tenantOperator.enabled=true`,
+`enterprise-api` gets its own ServiceAccount/Role/RoleBinding scoped to
+exactly `tenants`/`tenants/status`/`secrets`, `tenant-operator`'s own
+ClusterRole no longer grants `secrets` at all, and `TENANT_CRD_NAMESPACE`
+is only set on `enterprise-api`'s container when `tenantOperator.enabled`
+is true (absent, and the ServiceAccount/Role absent too, with just
+`enterprise.enabled=true`). **Not verified**: an actual `-provision-tenant`
+run against a real cluster with the operator watching -- everything
+above proves each half's logic and the chart's shape independently, not
+the full loop (does the operator's watch actually re-trigger a reconcile
+after `-provision-tenant`'s external status write the way controller-
+runtime's default predicate is expected to).
+
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
@@ -494,10 +533,18 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   is set. `docker-compose.yml`'s `api`/`enterprise-api` services are now
   the same mutually-exclusive choice via `COMPOSE_PROFILES` (§8, §10a),
   closing the local/dev parity gap this bullet used to name.
-- The `Tenant` CRD (`deploy/operator`) and `enterprise-api
-  -provision-tenant` are still two independent provisioning mechanisms
-  -- running both for the same tenant ID today takes two separate
-  operator actions, not one.
+- **The `Tenant` CRD (`deploy/operator`) and `enterprise-api
+  -provision-tenant` are now unified**, in a deliberately lightweight
+  way: `-provision-tenant` stays the sole real actor (ClickHouse +
+  `rbacstore`) and, when `TENANT_CRD_NAMESPACE` is set (the Helm chart
+  does this automatically when `tenantOperator.enabled`), also syncs the
+  real result into the Tenant CRD (`enterprise/internal/tenantcrd`) --
+  see §11 below. Running `-provision-tenant` is still a separate,
+  deliberately manual operator action from `helm install`/`kubectl
+  apply -f tenant.yaml` creating the Tenant object in the first place --
+  that split (declarative request vs. imperative provisioning action)
+  is intentional, not the "two disconnected sources of truth" gap this
+  bullet used to describe.
 - **Ingest has no tenant concept for either storage engine.** Every
   record `ingest` produces lands in the one shared ClickHouse database
   and the one shared Tantivy index no matter what. A newly-provisioned

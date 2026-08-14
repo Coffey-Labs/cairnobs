@@ -12,6 +12,54 @@ routes to whichever Deployment is actually rendered, with zero
 conditional logic needed in any consumer (alerting, web).
 */}}
 {{- if .Values.enterprise.enabled }}
+{{- if .Values.tenantOperator.enabled }}
+# Grants enterprise-api's -provision-tenant (enterprise/internal/
+# tenantcrd) permission to sync real provisioning results into the
+# Tenant CRD -- a Role, not a ClusterRole (unlike tenant-operator's:
+# this binary only ever provisions tenants that live in its own release
+# namespace, no reason to widen it), scoped to exactly the two resource
+# types tenantcrd.Syncer touches. Only rendered when tenantOperator is
+# also enabled -- no Tenant CRD installed, nothing to sync into.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-enterprise-api
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-enterprise-api
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["sentry.io"]
+    resources: ["tenants"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: ["sentry.io"]
+    resources: ["tenants/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-enterprise-api
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-enterprise-api
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-enterprise-api
+    namespace: {{ .Release.Namespace }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +78,9 @@ spec:
       labels:
         {{- include "sentry.selectorLabels" (list $ "api") | nindent 8 }}
     spec:
+      {{- if .Values.tenantOperator.enabled }}
+      serviceAccountName: {{ .Release.Name }}-enterprise-api
+      {{- end }}
       initContainers:
         {{- include "sentry.waitForTCP" (list "clickhouse" (printf "%s-clickhouse" .Release.Name) "9000") | nindent 8 }}
         {{- include "sentry.waitForTCP" (list "postgres" (printf "%s-postgres" .Release.Name) "5432") | nindent 8 }}
@@ -84,6 +135,16 @@ spec:
                   key: auditWriterPassword
             - name: ENTERPRISE_AUTH_URL
               value: "http://{{ .Release.Name }}-enterprise-auth:8082"
+            {{- if .Values.tenantOperator.enabled }}
+            # Enables enterprise/internal/tenantcrd -- -provision-tenant
+            # (run via `kubectl exec` into this Deployment's Pod, using
+            # its ServiceAccount/Role above) syncs real provisioning
+            # results into the Tenant CRD this namespace's tenants live
+            # in. Unset (the default, when tenantOperator isn't enabled)
+            # is a documented no-op -- see apiconfig.Config.TenantCRDNamespace.
+            - name: TENANT_CRD_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080

@@ -21,26 +21,43 @@ map of per-tenant ClickHouse connection pools via `internal/chrunner`;
 that's an explicit Phase 4 non-goal (see `/CLAUDE.md`). What it *does*
 add:
 
-- A `Tenant` CRD + controller that generates and manages one dedicated
-  ClickHouse credential Secret per tenant (`operator/internal/controller`).
+- A `Tenant` CRD + controller (`operator/internal/controller`) that
+  reflects real provisioning state onto `status.phase`/a `Ready`
+  condition, derived from whether `enterprise-api -provision-tenant` has
+  reported real ClickHouse provisioning.
 - A Helm chart that can install zero-or-more `Tenant` CRs
-  (`values.tenants`) alongside the rest of the stack, and — the newer
-  piece — swaps `api`'s Deployment for `enterprise-api`'s whenever
-  `enterprise.enabled` is true, so which query binary actually serves
-  traffic is no longer a separately-forgettable decision (see
-  `helm/sentry/README.md`'s "`api` vs `enterprise-api`" section).
+  (`values.tenants`) alongside the rest of the stack, and swaps `api`'s
+  Deployment for `enterprise-api`'s whenever `enterprise.enabled` is
+  true, so which query binary actually serves traffic is no longer a
+  separately-forgettable decision (see `helm/sentry/README.md`'s "`api`
+  vs `enterprise-api`" section).
 
-**Two still-separate mechanisms, not yet unified**: the Operator's
-`Tenant` CRD manages only the K8s-side credential Secret — it does not
-call ClickHouse (no `CREATE DATABASE`/`CREATE USER`/`GRANT`) or touch
-the Tantivy filesystem. `enterprise-api -provision-tenant=<id>` is what
-actually does that (`enterprise/internal/tenantprovision`, built and
-tested — see `/enterprise/README.md`), driven independently via
-`rbacstore`, not from the `Tenant` CRD's reconcile loop. A `Tenant`
-reaching `status.phase: Active` here means "this tenant has a K8s
-Secret," not "this tenant's ClickHouse database/grants exist" — running
-both mechanisms for the same tenant ID today requires two separate
-operator actions, named explicitly rather than implied to be one.
+**Now unified, in a deliberately lightweight way**: `enterprise-api
+-provision-tenant=<id>` stays the sole real actor — it's the only thing
+that calls ClickHouse (`CREATE DATABASE`/`CREATE USER`/`GRANT`, via
+`enterprise/internal/tenantprovision`) and writes `rbacstore`. What
+changed: once it succeeds, it also syncs the result into the `Tenant`
+CRD (`enterprise/internal/tenantcrd`) — creating the Secret with *real*
+credentials (the controller no longer generates a placeholder one that
+authenticated against nothing) and setting the status fields the
+controller reads to compute `Phase`/`Ready`. The controller itself
+gained no new credentials and still never touches ClickHouse/Postgres --
+it's a pure function of `spec.suspended` and whatever
+`-provision-tenant` has reported, never an independent second guess at
+"is this tenant really provisioned." A `Tenant` reaching
+`status.phase: Active` now means the same thing `rbacstore.tenants.
+status='active'` does, not two different claims — see
+`enterprise/internal/tenantcrd`'s and `operator/internal/controller/
+tenant_controller.go`'s doc comments for the full split, and
+`enterprise-api -provision-tenant`'s `TENANT_CRD_NAMESPACE` env var
+(set automatically by the Helm chart when `tenantOperator.enabled`) to
+turn this on. Deliberately not built: the operator's reconcile loop
+itself calling ClickHouse/rbacstore directly (a "full unification"
+option considered and set aside — it would give the operator two new
+credential sets and require real reconcile-loop idempotency design for
+an inherently one-shot external side effect, a bigger and riskier
+change than this repo's provisioning story needed to close the actual
+gap, which was two *disconnected* sources of truth, not two actors).
 
 ## Verification status -- read before trusting this against a real cluster
 
@@ -59,6 +76,15 @@ access was available to fetch these tools, but no cluster):
   (`internal/controller/tenant_controller_test.go`) -- real reconcile
   logic exercised, but not against a real apiserver (no `envtest`
   binaries available; see that test file's doc comment).
+- `enterprise/internal/tenantcrd` (the "lightweight unification"
+  half `-provision-tenant` runs): `go test` passes against
+  `k8s.io/client-go`'s fake dynamic and typed clientsets -- real client
+  library, fake transport, same shape as `enterprise/internal/
+  searchclient`'s in-process gRPC tests. What this doesn't prove: that
+  `sentry.io/v1alpha1.Tenant`'s real CRD schema (a real apiserver's
+  OpenAPI validation) accepts exactly what this package writes -- the
+  `helm template`/kubeconform check below covers the schema shape, not
+  a live write against it.
 - `deploy/operator/config/crd/sentry.io_tenants.yaml`: parsed with
   `sigs.k8s.io/yaml` + strict-unmarshaled into the real
   `k8s.io/apiextensions-apiserver` `CustomResourceDefinition` Go type --
@@ -76,7 +102,13 @@ access was available to fetch these tools, but no cluster):
   parsing the rendered YAML (not just eyeballing it): exactly one
   `Deployment`/`Service` named `sentry-api` renders in each mode, with
   the `enterprise.enabled: true` render using the `enterprise-api` image
-  and the default render using plain `api`'s.
+  and the default render using plain `api`'s. Also confirmed for the
+  `tenantOperator.enabled: true` case: `enterprise-api` gets its own
+  ServiceAccount/Role/RoleBinding (exactly `tenants`/`tenants/status`/
+  `secrets`, no more), `tenant-operator`'s own ClusterRole no longer
+  grants `secrets` at all, and `TENANT_CRD_NAMESPACE` is set on
+  `enterprise-api`'s container only when `tenantOperator.enabled` is
+  true.
 - Docker image builds (`operator/Dockerfile` and every other
   `Dockerfile` this chart references) were **not** verified in this
   session -- Docker's daemon wasn't reachable here either (see the

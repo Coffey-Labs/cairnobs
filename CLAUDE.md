@@ -213,14 +213,19 @@ stricter still (creator/Admin/Owner only, closing a self-escalation
 path). Verified against a fake store (`api/dashboards/handler_test.go`);
 real integration tests exist but haven't run against a live Postgres,
 same disclosed gap as the rest of this phase's Postgres-backed pieces.
-What still keeps this phase from being done: ingest itself has no
-tenant concept for either storage engine (every record lands in the one
-shared ClickHouse database and Tantivy index no matter what —
-undesigned, not just unbuilt), and the two
-provisioning mechanisms (`deploy/operator`'s `Tenant` CRD and
-`enterprise-api -provision-tenant`) still aren't unified — running both
-for the same tenant ID is two separate operator actions today. Full
-accounting:
+`deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
+are now unified too, deliberately lightweight rather than making the
+K8s controller a second real actor: `-provision-tenant` stays the sole
+caller of ClickHouse/`rbacstore`, and (via a new
+`enterprise/internal/tenantcrd`, gated on `TENANT_CRD_NAMESPACE`) syncs
+its real result into the CRD — a real credential Secret, not the
+previous placeholder that authenticated against nothing, and status
+fields the reconciler derives `Phase`/`Ready` from instead of
+independently guessing "Active" the moment a Tenant object exists. What
+still keeps this phase from being done: ingest itself has no tenant
+concept for either storage engine (every record lands in the one shared
+ClickHouse database and Tantivy index no matter what — undesigned, not
+just unbuilt). Full accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit
