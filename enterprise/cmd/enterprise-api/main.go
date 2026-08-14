@@ -17,13 +17,14 @@
 // keeps running plain api/cmd/api, unchanged; a real multi-tenant
 // deployment runs this one instead.
 //
-// Not built yet: the actual K8s/Helm wiring to run this binary in place
-// of api's (docker-compose.yml adds it available, not defaulted into
-// the traffic path, same shape as enterprise-auth's own addition in
-// Phase 4 task 5), and `search`'s write side (ingest, and by extension
-// the Redpanda consumer search itself runs) is still not tenant-aware --
-// see enterprise/internal/searchclient and search/src/registry.rs's doc
-// comments, and /docs/security/threat-model.md.
+// Both Helm (deploy/helm/sentry/templates/api.yaml vs
+// enterprise-api.yaml) and docker-compose.yml (COMPOSE_PROFILES) now
+// make this the deployment-topology choice, not just a binary sitting
+// unused alongside api's -- see this repo's CLAUDE.md. `search`'s write
+// side (ingest, and by extension the Redpanda consumer search itself
+// runs) is still not tenant-aware -- see enterprise/internal/searchclient
+// and search/src/registry.rs's doc comments, and
+// /docs/security/threat-model.md.
 package main
 
 import (
@@ -51,6 +52,7 @@ import (
 	"github.com/sentry/sentry/enterprise/internal/chrunner"
 	"github.com/sentry/sentry/enterprise/internal/rbacstore"
 	"github.com/sentry/sentry/enterprise/internal/searchclient"
+	"github.com/sentry/sentry/enterprise/internal/tenantcrd"
 	"github.com/sentry/sentry/enterprise/internal/tenantprovision"
 )
 
@@ -193,6 +195,18 @@ func main() {
 // and only then mark the tenant active. Same "offline operator action,
 // not a network-reachable endpoint" shape as enterprise-auth's
 // -mint-service-token.
+//
+// If cfg.TenantCRDNamespace is set, this also syncs the real result into
+// the Tenant CRD (enterprise/internal/tenantcrd) -- the "lightweight
+// unification" of this mechanism with deploy/operator's Tenant CRD (see
+// that package's doc comment). An already-active tenant no longer
+// refuses outright: ClickHouse (re-)provisioning is still refused (that
+// part is unchanged -- rotating a live credential would break every
+// open connection for no benefit), but CR sync alone is safe to retry
+// using the credentials already on file in rbacstore, which matters if
+// a previous run's CR sync failed (or TENANT_CRD_NAMESPACE is being
+// turned on for a tenant provisioned before this feature existed) and
+// needs to be retried without touching ClickHouse again.
 func runProvisionTenant(ctx context.Context, logger *slog.Logger, cfg apiconfig.Config, rbac *rbacstore.Store, tenantID, displayName string) int {
 	adminConn, err := chdriver.Open(&chdriver.Options{
 		Addr: []string{cfg.ClickHouseAddr},
@@ -221,9 +235,10 @@ func runProvisionTenant(ctx context.Context, logger *slog.Logger, cfg apiconfig.
 		}
 		logger.Info("created tenant row", "tenant_id", tenantID)
 	}
-	if tenant.Status == "active" {
-		logger.Error("tenant is already active -- refusing to re-provision (would rotate a live credential)", "tenant_id", tenantID)
-		return 1
+
+	alreadyActive := tenant.Status == "active"
+	if alreadyActive {
+		logger.Info("tenant is already active -- skipping ClickHouse (re-)provisioning, will still sync the Tenant CRD if TENANT_CRD_NAMESPACE is set", "tenant_id", tenantID)
 	}
 
 	dataSource, err := rbac.GetDataSourceForTenant(ctx, tenantID)
@@ -232,32 +247,64 @@ func runProvisionTenant(ctx context.Context, logger *slog.Logger, cfg apiconfig.
 			logger.Error("getting data source", "error", err)
 			return 1
 		}
+		if alreadyActive {
+			// An active tenant with no data_sources row at all is
+			// inconsistent state runProvisionTenant's own gate should
+			// never have allowed -- fail loudly rather than silently
+			// provisioning ClickHouse for a tenant already marked
+			// active, which SetDataSourceClickHouseCredentials's own
+			// doc comment says must never happen twice.
+			logger.Error("tenant is active but has no data source row -- inconsistent state, refusing", "tenant_id", tenantID)
+			return 1
+		}
 		dataSource, err = rbac.CreateDataSource(ctx, tenantID, "default", tenantID, "/var/lib/sentry-search/tenants/"+tenantID)
 		if err != nil {
 			logger.Error("creating data source", "error", err)
 			return 1
 		}
 	}
-	if dataSource.ClickHouseUsername != nil {
-		logger.Error("data source already has ClickHouse credentials -- refusing to re-provision", "tenant_id", tenantID)
-		return 1
+
+	var creds tenantprovision.Credentials
+	if alreadyActive {
+		if dataSource.ClickHouseUsername == nil || dataSource.ClickHousePassword == nil {
+			logger.Error("tenant is active but its data source has no ClickHouse credentials -- inconsistent state, refusing", "tenant_id", tenantID)
+			return 1
+		}
+		creds = tenantprovision.Credentials{Username: *dataSource.ClickHouseUsername, Password: *dataSource.ClickHousePassword}
+	} else {
+		if dataSource.ClickHouseUsername != nil {
+			logger.Error("data source already has ClickHouse credentials -- refusing to re-provision", "tenant_id", tenantID)
+			return 1
+		}
+		creds, err = tenantprovision.New(adminConn).ProvisionClickHouse(ctx, tenantID)
+		if err != nil {
+			logger.Error("provisioning clickhouse", "error", err)
+			return 1
+		}
+		if err := rbac.SetDataSourceClickHouseCredentials(ctx, dataSource.ID, creds.Username, creds.Password); err != nil {
+			logger.Error("persisting clickhouse credentials", "error", err)
+			return 1
+		}
+		if err := rbac.SetTenantStatus(ctx, tenantID, "active"); err != nil {
+			logger.Error("activating tenant", "error", err)
+			return 1
+		}
+		logger.Info("tenant provisioned and active", "tenant_id", tenantID, "clickhouse_database", tenantID, "clickhouse_username", creds.Username)
 	}
 
-	creds, err := tenantprovision.New(adminConn).ProvisionClickHouse(ctx, tenantID)
-	if err != nil {
-		logger.Error("provisioning clickhouse", "error", err)
-		return 1
-	}
-	if err := rbac.SetDataSourceClickHouseCredentials(ctx, dataSource.ID, creds.Username, creds.Password); err != nil {
-		logger.Error("persisting clickhouse credentials", "error", err)
-		return 1
-	}
-	if err := rbac.SetTenantStatus(ctx, tenantID, "active"); err != nil {
-		logger.Error("activating tenant", "error", err)
-		return 1
+	if cfg.TenantCRDNamespace != "" {
+		syncer, err := tenantcrd.New(cfg.TenantCRDNamespace)
+		if err != nil {
+			logger.Error("building tenant CRD syncer", "error", err)
+			return 1
+		}
+		if err := syncer.Sync(ctx, tenantID, tenant.DisplayName, dataSource.TantivyIndexPath, tenantcrd.Credentials{Username: creds.Username, Password: creds.Password}); err != nil {
+			logger.Error("syncing tenant CRD", "error", err)
+			return 1
+		}
+		logger.Info("synced tenant CRD", "tenant_id", tenantID, "namespace", cfg.TenantCRDNamespace)
 	}
 
-	logger.Info("tenant provisioned and active", "tenant_id", tenantID, "clickhouse_database", tenantID, "clickhouse_username", creds.Username)
 	return 0
 }
 

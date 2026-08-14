@@ -166,6 +166,7 @@ internal/authhandler/       POST /internal/authorize, GET /auth/features
 internal/loginhandler/       GET /auth/oidc/{login,callback} + GET /auth/saml/login + POST /auth/saml/acs -- the human login flow
 internal/rbacstore/          users/tenants/tenant_memberships/data_sources/dashboard_permissions CRUD (pgx against sentry_metadata)
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
+internal/tenantcrd/            syncs -provision-tenant's real result into deploy/operator's Tenant CRD (K8s dynamic client, no cluster needed to test)
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
 internal/searchclient/          tenant-scoped api/querylang/executor.SearchClient
 internal/audit/            append-only, hash-chained query audit log, plus the
@@ -301,6 +302,14 @@ COMPOSE_PROFILES=enterprise docker compose run --rm enterprise-api -provision-te
 COMPOSE_PROFILES=enterprise docker compose up -d enterprise-api
 curl -s http://localhost:8080/healthz
 ```
+
+`docker-compose.yml` has no Kubernetes cluster to sync into, so
+`TENANT_CRD_NAMESPACE` is never set here -- `-provision-tenant`'s
+`internal/tenantcrd` sync step is a documented no-op in this deployment
+shape, same as everywhere else this codebase has an "off unless
+configured" optional dependency. It only does anything in a real
+cluster with `deploy/helm/sentry`'s `tenantOperator.enabled=true` -- see
+`/deploy/helm/sentry/README.md`'s "Trying the two-tenant example."
 
 `-provision-tenant` creates the tenant/data_source rows in rbacstore if
 they don't exist, provisions ClickHouse, persists the credentials, and

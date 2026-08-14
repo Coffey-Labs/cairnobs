@@ -11,8 +11,12 @@ metadata:
 # doesn't assume it's the only namespace the operator might one day watch
 # -- narrowed to exactly the two resource types
 # deploy/operator/internal/controller/tenant_controller.go's
-# +kubebuilder:rbac markers name (tenants, tenants/status, secrets), not
-# a wildcard grant.
+# +kubebuilder:rbac markers name (tenants, tenants/status), not a
+# wildcard grant. No `secrets` permission -- this controller stopped
+# managing the ClickHouse credential Secret once enterprise-api
+# -provision-tenant took over creating it with real credentials (see
+# that controller's doc comment); see enterprise-api.yaml's own
+# ServiceAccount/Role for the `secrets` grant that binary needs instead.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -26,9 +30,6 @@ rules:
   - apiGroups: ["sentry.io"]
     resources: ["tenants/status"]
     verbs: ["get", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

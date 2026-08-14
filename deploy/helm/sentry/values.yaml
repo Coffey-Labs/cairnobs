@@ -165,9 +165,11 @@ enterprise:
     idpMetadataURL: ""
 
 # Installs deploy/operator (the Tenant CRD controller) alongside this
-# chart. Only meaningful when enterprise.enabled is also true --
-# gated on that, not a separate flag, since a Tenant CR with no
-# enterprise-auth deployed to consume its Secret has nothing to do.
+# chart. Only meaningful when enterprise.enabled is also true -- gated
+# on that, not a separate flag, since a Tenant CR with nothing to
+# reflect (see below) has nothing to do. Also turns on enterprise-api's
+# own Tenant-CRD-syncing permissions (a ServiceAccount/Role, and the
+# TENANT_CRD_NAMESPACE env var) -- see templates/enterprise-api.yaml.
 tenantOperator:
   enabled: false
   image:
@@ -176,11 +178,16 @@ tenantOperator:
   resources: {}
 
 # One entry per tenant to provision -- rendered as Tenant CRs
-# (templates/tenants.yaml), reconciled by the tenant-operator into a
-# per-tenant ClickHouse credential Secret. See
-# deploy/operator/internal/controller/tenant_controller.go's doc comment
-# for exactly what that does and doesn't set up. Empty by default; a
-# real two-tenant deployment (Phase 4's exit criteria) sets e.g.:
+# (templates/tenants.yaml), a declarative request an admin/GitOps
+# process makes. The operator (tenant-operator, above) only ever
+# *reflects* real state onto these objects (Phase/Conditions, derived
+# from what enterprise-api's `-provision-tenant` has reported) -- it's
+# `-provision-tenant` (run via `kubectl exec` into the enterprise-api
+# Pod), not the operator, that actually calls ClickHouse and writes the
+# credential Secret. See deploy/operator/internal/controller/
+# tenant_controller.go's and enterprise/internal/tenantcrd's doc
+# comments for the full split. Empty by default; a real two-tenant
+# deployment (Phase 4's exit criteria) sets e.g.:
 #   tenants:
 #     - name: acme
 #       displayName: "Acme Corp"
