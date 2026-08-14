@@ -44,6 +44,12 @@ const (
 	// Rotation is by redeploying alerting with a freshly issued token,
 	// not automatic refresh.
 	ServiceTokenTTL = 24 * 365 * time.Hour
+	// PendingLoginTTL is intentionally short -- a pending login only
+	// bridges the gap between "the IdP round trip proved who you are"
+	// and "you picked which tenant to act as" for a multi-membership
+	// identity (see loginhandler's package doc comment), a single-page
+	// interaction, not a session lifetime.
+	PendingLoginTTL = 10 * time.Minute
 	// MinSigningKeyBytes: HS256 wants a key at least as long as its
 	// output (32 bytes/256 bits) to not weaken the MAC.
 	MinSigningKeyBytes = 32
@@ -113,6 +119,72 @@ func (m *Manager) IssueServiceToken(subject string) (string, error) {
 		},
 	}
 	return jwt.Signed(m.signer).Claims(claims).Serialize()
+}
+
+// PendingLoginClaims carries a proven-but-not-yet-tenant-scoped identity
+// through the multi-membership tenant-selection round trip -- see
+// loginhandler.startTenantSelection/handleSelectTenant. Deliberately a
+// different Go type from Claims, not the same struct with an empty
+// TenantID/Role: a pending token's JSON body never has those keys at
+// all, so there's no field a caller could mistake for a real session's
+// tenant/role, and no risk of this token type ever satisfying a
+// role-gated check by accident (see ValidatePendingLogin -- callers
+// that mistakenly feed a pending token to Validate instead just get a
+// Claims with an empty Role, which authz.Role.Satisfies already treats
+// as satisfying nothing).
+//
+// The json tag is deliberately "pending_user_id", not the "user_id" a
+// real Claims token also carries -- found while writing this package's
+// own test for "a real session token must not work as a pending
+// login": go-jose's Claims() unmarshal is happy to populate any struct
+// field whose json tag matches a key present in the token, key overlap
+// included, so reusing "user_id" would have let a full session token
+// parse successfully as a PendingLoginClaims too (extracting UserID
+// from the session's own user_id field) -- exactly the token-type
+// confusion this type's separate-Go-type design was supposed to
+// prevent. A disjoint field name closes that regardless of which
+// fields either struct happens to add later.
+type PendingLoginClaims struct {
+	UserID string `json:"pending_user_id"`
+	jwt.Claims
+}
+
+// IssuePendingLogin issues a short-lived token proving userID's identity
+// (already resolved by resolveIdentity's UpsertUserBySSO) without
+// committing to a tenant yet -- called only when that identity has more
+// than one tenant_memberships row.
+func (m *Manager) IssuePendingLogin(userID string) (string, error) {
+	now := time.Now()
+	claims := PendingLoginClaims{
+		UserID: userID,
+		Claims: jwt.Claims{
+			Subject:  userID,
+			IssuedAt: jwt.NewNumericDate(now),
+			Expiry:   jwt.NewNumericDate(now.Add(PendingLoginTTL)),
+		},
+	}
+	return jwt.Signed(m.signer).Claims(claims).Serialize()
+}
+
+// ValidatePendingLogin is IssuePendingLogin's counterpart -- same
+// signature/expiry checks as Validate, collapsed to ErrInvalidToken for
+// the same reasoning (see that method's doc comment).
+func (m *Manager) ValidatePendingLogin(token string) (userID string, err error) {
+	parsed, err := jwt.ParseSigned(token, []josev4.SignatureAlgorithm{josev4.HS256})
+	if err != nil {
+		return "", ErrInvalidToken
+	}
+	var claims PendingLoginClaims
+	if err := parsed.Claims(m.key, &claims); err != nil {
+		return "", ErrInvalidToken
+	}
+	if err := claims.Claims.Validate(jwt.Expected{}); err != nil {
+		return "", ErrInvalidToken
+	}
+	if claims.UserID == "" {
+		return "", ErrInvalidToken
+	}
+	return claims.UserID, nil
 }
 
 // Validate verifies signature and expiry and returns the token's claims.

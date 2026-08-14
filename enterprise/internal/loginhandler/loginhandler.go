@@ -12,13 +12,20 @@
 // gets verified differs.
 //
 // Multi-tenant users (one identity with memberships in more than one
-// tenant) are refused with a clear error rather than guessing which
-// tenant to log them into -- a tenant-selection step is real, undesigned
-// future work, not silently approximated.
+// tenant) get a real tenant-selection step, not a guess: finishLogin
+// issues a short-lived session.Manager "pending login" token (proves
+// who they are, commits to no tenant yet) and redirects to
+// selectTenantRedirectURL instead of issuing a session outright.
+// GET /auth/memberships and POST /auth/select-tenant complete the round
+// trip. The backend protocol is complete and independently testable via
+// HTTP; the frontend page that would actually call it doesn't exist yet
+// (a real tenant-picker UI is undesigned, separately-scoped frontend
+// work -- see config.SelectTenantRedirectURL's doc comment).
 package loginhandler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -45,6 +52,12 @@ const oidcStateCookieName = "sentry_oidc_state"
 // response defense -- see saml.ServiceProvider.LoginURL's doc comment).
 const samlRequestCookieName = "sentry_saml_request"
 
+// pendingLoginCookieName carries a PendingLoginClaims token from
+// finishLogin's multi-membership branch through GET /auth/memberships
+// and POST /auth/select-tenant -- Path "/auth" (not "/") so it's never
+// sent on ordinary requests, only the two routes that need it.
+const pendingLoginCookieName = "sentry_pending_login"
+
 // loginCookieTTL bounds how long a user has to complete the IdP round
 // trip -- generous enough for a real login form, short enough that a
 // stale cookie isn't a long-lived CSRF token sitting in a browser.
@@ -57,6 +70,9 @@ const loginCookieTTL = 10 * time.Minute
 type userStore interface {
 	UpsertUserBySSO(ctx context.Context, ssoSubject, email, displayName string) (*rbacstore.User, error)
 	ListMembershipsForUser(ctx context.Context, userID string) ([]rbacstore.Membership, error)
+	// ListMembershipsWithTenantForUser backs GET /auth/memberships --
+	// the one caller that needs tenant display names, not just IDs/roles.
+	ListMembershipsWithTenantForUser(ctx context.Context, userID string) ([]rbacstore.MembershipWithTenant, error)
 }
 
 // oidcProvider is the narrow slice of *oidc.Provider Handler needs --
@@ -83,6 +99,10 @@ type Handler struct {
 	// postLoginRedirectURL is where the browser lands after a session
 	// cookie is set -- web's base URL in a real deployment.
 	postLoginRedirectURL string
+	// selectTenantRedirectURL is where the browser lands instead, when
+	// the identity has more than one tenant_memberships row -- see this
+	// package's doc comment.
+	selectTenantRedirectURL string
 }
 
 // New takes concrete *oidc.Provider/*saml.ServiceProvider (both
@@ -98,8 +118,8 @@ type Handler struct {
 // loginhandler_test.go's TestRegisterRoutesNoOpWithTypedNilProviderVariable
 // for the regression test that caught this the first time (OIDC; SAML
 // follows the same fix from day one).
-func New(logger *slog.Logger, oidcProvider *oidc.Provider, samlProvider *saml.ServiceProvider, sessionManager *session.Manager, users userStore, postLoginRedirectURL string) *Handler {
-	h := &Handler{logger: logger, session: sessionManager, users: users, postLoginRedirectURL: postLoginRedirectURL}
+func New(logger *slog.Logger, oidcProvider *oidc.Provider, samlProvider *saml.ServiceProvider, sessionManager *session.Manager, users userStore, postLoginRedirectURL, selectTenantRedirectURL string) *Handler {
+	h := &Handler{logger: logger, session: sessionManager, users: users, postLoginRedirectURL: postLoginRedirectURL, selectTenantRedirectURL: selectTenantRedirectURL}
 	if oidcProvider != nil {
 		h.oidc = oidcProvider
 	}
@@ -121,6 +141,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	if h.saml != nil {
 		mux.HandleFunc("GET /auth/saml/login", h.handleSAMLLogin)
 		mux.HandleFunc("POST /auth/saml/acs", h.handleSAMLACS)
+	}
+	if h.oidc != nil || h.saml != nil {
+		mux.HandleFunc("GET /auth/memberships", h.handleListMemberships)
+		mux.HandleFunc("POST /auth/select-tenant", h.handleSelectTenant)
 	}
 }
 
@@ -248,17 +272,30 @@ func (h *Handler) handleSAMLACS(w http.ResponseWriter, r *http.Request) {
 }
 
 // finishLogin is the point both protocols converge on: a verified
-// (subject, email) pair, still needing tenant/role resolution and a
-// session cookie -- everything from here down is protocol-agnostic.
+// (subject, email) pair, still needing tenant/role resolution --
+// everything from here down is protocol-agnostic.
 func (h *Handler) finishLogin(w http.ResponseWriter, r *http.Request, subject, email string) {
-	identity, status, err := h.resolveIdentity(r.Context(), subject, email)
+	outcome, status, err := h.resolveIdentity(r.Context(), subject, email)
 	if err != nil {
 		h.logger.Error("resolving identity after login", "error", err, "email", email)
 		http.Error(w, err.Error(), status)
 		return
 	}
 
-	token, err := h.session.IssueUserSession(identity.tenantID, identity.userID, identity.role)
+	if outcome.ambiguous {
+		h.startTenantSelection(w, r, outcome.userID)
+		return
+	}
+	h.issueSessionAndRedirect(w, r, outcome.identity.tenantID, outcome.identity.userID, outcome.identity.role)
+}
+
+// issueSessionAndRedirect is finishLogin's single-membership path and
+// handleSelectTenant's success path converging on the same "issue a
+// real session, set the cookie, send the browser on" logic -- the only
+// difference between the two callers is how they got a
+// (tenantID, userID, role) tuple to issue a session for.
+func (h *Handler) issueSessionAndRedirect(w http.ResponseWriter, r *http.Request, tenantID, userID, role string) {
+	token, err := h.session.IssueUserSession(tenantID, userID, role)
 	if err != nil {
 		h.logger.Error("issuing session", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -272,13 +309,142 @@ func (h *Handler) finishLogin(w http.ResponseWriter, r *http.Request, subject, e
 	http.Redirect(w, r, h.postLoginRedirectURL, http.StatusFound)
 }
 
+// startTenantSelection issues a pending-login token for an identity
+// with more than one tenant_memberships row and sends the browser to
+// selectTenantRedirectURL instead of completing the login -- the real
+// tenant-selection step named as a gap throughout Phase 4's docs, not a
+// refusal anymore (see this package's doc comment).
+func (h *Handler) startTenantSelection(w http.ResponseWriter, r *http.Request, userID string) {
+	token, err := h.session.IssuePendingLogin(userID)
+	if err != nil {
+		h.logger.Error("issuing pending login", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: pendingLoginCookieName, Value: token, Path: "/auth",
+		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(session.PendingLoginTTL.Seconds()),
+	})
+	http.Redirect(w, r, h.selectTenantRedirectURL, http.StatusFound)
+}
+
+// pendingUserID validates the pending-login cookie GET /auth/memberships
+// and POST /auth/select-tenant both require, writing an error response
+// and returning ok=false if it's missing, expired, or forged.
+func (h *Handler) pendingUserID(w http.ResponseWriter, r *http.Request) (userID string, ok bool) {
+	cookie, err := r.Cookie(pendingLoginCookieName)
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "missing or expired pending login -- start over at /auth/oidc/login or /auth/saml/login", http.StatusBadRequest)
+		return "", false
+	}
+	userID, err = h.session.ValidatePendingLogin(cookie.Value)
+	if err != nil {
+		http.Error(w, "missing or expired pending login -- start over at /auth/oidc/login or /auth/saml/login", http.StatusUnauthorized)
+		return "", false
+	}
+	return userID, true
+}
+
+// membershipOption is one GET /auth/memberships response entry.
+type membershipOption struct {
+	TenantID          string `json:"tenant_id"`
+	TenantDisplayName string `json:"tenant_display_name"`
+	Role              string `json:"role"`
+}
+
+// handleListMemberships lists the pending login's tenants to choose
+// from -- a tenant-picker UI's first call, once one exists (see this
+// package's doc comment).
+func (h *Handler) handleListMemberships(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.pendingUserID(w, r)
+	if !ok {
+		return
+	}
+	memberships, err := h.users.ListMembershipsWithTenantForUser(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("listing memberships with tenant", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	options := make([]membershipOption, 0, len(memberships))
+	for _, m := range memberships {
+		options = append(options, membershipOption{TenantID: m.TenantID, TenantDisplayName: m.TenantDisplayName, Role: string(m.Role)})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(options)
+}
+
+type selectTenantRequest struct {
+	TenantID string `json:"tenant_id"`
+}
+
+type selectTenantResponse struct {
+	RedirectURL string `json:"redirect_url"`
+}
+
+// handleSelectTenant completes the tenant-selection round trip: given a
+// still-valid pending login and a chosen tenant_id, re-derives the
+// membership/role for that specific tenant server-side (never trusting
+// a client-supplied role -- only which tenant they claim to want,
+// checked against their actual memberships) and issues the real
+// session. Responds with JSON, not a redirect: this is a POST a
+// tenant-picker page would call via fetch, which should decide for
+// itself how to navigate afterward, not have a redirect response
+// imposed on it the way the GET-based OIDC/SAML callbacks reasonably
+// can.
+func (h *Handler) handleSelectTenant(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.pendingUserID(w, r)
+	if !ok {
+		return
+	}
+	var body selectTenantRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TenantID == "" {
+		http.Error(w, `invalid request body -- expected {"tenant_id": "..."}`, http.StatusBadRequest)
+		return
+	}
+
+	memberships, err := h.users.ListMembershipsForUser(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("listing memberships", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var role string
+	found := false
+	for _, m := range memberships {
+		if m.TenantID == body.TenantID {
+			role = string(m.Role)
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "no membership in the requested tenant", http.StatusForbidden)
+		return
+	}
+
+	clearCookie(w, r, pendingLoginCookieName, "/auth")
+	token, err := h.session.IssueUserSession(body.TenantID, userID, role)
+	if err != nil {
+		h.logger.Error("issuing session", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: authhandler.SessionCookieName, Value: token, Path: "/",
+		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(session.HumanSessionTTL.Seconds()),
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(selectTenantResponse{RedirectURL: h.postLoginRedirectURL})
+}
+
 var (
-	// ErrNoMembership and ErrMultipleMemberships are exported so tests
-	// (and any future caller that wants to distinguish these outcomes,
-	// e.g. to render a real tenant-picker UI instead of a flat error
-	// page) don't have to string-match the HTTP error body.
-	ErrNoMembership        = errors.New("loginhandler: this identity has no tenant membership -- contact your administrator")
-	ErrMultipleMemberships = errors.New("loginhandler: this identity belongs to multiple tenants -- tenant selection is not supported yet")
+	// ErrNoMembership is exported so tests (and any future caller that
+	// wants to distinguish this from other failures) don't have to
+	// string-match the HTTP error body.
+	ErrNoMembership = errors.New("loginhandler: this identity has no tenant membership -- contact your administrator")
 )
 
 type resolvedIdentity struct {
@@ -287,29 +453,40 @@ type resolvedIdentity struct {
 	role     string
 }
 
+// identityOutcome is resolveIdentity's result: exactly one membership
+// resolves identity directly; more than one sets ambiguous (userID is
+// always populated so the caller can start tenant selection without a
+// second lookup).
+type identityOutcome struct {
+	identity  resolvedIdentity
+	userID    string
+	ambiguous bool
+}
+
 // resolveIdentity is the policy decision this whole package exists to
 // make: given a verified external identity (subject, email -- OIDC's
 // "sub"/"email" claims or SAML's NameID/email attribute, already
 // protocol-normalized by the caller), which tenant/role does it map to.
-// Deliberately conservative -- exactly one tenant_memberships row is the
-// only case handled; zero or multiple both refuse rather than guess
-// (see this package's doc comment).
-func (h *Handler) resolveIdentity(ctx context.Context, subject, email string) (resolvedIdentity, int, error) {
+// Zero memberships refuses outright (ErrNoMembership) -- there's
+// nothing to choose between. More than one is no longer a refusal (see
+// this package's doc comment): finishLogin routes an ambiguous outcome
+// into tenant selection instead of erroring.
+func (h *Handler) resolveIdentity(ctx context.Context, subject, email string) (identityOutcome, int, error) {
 	user, err := h.users.UpsertUserBySSO(ctx, subject, email, email)
 	if err != nil {
-		return resolvedIdentity{}, http.StatusInternalServerError, fmt.Errorf("loginhandler: upserting user: %w", err)
+		return identityOutcome{}, http.StatusInternalServerError, fmt.Errorf("loginhandler: upserting user: %w", err)
 	}
 
 	memberships, err := h.users.ListMembershipsForUser(ctx, user.ID)
 	if err != nil {
-		return resolvedIdentity{}, http.StatusInternalServerError, fmt.Errorf("loginhandler: listing memberships: %w", err)
+		return identityOutcome{}, http.StatusInternalServerError, fmt.Errorf("loginhandler: listing memberships: %w", err)
 	}
 	switch len(memberships) {
 	case 0:
-		return resolvedIdentity{}, http.StatusForbidden, ErrNoMembership
+		return identityOutcome{}, http.StatusForbidden, ErrNoMembership
 	case 1:
-		return resolvedIdentity{tenantID: memberships[0].TenantID, userID: user.ID, role: string(memberships[0].Role)}, 0, nil
+		return identityOutcome{identity: resolvedIdentity{tenantID: memberships[0].TenantID, userID: user.ID, role: string(memberships[0].Role)}, userID: user.ID}, 0, nil
 	default:
-		return resolvedIdentity{}, http.StatusNotImplemented, ErrMultipleMemberships
+		return identityOutcome{userID: user.ID, ambiguous: true}, 0, nil
 	}
 }

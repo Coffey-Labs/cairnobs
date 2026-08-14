@@ -360,6 +360,46 @@ func (s *Store) ListMembershipsForUser(ctx context.Context, userID string) ([]Me
 	return out, rows.Err()
 }
 
+// MembershipWithTenant is ListMembershipsWithTenantForUser's result row
+// -- Membership plus the tenant's display name, the shape a
+// tenant-picker UI needs (a bare tenant_id/Role isn't enough to show a
+// human something recognizable to choose between).
+type MembershipWithTenant struct {
+	TenantID          string
+	TenantDisplayName string
+	Role              Role
+}
+
+// ListMembershipsWithTenantForUser is ListMembershipsForUser plus a join
+// against tenants -- used by loginhandler's multi-membership
+// tenant-selection step (GET /auth/memberships), which is the one
+// caller that actually needs to show a human "here are your tenants,"
+// not just resolve a single membership programmatically.
+func (s *Store) ListMembershipsWithTenantForUser(ctx context.Context, userID string) ([]MembershipWithTenant, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT m.tenant_id, t.display_name, m.role
+		FROM tenant_memberships m
+		JOIN tenants t ON t.id = m.tenant_id
+		WHERE m.user_id = $1
+		ORDER BY t.display_name`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("rbacstore: listing memberships with tenant: %w", err)
+	}
+	defer rows.Close()
+
+	var out []MembershipWithTenant
+	for rows.Next() {
+		var m MembershipWithTenant
+		var role string
+		if err := rows.Scan(&m.TenantID, &m.TenantDisplayName, &role); err != nil {
+			return nil, fmt.Errorf("rbacstore: scanning membership with tenant: %w", err)
+		}
+		m.Role = Role(role)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // DataSource is one tenant's data-plane location -- today, exactly one
 // ClickHouse database + one Tantivy index per tenant (see
 // /docs/phase-4-rbac-design.md's "data_sources" extension-point

@@ -176,11 +176,23 @@ container against a *real* external IdP (Google/Okta/etc.) — that needs
 real IdP credentials and a reachable callback/ACS URL neither of which
 this environment has; see `/docs/phase-4-runbook.md`.
 
-A user with zero or more than one `tenant_memberships` row is refused
-outright (403 / 501 respectively) rather than guessed at — a
-tenant-selection UI for the multi-membership case is real, undesigned
-future work, not silently approximated, for either protocol.
-`GET /auth/features` (`enterprise/internal/authhandler`) reports whether
+A user with zero `tenant_memberships` rows is refused outright (403).
+More than one no longer guesses or refuses: `finishLogin` issues a
+short-lived `session.Manager` "pending login" token (a distinct Go/JWT
+type from a real session, with its own disjoint claim name so a real
+session token can't double as one — a real bug this design's own test
+suite caught before it shipped, see `session.PendingLoginClaims`'s doc
+comment) and redirects to a not-yet-served URL instead, backed by two
+new endpoints (`GET /auth/memberships`, `POST /auth/select-tenant`) that
+list the identity's real tenant options and, on selection, re-derive the
+role for the chosen tenant server-side (never trusting a client-supplied
+role) before issuing the real session. This is the *backend protocol*
+for tenant selection, verified with the same real-fake-IdP tests as the
+rest of `internal/loginhandler` — the frontend page that would call it
+doesn't exist (`web` has no session/cookie-handling code at all today,
+and `enterprise-auth` has no CORS middleware for a cross-origin `fetch`
+with credentials to work), both real, separately-scoped gaps, not
+silently approximated. `GET /auth/features` (`enterprise/internal/authhandler`) reports whether
 OIDC/SAML are *configured*, for `/web`'s settings page to conditionally
 render — independent of whether a login button actually exists yet in
 the UI (it doesn't; only the HTTP endpoints do).
@@ -413,7 +425,7 @@ terms:
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; verified via `docker compose config`, not an actual `docker compose up` in this environment |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
-| Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |
+| Multi-tenant-membership login (tenant picker) | **Backend protocol built and verified** (`GET /auth/memberships`, `POST /auth/select-tenant`, a pending-login token distinct from a real session) — no frontend page calls it yet |
 | Per-resource dashboard grants (`own/granted`) | **Built, unit-tested against a fake store; live-Postgres integration tests written, not run in this environment** (only when `enterprise-api` serves traffic — plain `api` falls back to own/Admin only) |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |

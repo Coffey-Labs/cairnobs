@@ -221,11 +221,21 @@ caller of ClickHouse/`rbacstore`, and (via a new
 its real result into the CRD — a real credential Secret, not the
 previous placeholder that authenticated against nothing, and status
 fields the reconciler derives `Phase`/`Ready` from instead of
-independently guessing "Active" the moment a Tenant object exists. What
-still keeps this phase from being done: ingest itself has no tenant
-concept for either storage engine (every record lands in the one shared
-ClickHouse database and Tantivy index no matter what — undesigned, not
-just unbuilt). Full accounting:
+independently guessing "Active" the moment a Tenant object exists. The
+tenant-picker's backend protocol is built too: an identity with more
+than one `tenant_memberships` row now gets a real `GET
+/auth/memberships`/`POST /auth/select-tenant` round trip (a short-lived
+pending-login token, distinct from a real session by both Go type and
+JWT claim name — a real token-confusion bug this design's own tests
+caught before it shipped) instead of the flat refusal Phase 4 shipped
+with earlier. What still keeps this phase from being done: the actual
+tenant-picker *page* doesn't exist (`web` has no session/cookie-handling
+code at all yet, and `enterprise-auth` has no CORS middleware for a
+cross-origin `fetch` with credentials — both real, separately-scoped
+frontend gaps), and ingest itself has no tenant concept for either
+storage engine (every record lands in the one shared ClickHouse database
+and Tantivy index no matter what — undesigned, not just unbuilt). Full
+accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit

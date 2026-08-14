@@ -17,6 +17,16 @@ type Config struct {
 	// internal/loginhandler sets a session cookie -- web's base URL in
 	// a real deployment.
 	PostLoginRedirectURL string
+	// SelectTenantRedirectURL is where the browser lands after a login
+	// resolves to more than one tenant_memberships row --
+	// internal/loginhandler issues a pending-login cookie and sends the
+	// browser here instead of straight to PostLoginRedirectURL. Nothing
+	// serves this route yet (a real tenant-picker page is undesigned
+	// frontend work -- see internal/loginhandler's package doc comment);
+	// the backend protocol (GET /auth/memberships, POST
+	// /auth/select-tenant) is complete and independently testable via
+	// HTTP regardless of what, if anything, is listening here today.
+	SelectTenantRedirectURL string
 }
 
 type PostgresConfig struct {
@@ -70,6 +80,12 @@ func Load() (Config, error) {
 		},
 		PostLoginRedirectURL: getenv("POST_LOGIN_REDIRECT_URL", "http://localhost:3000"),
 	}
+	// Defaults relative to PostLoginRedirectURL if not set explicitly --
+	// computed after cfg.PostLoginRedirectURL above so a caller
+	// overriding just POST_LOGIN_REDIRECT_URL still gets a sensible
+	// SelectTenantRedirectURL without also having to set the new
+	// variable.
+	cfg.SelectTenantRedirectURL = getenv("SELECT_TENANT_REDIRECT_URL", cfg.PostLoginRedirectURL+"/select-tenant")
 
 	// Required, unlike OIDC/SAML above: every enterprise-auth deployment
 	// issues and validates session/service tokens (internal/session),
