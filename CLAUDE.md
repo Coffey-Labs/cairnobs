@@ -152,17 +152,24 @@ access partway through the phase, so only the audit-logging guarantees
 were actually confirmed against a live database; the rest is untested
 beyond "compiles, and skips cleanly when no live database is
 configured" (see `/docs/phase-4-runbook.md`'s verification-status
-section). Two things still keep this phase from being done: SSO login
-(OIDC/SAML protocol wiring exists, no
-HTTP login handler calls it), and Tantivy/free-text queries have no
-per-tenant index routing at all (`enterprise-api` closes the ClickHouse
-half of tenant isolation, not the Tantivy half) — plus a deployment gap
-worth naming explicitly: nothing yet forces or even flags whether a
-given deployment is actually running the isolated binary
-(`enterprise-api`) versus the plain single-tenant one (`api`); both
-still exist and nothing currently prevents mixing them up. Full
-accounting: `/docs/security/threat-model.md`; step-by-step verification
-procedure (not yet run against a live cluster in this environment):
+section). Human OIDC login is now built too
+(`enterprise/internal/loginhandler`: `GET /auth/oidc/login` +
+`GET /auth/oidc/callback`, issuing a real session cookie after resolving
+tenant/role from `tenant_memberships`) — genuinely verified, unlike the
+ClickHouse pieces, via a real fake IdP that signs and verifies actual
+RS256 tokens (`loginhandler_test.go`, all passing), though never tried
+against a real external IdP or through a running `enterprise-auth`
+container. Two things still keep this phase from being done: SAML login
+(protocol wiring exists, no ACS handler calls it, following OIDC's now
+-built pattern), and Tantivy/free-text queries have no per-tenant index
+routing at all (`enterprise-api` closes the ClickHouse half of tenant
+isolation, not the Tantivy half) — plus a deployment gap worth naming
+explicitly: nothing yet forces or even flags whether a given deployment
+is actually running the isolated binary (`enterprise-api`) versus the
+plain single-tenant one (`api`); both still exist and nothing currently
+prevents mixing them up. Full accounting:
+`/docs/security/threat-model.md`; step-by-step verification procedure
+(not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit
 bar this phase is aiming at, not a completed state.
 

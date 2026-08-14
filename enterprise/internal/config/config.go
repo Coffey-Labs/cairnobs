@@ -13,6 +13,10 @@ type Config struct {
 	OIDC              OIDCConfig
 	SAML              SAMLConfig
 	SessionSigningKey []byte
+	// PostLoginRedirectURL is where the browser lands after
+	// internal/loginhandler sets a session cookie -- web's base URL in
+	// a real deployment.
+	PostLoginRedirectURL string
 }
 
 type PostgresConfig struct {
@@ -66,6 +70,7 @@ func Load() (Config, error) {
 			ACSURL:         getenv("SAML_ACS_URL", ""),
 			IDPMetadataURL: getenv("SAML_IDP_METADATA_URL", ""),
 		},
+		PostLoginRedirectURL: getenv("POST_LOGIN_REDIRECT_URL", "http://localhost:3000"),
 	}
 
 	// Required, unlike OIDC/SAML above: every enterprise-auth deployment

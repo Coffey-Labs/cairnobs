@@ -252,12 +252,25 @@ services:
       context: enterprise
       dockerfile: Dockerfile
     container_name: sentry-enterprise-auth
+    depends_on:
+      metadata-migrate:
+        condition: service_completed_successfully
     ports:
       - "8082:8082"
     environment:
       # Dev-only, same framing as CLICKHOUSE_PASSWORD above -- not a real
       # secret. Must be at least 32 bytes (see internal/config.Load).
       ENTERPRISE_SESSION_SIGNING_KEY: "sentry-dev-only-session-signing-key-32bytes+"
+      POSTGRES_ADDR: "metadata-postgres:5432"
+      POSTGRES_DATABASE: "sentry_metadata"
+      POSTGRES_USERNAME: "sentry"
+      POSTGRES_PASSWORD: "sentry-dev-only"
+      # Where the browser lands after internal/loginhandler sets a
+      # session cookie -- web's mapped host port (see web's build args
+      # for why this is localhost:3000, not the compose network's
+      # service DNS name: the browser resolves this, not a sibling
+      # container).
+      POST_LOGIN_REDIRECT_URL: "http://localhost:3000"
     healthcheck:
       test: ["CMD", "/enterprise-auth", "-healthcheck"]
       interval: 5s
