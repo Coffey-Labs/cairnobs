@@ -44,20 +44,26 @@ searchclient`'s tests run a real in-process gRPC server and confirm the
 wire-level `SearchRequest` carries the right `tenant_id`. All pass, for
 real, no disclaimer needed for this specific claim.
 
-**The Helm chart now closes this for K8s deployments; `docker-compose.yml`
-still doesn't.** `deploy/helm/sentry/templates/api.yaml` and
-`enterprise-api.yaml` are mutually exclusive, gated on opposite sides of
-the same `enterprise.enabled` flag, rendering to the same Service
-name/port — so a Helm-deployed cluster runs exactly one of the two
-binaries, chosen by the same flag that turns on RBAC/audit/SSO, not a
-second independently-forgettable decision. Verified by parsing (not
+**Both Helm and docker-compose now close this.**
+`deploy/helm/sentry/templates/api.yaml` and `enterprise-api.yaml` are
+mutually exclusive, gated on opposite sides of the same
+`enterprise.enabled` flag, rendering to the same Service name/port — so
+a Helm-deployed cluster runs exactly one of the two binaries, chosen by
+the same flag that turns on RBAC/audit/SSO, not a second
+independently-forgettable decision. Verified by parsing (not
 eyeballing) the rendered YAML under both values: exactly one `sentry-api`
-Deployment either way, with the right image. **`docker-compose.yml`
-still runs plain `api` unconditionally** and includes `enterprise-api`
-as an extra, separately-started service — local/dev parity with the Helm
-chart's enforcement is real remaining work. And this only constrains
-*deployment*, not *operation*: nothing stops an operator from manually
-running plain `api`'s image against a cluster that has tenants
+Deployment either way, with the right image. `docker-compose.yml`'s
+`api`/`enterprise-api` services are now the analogous mutually-exclusive
+choice, gated behind `COMPOSE_PROFILES` (`.env` checks in
+`single-tenant`, i.e. plain `api`, as the zero-config default) and
+sharing the same host port/network-alias trick to stay transparent to
+`alerting`/`web` either way — verified via `docker compose config`
+(renders and validates the merged YAML without a daemon; confirms
+`api`/`enterprise-api` never both appear in `--services` output for the
+same profile selection) — see `/docs/phase-4-runbook.md` §10a. This
+still only constrains *deployment*, not *operation*: nothing stops an
+operator from manually running plain `api`'s image against a cluster
+(or compose project) that has tenants
 provisioned, pointing at the same ClickHouse/Postgres. The Helm chart
 makes the *default*, chart-managed path correct; it isn't a runtime
 guard against misconfiguration.
@@ -404,7 +410,7 @@ terms:
 | Tantivy tenant_id resolution (`enterprise/internal/searchclient`) | **Enforced, verified live** — real gRPC wire-level test |
 | Ingest tenant-awareness (ClickHouse and Tantivy both) | **Not implemented, undesigned** — every ingested record lands in the single shared database/index regardless of tenant |
 | Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
-| Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Not implemented** — `docker-compose.yml` runs plain `api` unconditionally |
+| Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; verified via `docker compose config`, not an actual `docker compose up` in this environment |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |

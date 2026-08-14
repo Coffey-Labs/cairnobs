@@ -180,7 +180,17 @@ services:
     volumes:
       - search-index-data:/var/lib/sentry-search
 
+  # Mutually exclusive with enterprise-api below, same choice Helm makes
+  # via enterprise.enabled (deploy/helm/sentry/templates/api.yaml vs
+  # enterprise-api.yaml) -- selected by the COMPOSE_PROFILES value in
+  # .env (checked in as "single-tenant", the zero-config default) or an
+  # override on the command line, e.g. `COMPOSE_PROFILES=enterprise
+  # docker compose up`. `docker compose run api ...` (as the manual RBAC
+  # testing steps in enterprise/README.md/phase-4-runbook.md §4 use)
+  # still works regardless of the active profile -- an explicit service
+  # reference on the command line bypasses profile filtering.
   api:
+    profiles: ["single-tenant"]
     build:
       context: . # needs both api/ and proto/ (gRPC client to search)
       dockerfile: api/Dockerfile
@@ -220,8 +230,17 @@ services:
     depends_on:
       metadata-migrate:
         condition: service_completed_successfully
+      # Both optional (required: false): whichever of api/enterprise-api
+      # is actually in the active profile set is the one this waits on
+      # -- the other isn't defined for this run at all, and without
+      # `required: false` compose would error on the inactive one rather
+      # than just skipping it. See api's doc comment above.
       api:
         condition: service_healthy
+        required: false
+      enterprise-api:
+        condition: service_healthy
+        required: false
     ports:
       - "8081:8081"
     environment:
@@ -229,6 +248,10 @@ services:
       POSTGRES_DATABASE: "sentry_metadata"
       POSTGRES_USERNAME: "sentry"
       POSTGRES_PASSWORD: "sentry-dev-only"
+      # Resolves to whichever of api/enterprise-api is actually active --
+      # enterprise-api declares a `default.aliases: [api]` network alias
+      # below specifically so this never needs to change based on which
+      # profile is selected.
       API_QUERY_URL: "http://api:8080"
     healthcheck:
       test: ["CMD", "/alerting", "-healthcheck"]
@@ -283,15 +306,21 @@ services:
 
   # Multi-tenant-aware alternative to `api` (Phase 4) -- see
   # enterprise/cmd/enterprise-api/main.go's doc comment for why this is
-  # a second binary rather than a flag on `api`. NOT part of the default
-  # traffic path: `web`'s VITE_API_BASE_URL still points at `api`
-  # (localhost:8080), and nothing here provisions any tenants (see that
-  # binary's -provision-tenant flag) -- included so it can be
-  # built/run/curled directly, same "available, not defaulted in" shape
-  # as enterprise-auth above. CLICKHOUSE_ADMIN_USERNAME/PASSWORD reuse
-  # the same admin credential `clickhouse-migrate` uses, since
-  # tenantprovision needs access_management, not a tenant-scoped grant.
+  # a second binary rather than a flag on `api`. Mutually exclusive with
+  # `api` above via COMPOSE_PROFILES (see that service's doc comment);
+  # when the "enterprise" profile is active this replaces `api` in the
+  # traffic path transparently, same as Helm: HTTP_LISTEN_ADDR is
+  # overridden to :8080 (this binary's own default is :8083) and the
+  # `default.aliases` entry below makes this reachable at the hostname
+  # `api` too, so alerting's API_QUERY_URL and web's VITE_API_BASE_URL
+  # need zero conditional logic -- whichever binary is actually running
+  # transparently answers on the same name/port either way. Nothing here
+  # provisions any tenants on its own (see -provision-tenant).
+  # CLICKHOUSE_ADMIN_USERNAME/PASSWORD reuse the same admin credential
+  # `clickhouse-migrate` uses, since tenantprovision needs
+  # access_management, not a tenant-scoped grant.
   enterprise-api:
+    profiles: ["enterprise"]
     build:
       context: .
       dockerfile: enterprise/cmd/enterprise-api/Dockerfile
@@ -301,9 +330,14 @@ services:
         condition: service_completed_successfully
       metadata-migrate:
         condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          - api
     ports:
-      - "8083:8083"
+      - "8080:8080"
     environment:
+      HTTP_LISTEN_ADDR: ":8080"
       CLICKHOUSE_ADDR: "clickhouse:9000"
       CLICKHOUSE_ADMIN_USERNAME: "default"
       CLICKHOUSE_ADMIN_PASSWORD: "sentry-dev-only"
@@ -329,14 +363,26 @@ services:
         # localhost:8080/8081 -- fetched from the *browser*, which
         # resolves against the host's mapped ports, not the compose
         # network's service DNS names.
+        # localhost:8080 works unchanged regardless of which profile is
+        # active -- enterprise-api maps the same host port api does when
+        # it's the one running (see that service's doc comment).
         VITE_API_BASE_URL: "http://localhost:8080"
         VITE_ALERTING_API_BASE_URL: "http://localhost:8081"
         VITE_ENTERPRISE_AUTH_BASE_URL: "http://localhost:8082"
     container_name: sentry-web
     depends_on:
-      - api
-      - alerting
-      - enterprise-auth
+      # api/enterprise-api optional, same reasoning as alerting's
+      # depends_on above -- only one is ever in the active profile set.
+      api:
+        condition: service_started
+        required: false
+      enterprise-api:
+        condition: service_started
+        required: false
+      alerting:
+        condition: service_started
+      enterprise-auth:
+        condition: service_started
     ports:
       - "3000:3000"
 

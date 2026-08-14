@@ -329,17 +329,25 @@ close the ClickHouse half of the headline gap §"Known gaps" below used
 to describe as completely unbuilt. It's still a second binary you have
 to choose to run, though — see `/docs/security/threat-model.md`'s "Read
 this first" section. With OIDC login now built (§3a), a real
-`curl -X POST http://localhost:8083/query` walkthrough as a logged-in
+`curl -X POST http://localhost:8080/query` walkthrough as a logged-in
 tenant is *possible* now, but still needs the manual `tenant_memberships`
 bootstrap from §3a — a full end-to-end curl walkthrough isn't included
 here yet.
 
+`api`/`enterprise-api` are now mutually exclusive via `COMPOSE_PROFILES`
+(checked in as `single-tenant` in `.env`, i.e. plain `api` runs by
+default) — see §10a below for why, and confirmation that it actually
+holds. `-provision-tenant` itself doesn't bind a port, so it runs fine
+regardless of the active profile; actually serving traffic on
+`enterprise-api` needs the `enterprise` profile active, since it now
+binds the same host port (8080) plain `api` does:
+
 ```sh
-docker compose build enterprise-api
-docker compose run --rm enterprise-api -provision-tenant=acme -display-name="Acme Corp"
-docker compose run --rm enterprise-api -provision-tenant=globex -display-name="Globex Corporation"
-docker compose up -d enterprise-api
-curl -s http://localhost:8083/healthz
+COMPOSE_PROFILES=enterprise docker compose build enterprise-api
+COMPOSE_PROFILES=enterprise docker compose run --rm enterprise-api -provision-tenant=acme -display-name="Acme Corp"
+COMPOSE_PROFILES=enterprise docker compose run --rm enterprise-api -provision-tenant=globex -display-name="Globex Corporation"
+COMPOSE_PROFILES=enterprise docker compose up -d enterprise-api
+curl -s http://localhost:8080/healthz
 ```
 
 Confirm isolation end to end against the live stack (this is the same
@@ -436,18 +444,56 @@ each set of values and confirm `kubectl get deploy sentry-api -o
 jsonpath='{.spec.template.spec.containers[0].image}'` matches, and that
 `kubectl get svc sentry-api` routes to whichever one is actually running.
 
+## 10a. Confirm `docker-compose.yml` now enforces the same binary swap
+
+Local/dev parity with §10 above was a named gap ("`docker-compose.yml`
+still runs plain `api` unconditionally") -- closed via `COMPOSE_PROFILES`
+(`api`/`enterprise-api` are each gated behind a profile, `.env` checks in
+`single-tenant` as the zero-config default) plus the same "same host
+port, `enterprise-api` gets a `default.aliases: [api]` network alias"
+trick §10's Helm chart uses at the Service-name level. Verified in this
+environment via `docker compose config` (no daemon needed -- it renders
+and validates the merged YAML without starting anything):
+
+```sh
+docker compose config --quiet && echo "config is valid"
+
+# exactly one of api/enterprise-api per profile, never both or neither:
+docker compose config --services
+# expect: ... api ... (no enterprise-api)
+COMPOSE_PROFILES=enterprise docker compose config --services
+# expect: ... enterprise-api ... (no api)
+
+# enterprise-api really does take over api's name/port when active:
+COMPOSE_PROFILES=enterprise docker compose config \
+  | python3 -c "import yaml,sys,json; d=yaml.safe_load(sys.stdin)['services']['enterprise-api']; print(json.dumps({'ports': d['ports'], 'aliases': d['networks']['default']['aliases'], 'HTTP_LISTEN_ADDR': d['environment']['HTTP_LISTEN_ADDR']}, indent=2))"
+# expect port 8080 (not enterprise-api's own default 8083), alias
+# ["api"], and HTTP_LISTEN_ADDR ":8080"
+```
+
+`docker compose run`/`build enterprise-api` (§8's provisioning steps)
+work regardless of the active profile -- explicit service references on
+the command line bypass profile filtering, confirmed in this
+environment (the commands got past client-side profile resolution and
+failed only on `permission denied ... docker.sock`, this environment's
+already-disclosed no-Docker-daemon-access limitation, not a
+profile-related error). **Not verified**: an actual `docker compose up`
+against a real daemon in this environment — the `config` rendering above
+proves the compose file's *shape* is correct, not that containers
+actually start and route traffic correctly end to end.
+
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
 
-- **Both storage engines' isolation exists, and the Helm chart now
-  enforces which binary runs.** `deploy/helm/sentry/templates/api.yaml`/
-  `enterprise-api.yaml` are mutually exclusive on `enterprise.enabled`
-  (§10) -- a Helm-deployed cluster can't accidentally run the
-  non-isolated binary once that flag is set. `docker-compose.yml` still
-  runs plain `api` unconditionally alongside a separately-started
-  `enterprise-api` (§8), so this enforcement doesn't extend to local/dev
-  yet.
+- **Both storage engines' isolation exists, and both Helm and
+  docker-compose now enforce which binary runs.**
+  `deploy/helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are
+  mutually exclusive on `enterprise.enabled` (§10) -- a Helm-deployed
+  cluster can't accidentally run the non-isolated binary once that flag
+  is set. `docker-compose.yml`'s `api`/`enterprise-api` services are now
+  the same mutually-exclusive choice via `COMPOSE_PROFILES` (§8, §10a),
+  closing the local/dev parity gap this bullet used to name.
 - The `Tenant` CRD (`deploy/operator`) and `enterprise-api
   -provision-tenant` are still two independent provisioning mechanisms
   -- running both for the same tenant ID today takes two separate
