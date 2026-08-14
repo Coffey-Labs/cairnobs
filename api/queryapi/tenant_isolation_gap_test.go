@@ -3,7 +3,7 @@
 // "Verification plan for this design specifically" section names for
 // Phase 4 task 8 have a permanent, grep-able home in the test tree.
 //
-// Three of the four are no longer blocked:
+// All four are now closed:
 //
 //   - Item 1 (fully-qualified cross-tenant raw SQL):
 //     enterprise/internal/tenantprovision/tenantprovision_test.go's
@@ -20,25 +20,46 @@
 //     searchclient/searchclient_test.go (the Go client that resolves
 //     tenant_id from request identity, wire-level verified against a
 //     real in-process gRPC server).
+//   - Item 4 (an evaluator tick mid-provisioning must be refused, not
+//     served): closed on both storage engines, though the two needed
+//     genuinely different fixes once actually investigated.
+//     enterprise/internal/chrunner's fail-closed behavior turned out to
+//     already be structural -- a tenant not yet active+credentialed is
+//     simply absent from the immutable connection map enterprise-api's
+//     main.go builds at startup from
+//     rbacstore.ListProvisionedDataSources (itself covered by
+//     rbacstore_test.go's
+//     TestListProvisionedDataSourcesExcludesUnprovisionedAndInactive),
+//     so "mid-provisioning" and "entirely unknown tenant" collapse to
+//     the identical RunSQL map-lookup-miss path --
+//     enterprise/internal/chrunner/chrunner_test.go's
+//     TestRegistryRefusesMidProvisioningTenant proves this without
+//     needing Docker (an empty DataSource list never dials ClickHouse),
+//     complementing TestRegistryRefusesUnknownTenant's live-ClickHouse
+//     version of the same property.
 //
-// Item 4 remains blocked, for the reason its Skip below states. Note the
-// scope boundary all three closed items share: they prove *read*
-// isolation given tenant-scoped data exists -- they do not prove
-// ingest/write-path tenancy, which doesn't exist yet (every record
-// ingest produces lands in the single shared ClickHouse database and
-// Tantivy index regardless of tenant) -- see
-// /docs/security/threat-model.md.
+//     Tantivy was a real, different gap, not just an unverified
+//     assumption: search/src/registry.rs's IndexRegistry opens-or-
+//     creates an index for *any* syntactically-valid tenant_id on first
+//     request, because it's a separate process with no Postgres access
+//     and structurally can't know which tenants are actually
+//     provisioned. Without a check upstream, a query against a
+//     mid-provisioning tenant would have silently succeeded with zero
+//     results from a freshly-created empty index -- "ambient success"
+//     indistinguishable from "no matching logs," exactly the failure
+//     mode this item worried about. Fixed by adding
+//     enterprise/internal/searchclient.TenantChecker (backed by
+//     rbacstore.TenantIsActive): Client.Search now refuses before the
+//     gRPC call ever goes out if the tenant isn't active. Covered by
+//     enterprise/internal/searchclient/searchclient_test.go's
+//     TestSearchRefusesMidProvisioningTenant (Docker-free, real
+//     in-process gRPC server) and rbacstore_test.go's
+//     TestTenantIsActive/TestTenantIsActiveNonexistentTenant
+//     (live-Postgres, skip-gated).
+//
+// Scope boundary all four items share: they prove *read* isolation
+// given tenant-scoped data exists -- they do not prove ingest/write-path
+// tenancy, which doesn't exist yet (every record ingest produces lands
+// in the single shared ClickHouse database and Tantivy index regardless
+// of tenant) -- see /docs/security/threat-model.md.
 package queryapi
-
-import "testing"
-
-func TestAdversarial_EvaluatorTickMidProvisioningIsRefusedNotServed(t *testing.T) {
-	t.Skip("BLOCKED on enterprise/internal/tenantprovision's ordered " +
-		"provisioning state machine (CREATE USER -> GRANT -> mark active): " +
-		"needs a tenant row that exists but hasn't reached the active gate " +
-		"yet, and a simulated /alerting evaluator tick against it, to " +
-		"confirm every tenant-resolution path actually checks tenant " +
-		"status server-side rather than inferring readiness from ambient " +
-		"connection success. See /docs/phase-4-isolation-design.md's " +
-		"verification plan, item 4, and its provisioning-gate requirement.")
-}

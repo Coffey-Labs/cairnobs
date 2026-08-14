@@ -607,3 +607,48 @@ func TestGetUserByEmailNotFound(t *testing.T) {
 		t.Fatalf("GetUserByEmail error = %v, want ErrNotFound", err)
 	}
 }
+
+// TestTenantIsActive is the rbacstore-side half of Phase 4 task 8's
+// item 4 adversarial probe -- enterprise/internal/searchclient's
+// TestSearchRefusesMidProvisioningTenant proves Search refuses when
+// TenantChecker.TenantIsActive returns false; this proves the real
+// implementation actually returns false for a mid-provisioning tenant
+// and only ever returns true once SetTenantStatus marks it active.
+func TestTenantIsActive(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	active, err := s.TenantIsActive(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("TenantIsActive (provisioning): %v", err)
+	}
+	if active {
+		t.Fatal("a freshly-created tenant (status 'provisioning') must not be active")
+	}
+
+	if err := s.SetTenantStatus(ctx, tenantID, "active"); err != nil {
+		t.Fatalf("SetTenantStatus: %v", err)
+	}
+	active, err = s.TenantIsActive(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("TenantIsActive (active): %v", err)
+	}
+	if !active {
+		t.Fatal("expected the tenant to be active after SetTenantStatus")
+	}
+}
+
+func TestTenantIsActiveNonexistentTenant(t *testing.T) {
+	s := testStore(t)
+	active, err := s.TenantIsActive(context.Background(), "does-not-exist-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("TenantIsActive: %v, want a plain (false, nil) for a nonexistent tenant, not an error", err)
+	}
+	if active {
+		t.Fatal("a nonexistent tenant must not be reported active")
+	}
+}

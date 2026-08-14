@@ -315,3 +315,25 @@ suite must include, against the live stack:
 - A simulated evaluator tick firing mid-provisioning (tenant row exists,
   grants not yet confirmed) to confirm it's refused, not silently served
   against a partially-provisioned or default-profile connection.
+
+  **Implementation note (Phase 4 task 8, added after this design was
+  signed off):** closed for both storage engines, via
+  `api/queryapi/tenant_isolation_gap_test.go`'s pointers. ClickHouse's
+  refusal turned out to be structural, not something that needed new
+  code: `chrunner.Registry` is built once at startup from
+  `rbacstore.ListProvisionedDataSources`, which already excludes
+  anything short of active+credentialed, so a mid-provisioning tenant is
+  simply absent from the connection map — proven Docker-free
+  (`chrunner_test.go`'s `TestRegistryRefusesMidProvisioningTenant`,
+  since an empty `DataSource` list never dials ClickHouse). Tantivy was
+  a real, different gap: `search/src/registry.rs`'s `IndexRegistry`
+  opens-or-creates an index for *any* syntactically-valid `tenant_id` on
+  first request, because it's a separate process with no Postgres
+  access and structurally cannot know which tenants are provisioned --
+  without a check upstream, a mid-provisioning tenant's query would have
+  silently succeeded with zero results from a freshly-created empty
+  index. Fixed by adding `enterprise/internal/searchclient.
+  TenantChecker` (backed by a new `rbacstore.TenantIsActive`): `Client.
+  Search` now refuses before the gRPC call goes out if the tenant isn't
+  active, verified Docker-free via a real in-process gRPC server
+  (`searchclient_test.go`'s `TestSearchRefusesMidProvisioningTenant`).

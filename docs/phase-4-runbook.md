@@ -386,14 +386,27 @@ cargo test
 cd ../enterprise
 go test ./internal/searchclient/... -v
 # real in-process gRPC server, confirms SearchRequest.tenant_id is set
-# correctly and that a request with no/invalid tenant identity is refused.
+# correctly, that a request with no/invalid tenant identity is refused,
+# and (since TenantChecker was added to close verification-plan item 4)
+# that a tenant which exists but isn't active yet -- e.g. right after
+# enterprise-auth -create-tenant but before enterprise-api
+# -provision-tenant -- is refused too, not silently searched against a
+# freshly-created empty index.
+
+go test ./internal/chrunner/... -run MidProvisioning -v
+# the ClickHouse half of the same item-4 probe -- also Docker-free,
+# since an empty DataSource list never dials out.
 ```
 
 This is the one piece of Phase 4's tenant isolation work that has
 **actually been run and confirmed passing** in an environment without
-Docker access, alongside `enterprise/internal/loginhandler`'s OIDC
-tests (§3a) — both are unusually strong evidence precisely because they
-needed no infrastructure this environment lacked.
+Docker access, alongside `enterprise/internal/loginhandler`'s OIDC/SAML
+tests (§3a/§3b) — both are unusually strong evidence precisely because
+they needed no infrastructure this environment lacked. Writing the
+`TenantChecker` test here is also what found the Tantivy mid-
+provisioning gap in the first place, not just what closed it after the
+fact -- see `api/queryapi/tenant_isolation_gap_test.go`'s item 4 for the
+full story.
 
 ## 10. Confirm the Helm chart actually enforces the binary swap
 
@@ -466,11 +479,22 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   (`enterprise/internal/rbacstore/rbacstore_test.go`) haven't run
   against a live database in this environment, same gap as the rest of
   this phase's Postgres-backed pieces.
-- Three of the four adversarial ClickHouse/Tantivy probes named in
-  `/docs/phase-4-isolation-design.md`'s verification plan are closed
-  (§8, §9); the last (mid-provisioning-race handling) is still stubbed
-  as an explicitly-skipped test in
-  `api/queryapi/tenant_isolation_gap_test.go`.
+- All four adversarial ClickHouse/Tantivy probes named in
+  `/docs/phase-4-isolation-design.md`'s verification plan are now closed
+  -- see `api/queryapi/tenant_isolation_gap_test.go` for the full
+  accounting. The fourth (mid-provisioning-race handling) turned out to
+  need a real code fix on the Tantivy side, not just a test: `search/
+  src/registry.rs`'s `IndexRegistry` opened-or-created an index for any
+  syntactically-valid `tenant_id`, so a mid-provisioning tenant's query
+  would have silently succeeded with zero results instead of being
+  refused. Fixed via `enterprise/internal/searchclient.TenantChecker`
+  (backed by `rbacstore.TenantIsActive`). Both the ClickHouse and
+  Tantivy halves of this probe run genuinely, without Docker, in this
+  environment (`chrunner_test.go`'s
+  `TestRegistryRefusesMidProvisioningTenant`, `searchclient_test.go`'s
+  `TestSearchRefusesMidProvisioningTenant`) -- `rbacstore.TenantIsActive`
+  itself has skip-gated live-Postgres tests that haven't run here, same
+  disclosed gap as the rest of this phase's Postgres-backed pieces.
 
 ## Tearing down
 

@@ -76,7 +76,13 @@ section for exactly what "not yet run" means here and why. Don't read
   that tenant's document) actually ran: `search`'s
   `cargo test`/`cargo clippy --all-targets -- -D warnings` and this
   package's `go test` both pass clean, no Docker or live database
-  needed for either.
+  needed for either. `Client` also carries a `TenantChecker` (backed by
+  `rbacstore.TenantIsActive`) since `search/src/registry.rs`'s
+  `IndexRegistry` opens-or-creates an index for any syntactically-valid
+  `tenant_id` -- a real gap found while closing
+  `/docs/phase-4-isolation-design.md`'s verification-plan item 4: a
+  mid-provisioning tenant would otherwise get a silently-empty search
+  result instead of a refusal. Verified the same Docker-free way.
 - `cmd/enterprise-api`: a second binary (alongside `api/cmd/api`,
   unchanged) importing *both* `api`'s handler packages and the
   tenant-aware implementations above -- see its own doc comment for why
