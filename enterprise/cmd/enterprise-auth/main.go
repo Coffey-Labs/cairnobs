@@ -188,7 +188,7 @@ func main() {
 		SAMLEnabled: cfg.SAML.IDPMetadataURL != "",
 	}
 	authhandler.New(logger, sessionManager, features).RegisterRoutes(mux)
-	loginhandler.New(logger, oidcProvider, samlProvider, sessionManager, rbac, cfg.PostLoginRedirectURL).RegisterRoutes(mux)
+	loginhandler.New(logger, oidcProvider, samlProvider, sessionManager, rbac, cfg.PostLoginRedirectURL, cfg.SelectTenantRedirectURL).RegisterRoutes(mux)
 
 	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: mux}
 

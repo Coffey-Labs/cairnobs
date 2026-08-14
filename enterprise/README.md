@@ -55,9 +55,12 @@ section for exactly what "not yet run" means here and why. Don't read
   -- the actual human login flow, previously entirely missing. Redirects
   to the configured IdP with CSRF-protection state in a short-lived
   cookie, exchanges the code, verifies the ID token via `internal/oidc`,
-  upserts a `users` row, resolves tenant/role from exactly one
-  `tenant_memberships` row (refuses with a clear error on zero or
-  multiple -- no tenant-picker UI yet), and issues a session cookie.
+  upserts a `users` row, resolves tenant/role from `tenant_memberships`
+  (refuses with a clear error on zero rows; more than one starts a real
+  tenant-selection round trip -- `GET /auth/memberships` +
+  `POST /auth/select-tenant`, backed by a short-lived
+  `session.Manager.IssuePendingLogin` token -- rather than guessing; see
+  "Tenant selection" below), and issues a session cookie.
   **This one genuinely is verified**, unlike the ClickHouse pieces above:
   `loginhandler_test.go` runs the full flow against a real fake IdP
   (`coreos/go-oidc`'s own `oidctest` package, real RS256 signing and
@@ -134,11 +137,51 @@ manage-grants regression); real integration tests exist in
 environment, same disclosed gap as the rest of this package's
 Postgres-backed pieces.
 
+## Tenant selection (multi-membership identities)
+
+The backend protocol for choosing a tenant is built and tested; the
+frontend page that would actually call it is deliberately not (see
+"Deliberately deferred" below). When `resolveIdentity` finds more than
+one `tenant_memberships` row for a logged-in identity, `finishLogin`
+issues a `session.Manager.IssuePendingLogin` token (a distinct Go/JWT
+type from a real session -- see that type's doc comment for a real bug
+this design caught in its own tests: a shared JSON key would have let a
+full session token double as a pending login) as a
+`sentry_pending_login` cookie (`Path=/auth`) and redirects to
+`SELECT_TENANT_REDIRECT_URL` (defaults to
+`{POST_LOGIN_REDIRECT_URL}/select-tenant`) instead of completing the
+login. From there:
+
+- `GET /auth/memberships` -- lists the pending identity's tenants
+  (`tenant_id`, `tenant_display_name`, `role`) to choose between.
+- `POST /auth/select-tenant` with `{"tenant_id": "..."}` -- re-derives
+  the role for that specific tenant server-side (never trusts a
+  client-supplied role, only checks the claimed `tenant_id` against the
+  identity's actual memberships, refusing with 403 otherwise), issues
+  the real session cookie, and responds with
+  `{"redirect_url": "..."}` for the caller to navigate to -- JSON, not a
+  redirect, since this is a POST/fetch call a frontend page should
+  control the navigation for itself.
+
+Verified with the same real-fake-IdP tests as the rest of this package
+(`loginhandler_test.go`/`saml_test.go`): the full login -> pending
+cookie -> `GET /auth/memberships` -> `POST /auth/select-tenant` -> real
+session round trip, plus negative paths (missing/expired/wrong-type
+pending cookie, a `tenant_id` outside the identity's actual
+memberships, a real session token rejected when presented as a pending
+login).
+
 **Deliberately deferred, not half-built** -- named explicitly rather than
 silently left out:
-- A tenant-picker UI/flow for an identity with more than one
-  `tenant_memberships` row -- `loginhandler` refuses these logins
-  outright rather than guessing (`ErrMultipleMemberships`).
+- **The actual tenant-picker page** -- nothing in `web/` calls the
+  endpoints above yet. Building it is genuinely different, larger scope
+  than the backend protocol: `web` has zero session/cookie-handling
+  code today (confirmed by reading it end to end while designing this),
+  so a real picker page means adding that from scratch, plus CORS
+  wiring (`enterprise-auth` has no CORS middleware at all right now --
+  a cross-origin `fetch` with credentials from `web`'s origin needs
+  it), neither of which is verifiable in this environment without a
+  live backend and a browser session to exercise.
 - **Ingest tenant-awareness, for either storage engine** -- `chrunner`/
   `searchclient` prove read isolation given tenant-scoped data exists,
   but nothing writes it: every record `ingest` produces still lands in
@@ -344,6 +387,7 @@ to, see `tenantprovision.ProvisionClickHouse`'s doc comment).
 | `SAML_IDP_METADATA_URL` | (empty — SAML disabled if unset; if set, fetched and parsed at startup via `samlsp.FetchMetadata`, same trust level as `OIDC_ISSUER_URL`'s discovery fetch) |
 | `ENTERPRISE_SESSION_SIGNING_KEY` | **required**, min 32 bytes |
 | `POST_LOGIN_REDIRECT_URL` | `http://localhost:3000` — where the browser lands after `internal/loginhandler` sets a session cookie |
+| `SELECT_TENANT_REDIRECT_URL` | `{POST_LOGIN_REDIRECT_URL}/select-tenant` — where the browser lands for a multi-membership identity instead; nothing serves this route yet, see "Tenant selection" above |
 
 ## Environment variables (`enterprise-api`)
 

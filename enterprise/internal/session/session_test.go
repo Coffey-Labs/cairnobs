@@ -95,6 +95,107 @@ func TestValidateRejectsWrongKey(t *testing.T) {
 	}
 }
 
+func TestIssueAndValidatePendingLogin(t *testing.T) {
+	m, err := NewManager(testKey())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	token, err := m.IssuePendingLogin("u1")
+	if err != nil {
+		t.Fatalf("IssuePendingLogin: %v", err)
+	}
+	userID, err := m.ValidatePendingLogin(token)
+	if err != nil {
+		t.Fatalf("ValidatePendingLogin: %v", err)
+	}
+	if userID != "u1" {
+		t.Fatalf("userID = %q, want u1", userID)
+	}
+}
+
+func TestValidatePendingLoginRejectsTamperedToken(t *testing.T) {
+	m, err := NewManager(testKey())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	token, err := m.IssuePendingLogin("u1")
+	if err != nil {
+		t.Fatalf("IssuePendingLogin: %v", err)
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected a 3-segment JWT, got %d segments", len(parts))
+	}
+	tampered := parts[0] + "." + parts[1] + "x" + "." + parts[2]
+	if _, err := m.ValidatePendingLogin(tampered); err != ErrInvalidToken {
+		t.Fatalf("ValidatePendingLogin(tampered) error = %v, want ErrInvalidToken", err)
+	}
+}
+
+// TestValidatePendingLoginRejectsRealSessionToken is the regression test
+// for PendingLoginClaims.UserID's "pending_user_id" json tag (see that
+// field's doc comment): a real user-session token must not parse as a
+// valid pending login just because both structs happen to be signed by
+// the same key.
+func TestValidatePendingLoginRejectsRealSessionToken(t *testing.T) {
+	m, err := NewManager(testKey())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	sessionToken, err := m.IssueUserSession("acme", "u1", "editor")
+	if err != nil {
+		t.Fatalf("IssueUserSession: %v", err)
+	}
+	if _, err := m.ValidatePendingLogin(sessionToken); err != ErrInvalidToken {
+		t.Fatalf("ValidatePendingLogin(a real session token) error = %v, want ErrInvalidToken", err)
+	}
+}
+
+// TestValidateRejectsPendingLoginToken is the same regression in the
+// other direction: a pending-login token must not validate as a usable
+// session either (it carries no tenant_id/role at all, so it would be
+// inert even if it somehow parsed, but this proves that directly rather
+// than relying on downstream role checks alone).
+func TestValidateRejectsPendingLoginToken(t *testing.T) {
+	m, err := NewManager(testKey())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	pendingToken, err := m.IssuePendingLogin("u1")
+	if err != nil {
+		t.Fatalf("IssuePendingLogin: %v", err)
+	}
+	claims, err := m.Validate(pendingToken)
+	if err != nil {
+		t.Fatalf("Validate(pending token): %v", err)
+	}
+	if claims.TenantID != "" || claims.UserID != "" || claims.Role != "" {
+		t.Fatalf("a pending-login token must not carry any tenant/user/role claims when read as a session, got %+v", claims)
+	}
+}
+
+func TestValidatePendingLoginRejectsExpiredToken(t *testing.T) {
+	m, err := NewManager(testKey())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	now := time.Now()
+	claims := PendingLoginClaims{
+		UserID: "u1",
+		Claims: jwt.Claims{
+			IssuedAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
+			Expiry:   jwt.NewNumericDate(now.Add(-30 * time.Minute)),
+		},
+	}
+	token, err := jwt.Signed(m.signer).Claims(claims).Serialize()
+	if err != nil {
+		t.Fatalf("building an already-expired pending token: %v", err)
+	}
+	if _, err := m.ValidatePendingLogin(token); err != ErrInvalidToken {
+		t.Fatalf("ValidatePendingLogin(expired) error = %v, want ErrInvalidToken", err)
+	}
+}
+
 func TestValidateRejectsExpiredToken(t *testing.T) {
 	m, err := NewManager(testKey())
 	if err != nil {

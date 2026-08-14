@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,12 +35,17 @@ const testKeyID = "test-key-1"
 // SSO subject -- enough to drive resolveIdentity's logic without a real
 // Postgres.
 type fakeUserStore struct {
-	usersBySubject map[string]*rbacstore.User
-	memberships    map[string][]rbacstore.Membership // by user ID
+	usersBySubject     map[string]*rbacstore.User
+	memberships        map[string][]rbacstore.Membership // by user ID
+	tenantDisplayNames map[string]string                 // by tenant ID, defaults to the ID itself if unset
 }
 
 func newFakeUserStore() *fakeUserStore {
-	return &fakeUserStore{usersBySubject: map[string]*rbacstore.User{}, memberships: map[string][]rbacstore.Membership{}}
+	return &fakeUserStore{
+		usersBySubject:     map[string]*rbacstore.User{},
+		memberships:        map[string][]rbacstore.Membership{},
+		tenantDisplayNames: map[string]string{},
+	}
 }
 
 func (f *fakeUserStore) UpsertUserBySSO(_ context.Context, ssoSubject, email, displayName string) (*rbacstore.User, error) {
@@ -54,6 +60,19 @@ func (f *fakeUserStore) UpsertUserBySSO(_ context.Context, ssoSubject, email, di
 
 func (f *fakeUserStore) ListMembershipsForUser(_ context.Context, userID string) ([]rbacstore.Membership, error) {
 	return f.memberships[userID], nil
+}
+
+func (f *fakeUserStore) ListMembershipsWithTenantForUser(_ context.Context, userID string) ([]rbacstore.MembershipWithTenant, error) {
+	memberships := f.memberships[userID]
+	out := make([]rbacstore.MembershipWithTenant, 0, len(memberships))
+	for _, m := range memberships {
+		displayName := f.tenantDisplayNames[m.TenantID]
+		if displayName == "" {
+			displayName = m.TenantID
+		}
+		out = append(out, rbacstore.MembershipWithTenant{TenantID: m.TenantID, TenantDisplayName: displayName, Role: m.Role})
+	}
+	return out, nil
 }
 
 // testIdP bundles a real oidctest.Server (discovery + JWKS) with a local
@@ -128,7 +147,7 @@ func newTestSessionManager(t *testing.T) *session.Manager {
 
 func TestHandleLoginRedirectsAndSetsStateCookie(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -188,7 +207,7 @@ func TestFullLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 	store := newFakeUserStore()
 	store.memberships["user-user-1"] = []rbacstore.Membership{{TenantID: "acme", UserID: "user-user-1", Role: rbacstore.RoleEditor}}
 	sessionManager := newTestSessionManager(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, sessionManager, store, "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, sessionManager, store, "http://web/", "http://web/select-tenant")
 
 	idp.setNextIDToken(t, "user-1", "person@acme.example", true, time.Now().Add(time.Hour))
 	rec := fullLoginFlow(t, h, idp)
@@ -220,7 +239,7 @@ func TestFullLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 
 func TestFullLoginFlowRefusesNoMembership(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 
 	idp.setNextIDToken(t, "user-2", "nobody@acme.example", true, time.Now().Add(time.Hour))
 	rec := fullLoginFlow(t, h, idp)
@@ -230,26 +249,282 @@ func TestFullLoginFlowRefusesNoMembership(t *testing.T) {
 	}
 }
 
-func TestFullLoginFlowRefusesMultipleMemberships(t *testing.T) {
+// TestFullLoginFlowStartsTenantSelectionForMultipleMemberships is the
+// regression test for the real tenant-picker protocol (see this
+// package's doc comment): an identity with more than one
+// tenant_memberships row must get a pending-login cookie and a redirect
+// to selectTenantRedirectURL, not a flat refusal and not a session
+// cookie for either tenant guessed at.
+func TestFullLoginFlowStartsTenantSelectionForMultipleMemberships(t *testing.T) {
 	idp := newTestIdP(t)
 	store := newFakeUserStore()
 	store.memberships["user-user-3"] = []rbacstore.Membership{
 		{TenantID: "acme", UserID: "user-user-3", Role: rbacstore.RoleViewer},
 		{TenantID: "globex", UserID: "user-user-3", Role: rbacstore.RoleAdmin},
 	}
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), store, "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), store, "http://web/", "http://web/select-tenant")
 
 	idp.setNextIDToken(t, "user-3", "multi@example.com", true, time.Now().Add(time.Hour))
 	rec := fullLoginFlow(t, h, idp)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body=%s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "http://web/select-tenant" {
+		t.Fatalf("Location = %q, want http://web/select-tenant", loc)
+	}
+	var pendingCookie, sessionCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		switch c.Name {
+		case pendingLoginCookieName:
+			pendingCookie = c
+		case "sentry_session":
+			sessionCookie = c
+		}
+	}
+	if pendingCookie == nil || pendingCookie.Value == "" {
+		t.Fatal("expected a non-empty pending-login cookie")
+	}
+	if sessionCookie != nil {
+		t.Fatal("must not issue a real session cookie before a tenant is actually chosen")
+	}
+}
+
+// startTenantSelection drives a full OIDC login for an identity that
+// resolves to more than one membership, returning the mux (so callers
+// can drive GET /auth/memberships and POST /auth/select-tenant
+// afterward, exactly like a picker page would) and the pending-login
+// cookie the login flow set.
+func startTenantSelection(t *testing.T, h *Handler, idp *testIdP) (*http.ServeMux, *http.Cookie) {
+	t.Helper()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	loginRec := httptest.NewRecorder()
+	mux.ServeHTTP(loginRec, httptest.NewRequest(http.MethodGet, "/auth/oidc/login", nil))
+	var stateCookie *http.Cookie
+	for _, c := range loginRec.Result().Cookies() {
+		if c.Name == oidcStateCookieName {
+			stateCookie = c
+		}
+	}
+	if stateCookie == nil {
+		t.Fatal("no state cookie from /auth/oidc/login")
+	}
+
+	callbackReq := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state="+stateCookie.Value+"&code=test-code", nil)
+	callbackReq.AddCookie(stateCookie)
+	callbackRec := httptest.NewRecorder()
+	mux.ServeHTTP(callbackRec, callbackReq)
+	if callbackRec.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302; body=%s", callbackRec.Code, callbackRec.Body.String())
+	}
+	var pendingCookie *http.Cookie
+	for _, c := range callbackRec.Result().Cookies() {
+		if c.Name == pendingLoginCookieName {
+			pendingCookie = c
+		}
+	}
+	if pendingCookie == nil {
+		t.Fatal("expected a pending-login cookie")
+	}
+	return mux, pendingCookie
+}
+
+func newMultiMembershipStore() *fakeUserStore {
+	store := newFakeUserStore()
+	store.memberships["user-user-multi"] = []rbacstore.Membership{
+		{TenantID: "acme", UserID: "user-user-multi", Role: rbacstore.RoleViewer},
+		{TenantID: "globex", UserID: "user-user-multi", Role: rbacstore.RoleAdmin},
+	}
+	store.tenantDisplayNames["acme"] = "Acme Corp"
+	store.tenantDisplayNames["globex"] = "Globex Corporation"
+	return store
+}
+
+func TestListMembershipsReturnsTenantOptions(t *testing.T) {
+	idp := newTestIdP(t)
+	store := newMultiMembershipStore()
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), store, "http://web/", "http://web/select-tenant")
+	idp.setNextIDToken(t, "user-multi", "multi@example.com", true, time.Now().Add(time.Hour))
+	mux, pendingCookie := startTenantSelection(t, h, idp)
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/memberships", nil)
+	req.AddCookie(pendingCookie)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var options []membershipOption
+	if err := json.Unmarshal(rec.Body.Bytes(), &options); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(options) != 2 {
+		t.Fatalf("got %d options, want 2: %+v", len(options), options)
+	}
+	byTenant := map[string]membershipOption{}
+	for _, o := range options {
+		byTenant[o.TenantID] = o
+	}
+	if byTenant["acme"].TenantDisplayName != "Acme Corp" || byTenant["acme"].Role != "viewer" {
+		t.Fatalf("unexpected acme option: %+v", byTenant["acme"])
+	}
+	if byTenant["globex"].TenantDisplayName != "Globex Corporation" || byTenant["globex"].Role != "admin" {
+		t.Fatalf("unexpected globex option: %+v", byTenant["globex"])
+	}
+}
+
+func TestListMembershipsRejectsMissingPendingCookie(t *testing.T) {
+	idp := newTestIdP(t)
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/auth/memberships", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestSelectTenantIssuesSessionForChosenTenant(t *testing.T) {
+	idp := newTestIdP(t)
+	store := newMultiMembershipStore()
+	sessionManager := newTestSessionManager(t)
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, sessionManager, store, "http://web/", "http://web/select-tenant")
+	idp.setNextIDToken(t, "user-multi", "multi@example.com", true, time.Now().Add(time.Hour))
+	mux, pendingCookie := startTenantSelection(t, h, idp)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/select-tenant", strings.NewReader(`{"tenant_id": "globex"}`))
+	req.AddCookie(pendingCookie)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var sessionCookie, clearedPendingCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		switch c.Name {
+		case "sentry_session":
+			sessionCookie = c
+		case pendingLoginCookieName:
+			clearedPendingCookie = c
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
+		t.Fatal("expected a sentry_session cookie to be set")
+	}
+	if clearedPendingCookie == nil || clearedPendingCookie.MaxAge >= 0 {
+		t.Fatalf("expected the pending-login cookie to be cleared (MaxAge < 0), got %+v", clearedPendingCookie)
+	}
+	claims, err := sessionManager.Validate(sessionCookie.Value)
+	if err != nil {
+		t.Fatalf("validating issued session: %v", err)
+	}
+	if claims.TenantID != "globex" || claims.Role != "admin" || claims.UserID != "user-user-multi" {
+		t.Fatalf("unexpected session claims: %+v", claims)
+	}
+
+	var body selectTenantResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if body.RedirectURL != "http://web/" {
+		t.Fatalf("RedirectURL = %q, want http://web/", body.RedirectURL)
+	}
+}
+
+// TestSelectTenantRejectsTenantOutsideMembership is the regression test
+// for handleSelectTenant re-deriving role server-side rather than
+// trusting the request: a client claiming a tenant_id the pending
+// identity doesn't actually belong to must be refused, not silently
+// granted whatever role happened to be in the request.
+func TestSelectTenantRejectsTenantOutsideMembership(t *testing.T) {
+	idp := newTestIdP(t)
+	store := newMultiMembershipStore()
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), store, "http://web/", "http://web/select-tenant")
+	idp.setNextIDToken(t, "user-multi", "multi@example.com", true, time.Now().Add(time.Hour))
+	mux, pendingCookie := startTenantSelection(t, h, idp)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/select-tenant", strings.NewReader(`{"tenant_id": "not-a-real-membership"}`))
+	req.AddCookie(pendingCookie)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", rec.Code, rec.Body.String())
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "sentry_session" {
+			t.Fatal("must not issue a session cookie for a tenant outside the identity's memberships")
+		}
+	}
+}
+
+func TestSelectTenantRejectsMissingBody(t *testing.T) {
+	idp := newTestIdP(t)
+	store := newMultiMembershipStore()
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), store, "http://web/", "http://web/select-tenant")
+	idp.setNextIDToken(t, "user-multi", "multi@example.com", true, time.Now().Add(time.Hour))
+	mux, pendingCookie := startTenantSelection(t, h, idp)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/select-tenant", strings.NewReader(`{}`))
+	req.AddCookie(pendingCookie)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestSelectTenantRejectsMissingPendingCookie(t *testing.T) {
+	idp := newTestIdP(t)
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/auth/select-tenant", strings.NewReader(`{"tenant_id": "acme"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestSelectTenantRejectsSessionCookieAsPendingCookie is the regression
+// test for PendingLoginClaims being a distinct type from Claims: a real
+// session token must not work as a pending-login cookie, even though
+// both are signed by the same key.
+func TestSelectTenantRejectsSessionCookieAsPendingCookie(t *testing.T) {
+	idp := newTestIdP(t)
+	store := newFakeUserStore()
+	store.memberships["user-user-1"] = []rbacstore.Membership{{TenantID: "acme", UserID: "user-user-1", Role: rbacstore.RoleEditor}}
+	sessionManager := newTestSessionManager(t)
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, sessionManager, store, "http://web/", "http://web/select-tenant")
+
+	realSessionToken, err := sessionManager.IssueUserSession("acme", "user-user-1", "editor")
+	if err != nil {
+		t.Fatalf("IssueUserSession: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+	req := httptest.NewRequest(http.MethodPost, "/auth/select-tenant", strings.NewReader(`{"tenant_id": "acme"}`))
+	req.AddCookie(&http.Cookie{Name: pendingLoginCookieName, Value: realSessionToken})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (a real session token must not validate as a pending login)", rec.Code)
 	}
 }
 
 func TestCallbackRejectsStateMismatch(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -265,7 +540,7 @@ func TestCallbackRejectsStateMismatch(t *testing.T) {
 
 func TestCallbackRejectsMissingStateCookie(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -279,7 +554,7 @@ func TestCallbackRejectsMissingStateCookie(t *testing.T) {
 
 func TestCallbackRejectsExpiredIDToken(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 
 	idp.setNextIDToken(t, "user-4", "person@example.com", true, time.Now().Add(-time.Hour)) // already expired
 	rec := fullLoginFlow(t, h, idp)
@@ -290,7 +565,7 @@ func TestCallbackRejectsExpiredIDToken(t *testing.T) {
 }
 
 func TestRegisterRoutesNoOpWhenOIDCNotConfigured(t *testing.T) {
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -314,7 +589,7 @@ func TestRegisterRoutesNoOpWhenOIDCNotConfigured(t *testing.T) {
 // the trap, only passing a nil-valued typed variable does.
 func TestRegisterRoutesNoOpWithTypedNilProviderVariable(t *testing.T) {
 	var provider *oidc.Provider // stays nil -- exactly main.go's shape when OIDC_ISSUER_URL is unset
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), provider, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), provider, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 

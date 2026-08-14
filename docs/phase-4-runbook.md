@@ -521,6 +521,39 @@ the full loop (does the operator's watch actually re-trigger a reconcile
 after `-provision-tenant`'s external status write the way controller-
 runtime's default predicate is expected to).
 
+## 12. Tenant-picker backend protocol (no frontend yet, no Docker needed)
+
+Like §9, this needs nothing but a local Go toolchain -- the real
+fake-IdP tests already exercise the full login → pending-login cookie →
+`GET /auth/memberships` → `POST /auth/select-tenant` → real session
+round trip:
+
+```sh
+cd enterprise
+go test ./internal/session/... -run PendingLogin -v
+# real JWT signing/verification: issues a pending-login token, validates
+# it, and proves the two negative regressions that matter most --
+# a real session token must not validate as a pending login (they share
+# a signing key but PendingLoginClaims uses a disjoint json field name,
+# see that type's doc comment for the bug this caught in its own tests),
+# and a pending-login token must not validate as a real session either.
+
+go test ./internal/loginhandler/... -run 'Memberships|SelectTenant|MultipleMemberships' -v
+# full round trip against the real fake OIDC/SAML IdPs: multi-membership
+# login sets a pending cookie and redirects (not a 501 anymore), GET
+# /auth/memberships lists the real tenant options with display names,
+# POST /auth/select-tenant re-derives role server-side and refuses a
+# tenant_id outside the identity's actual memberships.
+```
+
+**Not built, and explicitly not attempted here**: the frontend page.
+`web` has no session/cookie-handling code anywhere in it today (checked
+while designing this), and `enterprise-auth` has no CORS middleware at
+all -- a cross-origin `fetch` with credentials from `web`'s origin to
+`enterprise-auth`'s would need it, and doesn't work today. Building the
+actual picker UI is real, separately-scoped frontend work; this section
+only closes the backend half.
+
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
@@ -553,8 +586,13 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
 - **Human SSO login now works for both OIDC (§3a) and SAML (§3b)** --
   each verified with a real fake IdP (genuine cryptographic signing and
   verification), not yet a real external IdP or a running
-  `enterprise-auth` container. No tenant-picker UI for a multi-membership
-  identity either (refused outright) for either protocol.
+  `enterprise-auth` container. **The tenant-picker backend protocol is
+  now built too** (§12) -- `GET /auth/memberships`/
+  `POST /auth/select-tenant`, backed by a short-lived pending-login
+  token distinct from a real session -- but nothing in `web` calls it
+  yet, so a multi-membership identity still can't actually finish
+  logging in through a browser today, just through direct HTTP calls
+  (which is what §12's verification does).
 - No admin UI to create a `tenant_memberships` row, but §3a/§3b's manual
   SQL bootstrap is gone -- `enterprise-auth -create-tenant`/
   `-grant-membership-*`/`-revoke-membership-*`/`-list-memberships-tenant`

@@ -239,7 +239,7 @@ func fullSAMLLoginFlow(t *testing.T, h *Handler, idp *testSAMLIdP, nameID, email
 
 func TestHandleSAMLLoginRedirectsAndSetsRequestCookie(t *testing.T) {
 	idp := newTestSAMLIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -274,7 +274,7 @@ func TestFullSAMLLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 	store := newFakeUserStore()
 	store.memberships["user-saml-user-1"] = []rbacstore.Membership{{TenantID: "acme", UserID: "user-saml-user-1", Role: rbacstore.RoleEditor}}
 	sessionManager := newTestSessionManager(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), sessionManager, store, "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), sessionManager, store, "http://web/", "http://web/select-tenant")
 
 	rec := fullSAMLLoginFlow(t, h, idp, "saml-user-1", "person@acme.example")
 
@@ -305,7 +305,7 @@ func TestFullSAMLLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 
 func TestFullSAMLLoginFlowRefusesNoMembership(t *testing.T) {
 	idp := newTestSAMLIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 
 	rec := fullSAMLLoginFlow(t, h, idp, "saml-user-2", "nobody@acme.example")
 
@@ -314,25 +314,42 @@ func TestFullSAMLLoginFlowRefusesNoMembership(t *testing.T) {
 	}
 }
 
-func TestFullSAMLLoginFlowRefusesMultipleMemberships(t *testing.T) {
+// TestFullSAMLLoginFlowStartsTenantSelectionForMultipleMemberships is
+// SAML's side of the tenant-picker regression test -- see
+// loginhandler_test.go's OIDC equivalent for the full reasoning; both
+// protocols converge on the same finishLogin/resolveIdentity, so the
+// behavior must match exactly.
+func TestFullSAMLLoginFlowStartsTenantSelectionForMultipleMemberships(t *testing.T) {
 	idp := newTestSAMLIdP(t)
 	store := newFakeUserStore()
 	store.memberships["user-saml-user-3"] = []rbacstore.Membership{
 		{TenantID: "acme", UserID: "user-saml-user-3", Role: rbacstore.RoleViewer},
 		{TenantID: "globex", UserID: "user-saml-user-3", Role: rbacstore.RoleAdmin},
 	}
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), store, "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), store, "http://web/", "http://web/select-tenant")
 
 	rec := fullSAMLLoginFlow(t, h, idp, "saml-user-3", "multi@example.com")
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body=%s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "http://web/select-tenant" {
+		t.Fatalf("Location = %q, want http://web/select-tenant", loc)
+	}
+	var pendingCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == pendingLoginCookieName {
+			pendingCookie = c
+		}
+	}
+	if pendingCookie == nil || pendingCookie.Value == "" {
+		t.Fatal("expected a non-empty pending-login cookie")
 	}
 }
 
 func TestFullSAMLLoginFlowRefusesMissingEmail(t *testing.T) {
 	idp := newTestSAMLIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 
 	rec := fullSAMLLoginFlow(t, h, idp, "saml-user-4", "") // no email attribute in the assertion
 
@@ -343,7 +360,7 @@ func TestFullSAMLLoginFlowRefusesMissingEmail(t *testing.T) {
 
 func TestSAMLACSRejectsMissingRequestCookie(t *testing.T) {
 	idp := newTestSAMLIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -363,7 +380,7 @@ func TestSAMLACSRejectsMissingRequestCookie(t *testing.T) {
 
 func TestSAMLACSRejectsWrongRequestID(t *testing.T) {
 	idp := newTestSAMLIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -394,7 +411,7 @@ func TestSAMLACSRejectsWrongRequestID(t *testing.T) {
 }
 
 func TestRegisterRoutesNoOpWhenSAMLNotConfigured(t *testing.T) {
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -411,7 +428,7 @@ func TestRegisterRoutesNoOpWhenSAMLNotConfigured(t *testing.T) {
 // typed-nil-interface trap this guards against.
 func TestRegisterRoutesNoOpWithTypedNilSAMLProviderVariable(t *testing.T) {
 	var provider *samlpkg.ServiceProvider // stays nil -- main.go's shape when SAML_IDP_METADATA_URL is unset
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, provider, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, provider, newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
