@@ -7,9 +7,16 @@
 // signed tokens with a different Role claim, so one validation path
 // handles both, and the Role claim (not which header carried it) is what
 // determines whether the result looks like a human or a service identity.
+//
+// POST /internal/authorize-ingest is a sibling endpoint, same network-
+// boundary shape but for a different caller (`ingest`, core/AGPL, not
+// api/authz) and a different credential type (an ingest bearer token
+// checked against rbacstore's ingest_credentials table, not a
+// session.Manager JWT) -- see ingestCredentialValidator's doc comment.
 package authhandler
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -32,19 +39,32 @@ type Features struct {
 	SAMLEnabled bool
 }
 
-type Handler struct {
-	logger   *slog.Logger
-	manager  *session.Manager
-	features Features
+// ingestCredentialValidator is the narrow interface POST
+// /internal/authorize-ingest needs -- *rbacstore.Store is the production
+// implementation. Unlike session-backed /internal/authorize, this
+// endpoint validates a completely different credential type (an ingest
+// bearer token, checked against enterprise/internal/rbacstore's
+// ingest_credentials table, never a session.Manager-signed JWT), so it
+// needs a dependency session.Manager alone can't supply.
+type ingestCredentialValidator interface {
+	ValidateIngestCredential(ctx context.Context, token string) (tenantID string, err error)
 }
 
-func New(logger *slog.Logger, manager *session.Manager, features Features) *Handler {
-	return &Handler{logger: logger, manager: manager, features: features}
+type Handler struct {
+	logger            *slog.Logger
+	manager           *session.Manager
+	features          Features
+	ingestCredentials ingestCredentialValidator
+}
+
+func New(logger *slog.Logger, manager *session.Manager, features Features, ingestCredentials ingestCredentialValidator) *Handler {
+	return &Handler{logger: logger, manager: manager, features: features, ingestCredentials: ingestCredentials}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/authorize", h.handleAuthorize)
 	mux.HandleFunc("GET /auth/features", h.handleFeatures)
+	mux.HandleFunc("POST /internal/authorize-ingest", h.handleAuthorizeIngest)
 }
 
 type featuresResponse struct {
@@ -98,6 +118,32 @@ func (h *Handler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		UserID:   claims.UserID,
 		Role:     claims.Role,
 	})
+}
+
+type authorizeIngestResponse struct {
+	TenantID string `json:"tenant_id"`
+}
+
+// handleAuthorizeIngest is ingest/internal/grpcserver.HTTPTenantResolver's
+// server side -- ingest calls this once per PushBatch (with the bearer
+// token the agent presented) to resolve which tenant the batch belongs
+// to, the network-boundary equivalent of api/authz.HTTPAuthorizer
+// calling /internal/authorize, for a different credential type.
+func (h *Handler) handleAuthorizeIngest(w http.ResponseWriter, r *http.Request) {
+	token := bearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		http.Error(w, "no credentials presented", http.StatusUnauthorized)
+		return
+	}
+
+	tenantID, err := h.ingestCredentials.ValidateIngestCredential(r.Context(), token)
+	if err != nil {
+		http.Error(w, "invalid ingest credential", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(authorizeIngestResponse{TenantID: tenantID})
 }
 
 func bearerToken(header string) string {

@@ -32,6 +32,24 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-clickhouse
                   key: password
+            {{- if and .Values.enterprise.enabled .Values.ingest.requireTenantCredential }}
+            # Enables ingest/internal/grpcserver.TenantResolver.
+            # Deliberately its OWN opt-in, not folded into
+            # enterprise.enabled directly (same reasoning
+            # api.yaml/enterprise-api.yaml's ENTERPRISE_AUTH_URL isn't
+            # set just because enterprise.enabled is true -- see that
+            # env var's own comment there): turning this on requires
+            # every agent to already present a valid `Authorization:
+            # Bearer <ingest token>` (minted via `enterprise-auth
+            # -create-ingest-credential-tenant=<id>`) or be refused
+            # outright, which would silently break ingest for any
+            # not-yet-reconfigured agent if it defaulted on alongside
+            # enterprise.enabled. Off (the default) leaves every record
+            # without a tenant_id header, same as every Phase 0-3
+            # deployment.
+            - name: ENTERPRISE_AUTH_URL
+              value: "http://{{ .Release.Name }}-enterprise-auth:8082"
+            {{- end }}
           ports:
             - name: grpc
               containerPort: 4317

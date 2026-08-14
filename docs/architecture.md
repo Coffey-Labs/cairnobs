@@ -139,13 +139,23 @@ escape hatch is opaque to any compiler-injected filter.
   ran in the environment it was built in — Tantivy is an embedded
   library, so the cross-tenant isolation probe needed no live database
   or Docker to execute for real, and it passed.
-- Neither storage engine's isolation extends to *ingest*: every record
-  `ingest` produces lands in the one shared ClickHouse database and the
-  one shared (default) Tantivy index regardless of tenant. A
-  newly-provisioned tenant's database/index are real and isolated at
-  query time — and permanently empty until something upstream of
-  `chrunner`/`searchclient` becomes tenant-aware on the write side,
-  which is undesigned, not merely unbuilt.
+- **Ingest identity is now built, though write-routing isn't.** `ingest`
+  (AGPL core) gained an optional `TenantResolver`
+  (`ingest/internal/grpcserver`): an agent presents a per-tenant bearer
+  credential (`enterprise-auth -create-ingest-credential-tenant=<id>`
+  mints one, only its hash stored), validated over the network via a new
+  `POST /internal/authorize-ingest` endpoint (never an `enterprise/`
+  import — same "network boundary, not import boundary" shape
+  `api/authz.Authorizer` already uses), and the resolved tenant ID rides
+  as a `tenant_id` Kafka message header on every record produced. What
+  isn't built yet: neither `ingest`'s own ClickHouse writer nor
+  `search`'s independent Redpanda consumer reads that header back to
+  route the write anywhere per-tenant — every record still lands in the
+  one shared ClickHouse database and Tantivy index regardless of tenant,
+  correctly tagged but not yet isolated at write time. That per-tenant
+  write-routing split is real, scoped remaining work (likely another
+  "second binary," mirroring `enterprise-api`), not something this
+  change claims to have closed.
 - `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
   are now unified, deliberately lightweight: `-provision-tenant` stays
   the sole real actor (ClickHouse + `rbacstore`), and now also syncs its
@@ -167,8 +177,9 @@ plain `api`), sharing a host-port/network-alias trick so `alerting`/
 `web` need no conditional config either way. With both storage engines'
 connection/index-layer mechanisms built, deployment topology enforced at
 both the Helm and docker-compose layers, and the two provisioning
-mechanisms unified, the largest remaining gap is ingest's lack of
-tenant-awareness, which is undesigned, not merely unbuilt.
+mechanisms unified, the largest remaining gap is ingest's per-tenant
+*write-routing* (identity is now attached at ingest time; nothing
+downstream of Redpanda consumes it yet to isolate the write, see above).
 
 ## Licensing boundary
 

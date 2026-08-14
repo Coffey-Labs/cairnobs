@@ -17,6 +17,12 @@ type Config struct {
 	Redpanda   RedpandaConfig
 	ClickHouse ClickHouseConfig
 	Batch      BatchConfig
+	// EnterpriseAuthURL enables per-tenant ingest credential validation
+	// (internal/grpcserver.TenantResolver) when set -- empty (the
+	// default) is a documented no-op, same "off unless configured" shape
+	// as every other optional enterprise integration point in this
+	// codebase (e.g. api's own ENTERPRISE_AUTH_URL).
+	EnterpriseAuthURL string
 }
 
 type GRPCConfig struct {
@@ -70,6 +76,7 @@ func Load() (Config, error) {
 			Username: getenv("CLICKHOUSE_USERNAME", "default"),
 			Password: getenv("CLICKHOUSE_PASSWORD", ""),
 		},
+		EnterpriseAuthURL: getenv("ENTERPRISE_AUTH_URL", ""),
 	}
 
 	maxSize, err := strconv.Atoi(getenv("CONSUMER_BATCH_MAX_SIZE", "500"))

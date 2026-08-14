@@ -26,6 +26,7 @@ import (
 	"github.com/sentry/sentry/ingest/internal/consumer"
 	"github.com/sentry/sentry/ingest/internal/grpcserver"
 	"github.com/sentry/sentry/ingest/internal/producer"
+	"github.com/sentry/sentry/ingest/internal/tenantresolver"
 )
 
 func main() {
@@ -53,7 +54,18 @@ func main() {
 	if *mode == "server" || *mode == "all" {
 		p := producer.New(cfg.Redpanda)
 		defer p.Close()
-		srv := grpcserver.New(logger, cfg.GRPC, cfg.TLS, p)
+		// resolver stays nil (every batch's tenant_id header is simply
+		// never set) unless ENTERPRISE_AUTH_URL is configured -- matches
+		// every other "off unless configured" optional dependency in
+		// this codebase.
+		var resolver grpcserver.TenantResolver
+		if cfg.EnterpriseAuthURL != "" {
+			resolver = tenantresolver.New(cfg.EnterpriseAuthURL)
+			logger.Info("ingest tenant resolution configured", "enterprise_auth_url", cfg.EnterpriseAuthURL)
+		} else {
+			logger.Info("ENTERPRISE_AUTH_URL not set -- ingest records carry no tenant_id, single-tenant behavior")
+		}
+		srv := grpcserver.New(logger, cfg.GRPC, cfg.TLS, p, resolver)
 		g.Go(func() error { return srv.Run(ctx) })
 	}
 

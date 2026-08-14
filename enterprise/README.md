@@ -182,24 +182,60 @@ silently left out:
   a cross-origin `fetch` with credentials from `web`'s origin needs
   it), neither of which is verifiable in this environment without a
   live backend and a browser session to exercise.
-- **Ingest tenant-awareness, for either storage engine** -- `chrunner`/
-  `searchclient` prove read isolation given tenant-scoped data exists,
-  but nothing writes it: every record `ingest` produces still lands in
-  the single shared ClickHouse database and the single shared Tantivy
-  index. A newly-provisioned tenant's storage is real and isolated, and
-  permanently empty. Undesigned, not just unbuilt -- see
-  `/docs/security/threat-model.md`.
-- Any deployment-topology mechanism that actually routes traffic to
-  `enterprise-api` instead of `api` -- both binaries exist,
-  `docker-compose.yml` includes `enterprise-api` available but not
-  wired into `web`'s default base URL, and the Helm chart has no
-  service for it at all yet. **This is now the single largest gap** --
-  both storage engines' isolation mechanisms themselves are built.
+- **Ingest write-routing, for either storage engine** -- identity is now
+  real (see "Ingest tenant identity" below), but nothing consumes it
+  yet: `chrunner`/`searchclient` prove read isolation given tenant-
+  scoped data exists, and every record `ingest` produces is now tagged
+  with a real tenant ID, but neither `ingest/internal/consumer` (the
+  ClickHouse writer) nor `search/src/consumer.rs` (a completely
+  independent Redpanda consumer) reads that tag back to route the write
+  anywhere per-tenant. Every record still lands in the single shared
+  ClickHouse database and the single shared Tantivy index regardless of
+  tenant. A newly-provisioned tenant's storage is real and isolated, and
+  permanently empty. Now scoped, disclosed remaining work, not an
+  undesigned gap -- see `/docs/security/threat-model.md`.
+
+Deployment-topology routing (does traffic actually reach `enterprise-api`
+instead of `api`) is no longer deferred -- both `deploy/helm/sentry` and
+`docker-compose.yml` make it a single-flag choice now (`enterprise.
+enabled` / `COMPOSE_PROFILES`), see CLAUDE.md.
+
+## Ingest tenant identity
+
+`ingest` (AGPL core) gained an optional `TenantResolver`
+(`ingest/internal/grpcserver`) -- nil by default, the same "off unless
+configured" shape as every other optional integration point in this
+codebase. When `ENTERPRISE_AUTH_URL` is set, `PushBatch` requires an
+`authorization: Bearer <token>` gRPC metadata entry on every call,
+resolves it via a new `POST /internal/authorize-ingest` endpoint on
+*this* service (`internal/authhandler`, backed by a new
+`ingest_credentials` table in `internal/rbacstore` -- only a SHA-256
+hash of the token is ever stored), and attaches the resolved tenant ID
+to every record as a `tenant_id` Kafka message header before producing
+it. Fail-closed: once a resolver is configured, a missing or invalid
+credential refuses the whole batch, never falls back to "no tenant."
+
+Mint a credential with `-create-ingest-credential-tenant=<id>` (prints
+the plaintext token exactly once -- see `ingest_credentials`' migration
+comment for why it can't be recovered again, only reissued);
+`-list-ingest-credentials-tenant=<id>`/`-revoke-ingest-credential=<id>`
+manage existing ones. `ingest`'s own HTTP client
+(`ingest/internal/tenantresolver.HTTPResolver`) is the piece that
+actually calls `/internal/authorize-ingest` -- never an `enterprise/`
+import (`ingest` is AGPL core), same "network boundary, not import
+boundary" shape `api/authz.HTTPAuthorizer` already uses for the query
+path.
+
+**What this does not do**: change where a record is actually written.
+See "Deliberately deferred" above -- attaching a verified tenant
+identity as early as possible (right where the credential is presented)
+was built as a self-contained first step; per-tenant write-routing for
+both storage engines is separate, scoped follow-up work.
 
 ## Package layout
 
 ```
-cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant
+cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features/authorize-ingest endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant, -create-ingest-credential-tenant, -list-ingest-credentials-tenant, -revoke-ingest-credential
 cmd/enterprise-api/     multi-tenant-aware alternative to api/cmd/api -- see its own doc comment
 internal/tenant/        the ID type -- see its package doc comment before touching it
 internal/oidc/           coreos/go-oidc wiring: discovery, login redirect, code exchange + ID token verification
@@ -218,8 +254,13 @@ internal/apiconfig/       enterprise-api's own env-var config
 internal/config/          enterprise-auth's env-var config
 ```
 
-Future additions: ingest tenant-awareness (undesigned), and real
-deployment-topology wiring for `enterprise-api` -- see "Status" above.
+`ingest/internal/tenantresolver` (AGPL core, not enterprise/, since
+ingest must never import enterprise/) is the client side of `internal/
+authhandler`'s new `POST /internal/authorize-ingest` -- see "Ingest
+tenant identity" above.
+
+Future additions: per-tenant write-routing for ingest (ClickHouse and
+Tantivy both) -- see "Ingest tenant identity" above.
 
 ## Why OIDC and SAML aren't hand-rolled
 
