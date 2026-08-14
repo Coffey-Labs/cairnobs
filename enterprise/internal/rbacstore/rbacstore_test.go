@@ -577,3 +577,33 @@ func TestDashboardPermissionsAdapterRejectsAdminRole(t *testing.T) {
 		t.Fatal("expected an error granting role=admin via a dashboard permission")
 	}
 }
+
+// TestGetUserByEmail is the regression test for
+// cmd/enterprise-auth/main.go's -grant-membership-user-email flag,
+// which looks up an existing user by email rather than requiring the
+// operator to already know their generated UUID.
+func TestGetUserByEmail(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	email := "lookup-" + uniqueSuffix() + "@example.com"
+
+	created, err := s.UpsertUserBySSO(ctx, "sub-"+uniqueSuffix(), email, "Lookup Me")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO: %v", err)
+	}
+
+	got, err := s.GetUserByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetUserByEmail: %v", err)
+	}
+	if got.ID != created.ID {
+		t.Fatalf("GetUserByEmail returned ID %q, want %q", got.ID, created.ID)
+	}
+}
+
+func TestGetUserByEmailNotFound(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.GetUserByEmail(context.Background(), "does-not-exist-"+uniqueSuffix()+"@example.com"); err != ErrNotFound {
+		t.Fatalf("GetUserByEmail error = %v, want ErrNotFound", err)
+	}
+}

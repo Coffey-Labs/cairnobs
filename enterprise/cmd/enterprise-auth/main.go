@@ -13,7 +13,11 @@
 // (crewjam/saml's samlsp.FetchMetadata; a trusted operator-supplied URL,
 // same trust level as OIDC_ISSUER_URL's discovery fetch, not
 // end-user-controlled input). Also fully wired: -mint-service-token
-// (the RoleService credential /alerting presents).
+// (the RoleService credential /alerting presents), and
+// -create-tenant/-grant-membership-* -- the operator actions that
+// replace phase-4-runbook.md's old "log in once so UpsertUserBySSO
+// creates a users row, then hand-write a psql INSERT into
+// tenant_memberships" bootstrap dance with a real command.
 package main
 
 import (
@@ -58,6 +62,19 @@ func main() {
 	// operator action gated by access to enterprise-auth's own
 	// environment/secrets, not a network-reachable endpoint.
 	mintServiceToken := flag.String("mint-service-token", "", "mint a RoleService credential for the named caller (e.g. \"alerting\") and exit")
+	// -create-tenant/-grant-membership-* are offline operator actions,
+	// same "not a network-reachable endpoint" shape as
+	// -mint-service-token and enterprise-api's -provision-tenant --
+	// deliberately not an authenticated HTTP admin API, which would
+	// have to solve "who's allowed to create the very first tenant/
+	// membership" (a real bootstrap problem an offline flag sidesteps
+	// entirely: access to enterprise-auth's own environment/secrets is
+	// the trust boundary, same as every other operator flag here).
+	createTenant := flag.String("create-tenant", "", "create a tenant row (id) in 'provisioning' status and exit -- pair with -display-name; use enterprise-api -provision-tenant separately for ClickHouse/Tantivy provisioning")
+	createTenantDisplayName := flag.String("display-name", "", "display name for -create-tenant (defaults to the tenant id if unset)")
+	grantTenant := flag.String("grant-membership-tenant", "", "tenant id to grant a membership in -- all three -grant-membership-* flags are required together")
+	grantUserEmail := flag.String("grant-membership-user-email", "", "email of an existing user to grant a tenant_memberships row to -- the user must have attempted an SSO login at least once already (UpsertUserBySSO creates the users row on first login, even one that then fails with \"no tenant membership\")")
+	grantRole := flag.String("grant-membership-role", "", "role to grant: viewer, editor, admin, or owner")
 	// -healthcheck: same self-check mode as api/-healthcheck (see that
 	// binary's doc comment) -- enterprise-auth's image is distroless too.
 	healthcheck := flag.Bool("healthcheck", false, "self-check mode for Docker's HEALTHCHECK")
@@ -98,6 +115,13 @@ func main() {
 		os.Exit(1)
 	}
 	rbac := rbacstore.NewStore(pgPool)
+
+	if *createTenant != "" {
+		os.Exit(runCreateTenant(ctx, logger, rbac, *createTenant, *createTenantDisplayName))
+	}
+	if *grantTenant != "" || *grantUserEmail != "" || *grantRole != "" {
+		os.Exit(runGrantMembership(ctx, logger, rbac, *grantTenant, *grantUserEmail, *grantRole))
+	}
 
 	// oidcProvider stays nil (loginhandler.RegisterRoutes then registers
 	// nothing) unless OIDC is actually configured -- matches every other
@@ -177,6 +201,91 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// runCreateTenant creates a tenant row in rbacstore, refusing if one
+// already exists (idempotency-refusal, same reasoning as
+// enterprise-api's runProvisionTenant refusing an already-active
+// tenant: a second run for the same id is far more likely to be an
+// operator mistake than an intentional retry, and CreateTenant's
+// generated columns -- id is the only stable identity here, there's no
+// credential to accidentally rotate -- so this guards against duplicate
+// setup steps, not a security property). Only touches rbacstore -- data-
+// plane provisioning (ClickHouse/Tantivy) is enterprise-api
+// -provision-tenant's separate job, per
+// /docs/phase-4-isolation-design.md's ordered provisioning gate; running
+// this alone leaves the tenant able to log users in but not yet able to
+// serve their queries, same "two separate operator actions" reality
+// enterprise/README.md already discloses.
+func runCreateTenant(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID, displayName string) int {
+	if _, err := rbac.GetTenant(ctx, tenantID); err == nil {
+		logger.Error("tenant already exists -- refusing to create it again", "tenant_id", tenantID)
+		return 1
+	} else if err != rbacstore.ErrNotFound {
+		logger.Error("checking for existing tenant", "error", err)
+		return 1
+	}
+	name := displayName
+	if name == "" {
+		name = tenantID
+	}
+	if _, err := rbac.CreateTenant(ctx, tenantID, name); err != nil {
+		logger.Error("creating tenant", "error", err)
+		return 1
+	}
+	logger.Info("created tenant", "tenant_id", tenantID, "display_name", name, "status", "provisioning")
+	return 0
+}
+
+// runGrantMembership replaces phase-4-runbook.md's old manual-SQL
+// bootstrap: an operator who knows a user's email (the user must have
+// attempted an SSO login at least once already, so UpsertUserBySSO's
+// created the users row -- this flag never creates a user itself, since
+// that identity has to come from a real IdP round trip, not an operator
+// guess) can grant them a tenant_memberships row without touching SQL
+// directly. role="owner" also calls SetOwner, since a tenant's Owner is
+// a tenant-level column, not just the highest tenant_memberships role
+// (see SetOwner's doc comment) -- a real Owner assignment via this flag
+// needs both to agree, same as any other owner-assignment call site.
+func runGrantMembership(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID, userEmail, role string) int {
+	if tenantID == "" || userEmail == "" || role == "" {
+		logger.Error("-grant-membership-tenant, -grant-membership-user-email, and -grant-membership-role are all required together")
+		return 1
+	}
+	rbacRole := rbacstore.Role(role)
+	switch rbacRole {
+	case rbacstore.RoleViewer, rbacstore.RoleEditor, rbacstore.RoleAdmin, rbacstore.RoleOwner:
+	default:
+		logger.Error("invalid -grant-membership-role -- must be viewer, editor, admin, or owner", "role", role)
+		return 1
+	}
+
+	if _, err := rbac.GetTenant(ctx, tenantID); err != nil {
+		logger.Error("looking up tenant", "tenant_id", tenantID, "error", err)
+		return 1
+	}
+	user, err := rbac.GetUserByEmail(ctx, userEmail)
+	if err != nil {
+		if err == rbacstore.ErrNotFound {
+			logger.Error("no user with this email exists yet -- they must attempt an SSO login at least once first (it will fail with \"no tenant membership\", but UpsertUserBySSO creates the users row before that check runs)", "email", userEmail)
+		} else {
+			logger.Error("looking up user by email", "email", userEmail, "error", err)
+		}
+		return 1
+	}
+
+	if err := rbac.SetMembership(ctx, tenantID, user.ID, rbacRole); err != nil {
+		logger.Error("setting membership", "error", err)
+		return 1
+	}
+	if rbacRole == rbacstore.RoleOwner {
+		if err := rbac.SetOwner(ctx, tenantID, user.ID); err != nil {
+			logger.Error("setting tenant owner", "error", err)
+			return 1
+		}
+	}
+	logger.Info("granted membership", "tenant_id", tenantID, "user_id", user.ID, "email", userEmail, "role", role)
+	return 0
 }
 
 // runHealthcheck mirrors api/cmd/api/main.go's runHealthcheck exactly --
