@@ -190,14 +190,20 @@ the fix verified Docker-free (`chrunner_test.go`'s and
 `searchclient_test.go`'s `TestSearchRefusesMidProvisioningTenant`-shaped
 tests) — see `api/queryapi/tenant_isolation_gap_test.go` for the full
 accounting of all four probes, now all closed. The deployment-
-topology gap that briefly was the largest one is now closed for Helm:
-`deploy/helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are
-mutually exclusive on the same `enterprise.enabled` flag that turns on
-RBAC/audit/SSO, rendering to the same Service name/port either way — a
-Helm-deployed cluster can't accidentally run the wrong one.
-`docker-compose.yml` still runs plain `api` unconditionally, though
-(local/dev parity with the Helm chart's enforcement is real remaining
-work). Per-resource dashboard grants (the RBAC matrix's "(own/granted)"
+topology gap that briefly was the largest one is now closed for both
+Helm and docker-compose: `deploy/helm/sentry/templates/api.yaml`/
+`enterprise-api.yaml` are mutually exclusive on the same
+`enterprise.enabled` flag that turns on RBAC/audit/SSO, rendering to the
+same Service name/port either way — a Helm-deployed cluster can't
+accidentally run the wrong one. `docker-compose.yml`'s `api`/
+`enterprise-api` services are now the same mutually-exclusive choice,
+gated behind `COMPOSE_PROFILES` (`.env` checks in `single-tenant` as the
+zero-config default) and sharing a host port/network-alias trick so
+`alerting`/`web` need no conditional logic either way — verified via
+`docker compose config` (renders/validates without a daemon, confirms
+the two never both appear for one profile selection), not an actual
+`docker compose up` in this environment. Per-resource dashboard grants
+(the RBAC matrix's "(own/granted)"
 qualifier) are now enforced too: `api/dashboards.PermissionStore` (core
 interface) implemented by `enterprise/internal/rbacstore.
 DashboardPermissions`, wired in only by `enterprise-api` — an Editor can

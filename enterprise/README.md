@@ -284,21 +284,29 @@ membership, listing a tenant's members, or a flag for
 
 ## Provisioning a tenant and running `enterprise-api`
 
+`api`/`enterprise-api` are mutually exclusive in `docker-compose.yml`,
+gated behind `COMPOSE_PROFILES` (`.env` checks in `single-tenant`, i.e.
+plain `api`, as the zero-config default -- mirrors Helm's
+`enterprise.enabled` flag). `-provision-tenant` itself doesn't bind a
+port, so it runs fine regardless of the active profile; actually
+serving traffic on `enterprise-api` needs the `enterprise` profile
+active, since it now binds the same host port (8080) plain `api` does
+(it gets a `default.aliases: [api]` network alias too, so `alerting`'s
+`API_QUERY_URL`/`web`'s `VITE_API_BASE_URL` need zero changes either
+way):
+
 ```sh
-docker compose build enterprise-api   # context is the repo root, not enterprise/ -- see cmd/enterprise-api/Dockerfile
-docker compose run --rm enterprise-api -provision-tenant=acme -display-name="Acme Corp"
-docker compose up -d enterprise-api
-curl -s http://localhost:8083/healthz
+COMPOSE_PROFILES=enterprise docker compose build enterprise-api   # context is the repo root, not enterprise/ -- see cmd/enterprise-api/Dockerfile
+COMPOSE_PROFILES=enterprise docker compose run --rm enterprise-api -provision-tenant=acme -display-name="Acme Corp"
+COMPOSE_PROFILES=enterprise docker compose up -d enterprise-api
+curl -s http://localhost:8080/healthz
 ```
 
 `-provision-tenant` creates the tenant/data_source rows in rbacstore if
 they don't exist, provisions ClickHouse, persists the credentials, and
 marks the tenant active -- refuses to run twice for the same tenant
 (re-provisioning would either rotate a live credential or silently fail
-to, see `tenantprovision.ProvisionClickHouse`'s doc comment). `web`
-still points at plain `api` by default (`VITE_API_BASE_URL`) --
-pointing it at `enterprise-api` instead is a manual `docker-compose.yml`
-edit today, not a supported flag.
+to, see `tenantprovision.ProvisionClickHouse`'s doc comment).
 
 ## Environment variables (`enterprise-auth`)
 
