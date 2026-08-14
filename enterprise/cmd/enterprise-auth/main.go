@@ -4,15 +4,16 @@
 //
 // Wires session issuance/validation (internal/session), the
 // POST /internal/authorize endpoint api/authz.HTTPAuthorizer calls (the
-// piece that turns on RBAC enforcement in /api), and -- since
-// internal/loginhandler -- the real GET /auth/oidc/login and
-// GET /auth/oidc/callback handlers that issue a *human* session after
-// an actual IdP round trip, resolving tenant/role via internal/rbacstore.
-// Still deliberately missing: SAML's equivalent (ACS endpoint) -- same
-// shape, not yet built, following internal/loginhandler's OIDC pattern
-// once it is. What's fully wired: -mint-service-token (the RoleService
-// credential /alerting presents) and, when OIDC_ISSUER_URL is
-// configured, a real human login flow.
+// piece that turns on RBAC enforcement in /api), and --
+// internal/loginhandler -- the real GET /auth/{oidc,saml}/login and
+// GET /auth/oidc/callback + POST /auth/saml/acs handlers that issue a
+// *human* session after an actual IdP round trip, resolving tenant/role
+// via internal/rbacstore. Both protocols are now fully wired -- OIDC via
+// discovery, SAML via fetching+parsing SAML_IDP_METADATA_URL at startup
+// (crewjam/saml's samlsp.FetchMetadata; a trusted operator-supplied URL,
+// same trust level as OIDC_ISSUER_URL's discovery fetch, not
+// end-user-controlled input). Also fully wired: -mint-service-token
+// (the RoleService credential /alerting presents).
 package main
 
 import (
@@ -21,12 +22,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/crewjam/saml/samlsp"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sentry/sentry/enterprise/internal/authhandler"
@@ -34,6 +37,7 @@ import (
 	"github.com/sentry/sentry/enterprise/internal/loginhandler"
 	"github.com/sentry/sentry/enterprise/internal/oidc"
 	"github.com/sentry/sentry/enterprise/internal/rbacstore"
+	samlpkg "github.com/sentry/sentry/enterprise/internal/saml"
 	"github.com/sentry/sentry/enterprise/internal/session"
 )
 
@@ -114,6 +118,33 @@ func main() {
 		logger.Info("OIDC not configured (OIDC_ISSUER_URL unset) -- skipping discovery, /auth/oidc/* routes disabled")
 	}
 
+	// samlProvider stays nil (loginhandler.RegisterRoutes then registers
+	// nothing) unless SAML is actually configured -- same shape as OIDC
+	// above.
+	var samlProvider *samlpkg.ServiceProvider
+	if cfg.SAML.IDPMetadataURL != "" {
+		metadataURL, err := url.Parse(cfg.SAML.IDPMetadataURL)
+		if err != nil {
+			logger.Error("parsing SAML_IDP_METADATA_URL", "error", err)
+			os.Exit(1)
+		}
+		idpMetadata, err := samlsp.FetchMetadata(ctx, http.DefaultClient, *metadataURL)
+		if err != nil {
+			logger.Error("fetching SAML IdP metadata", "error", err)
+			os.Exit(1)
+		}
+		samlProvider, err = samlpkg.New(samlpkg.Config{
+			EntityID: cfg.SAML.EntityID, ACSURL: cfg.SAML.ACSURL, IDPMetadata: idpMetadata,
+		})
+		if err != nil {
+			logger.Error("constructing SAML service provider", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("SAML provider configured", "idp_metadata_url", cfg.SAML.IDPMetadataURL)
+	} else {
+		logger.Info("SAML not configured (SAML_IDP_METADATA_URL unset) -- /auth/saml/* routes disabled")
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -123,7 +154,7 @@ func main() {
 		SAMLEnabled: cfg.SAML.IDPMetadataURL != "",
 	}
 	authhandler.New(logger, sessionManager, features).RegisterRoutes(mux)
-	loginhandler.New(logger, oidcProvider, sessionManager, rbac, cfg.PostLoginRedirectURL).RegisterRoutes(mux)
+	loginhandler.New(logger, oidcProvider, samlProvider, sessionManager, rbac, cfg.PostLoginRedirectURL).RegisterRoutes(mux)
 
 	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: mux}
 

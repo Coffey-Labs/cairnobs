@@ -152,14 +152,23 @@ access partway through the phase, so only the audit-logging guarantees
 were actually confirmed against a live database; the rest is untested
 beyond "compiles, and skips cleanly when no live database is
 configured" (see `/docs/phase-4-runbook.md`'s verification-status
-section). Human OIDC login is now built too
+section). Human SSO login is now built for both protocols
 (`enterprise/internal/loginhandler`: `GET /auth/oidc/login` +
-`GET /auth/oidc/callback`, issuing a real session cookie after resolving
-tenant/role from `tenant_memberships`) — genuinely verified, unlike the
-ClickHouse pieces, via a real fake IdP that signs and verifies actual
-RS256 tokens (`loginhandler_test.go`, all passing), though never tried
-against a real external IdP or through a running `enterprise-auth`
-container. Tantivy per-tenant index routing is now built too
+`GET /auth/oidc/callback`, and `GET /auth/saml/login` +
+`POST /auth/saml/acs` via `enterprise/internal/saml`'s `crewjam/saml`
+wiring, both issuing a real session cookie after resolving tenant/role
+from `tenant_memberships`) — genuinely verified, unlike the ClickHouse
+pieces, via a real fake IdP for each protocol that performs actual
+cryptographic signing and verification (`coreos/go-oidc`'s `oidctest`
+for OIDC, `crewjam/saml/samlidp` for SAML — `loginhandler_test.go` and
+`saml_test.go`, all passing, including the full login round trip and
+negative paths for both), though never tried against a real external IdP
+or through a running `enterprise-auth` container. Writing the SAML test
+caught and fixed two real bugs in `internal/saml.ParseResponse`: a
+missing `r.ParseForm()` call that would have silently broken every real
+ACS POST, and email-attribute matching that missed the standard LDAP
+"mail" OID IdPs send by default. Tantivy per-tenant index routing is now
+built too
 (`search/src/registry.rs` + `enterprise/internal/searchclient`) —
 **genuinely verified**, like the OIDC login flow: Tantivy is an embedded
 library, not a networked service, so the isolation probe (three tenants,
@@ -172,11 +181,10 @@ RBAC/audit/SSO, rendering to the same Service name/port either way — a
 Helm-deployed cluster can't accidentally run the wrong one.
 `docker-compose.yml` still runs plain `api` unconditionally, though
 (local/dev parity with the Helm chart's enforcement is real remaining
-work). What still keeps this phase from being done: SAML login (protocol
-wiring exists, no ACS handler calls it, following OIDC's now-built
-pattern), ingest itself has no tenant concept for either storage engine
-(every record lands in the one shared ClickHouse database and Tantivy
-index no matter what — undesigned, not just unbuilt), and the two
+work). What still keeps this phase from being done: ingest itself has no
+tenant concept for either storage engine (every record lands in the one
+shared ClickHouse database and Tantivy index no matter what —
+undesigned, not just unbuilt), and the two
 provisioning mechanisms (`deploy/operator`'s `Tenant` CRD and
 `enterprise-api -provision-tenant`) still aren't unified — running both
 for the same tenant ID is two separate operator actions today. Full

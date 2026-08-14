@@ -89,17 +89,24 @@ func New(cfg Config) (*ServiceProvider, error) {
 // round-trips through the IdP and comes back with the response --
 // typically where to send the browser after login completes, validated
 // by the caller the same way OIDC's state parameter is (this package
-// doesn't store it).
-func (s *ServiceProvider) LoginURL(relayState string) (string, error) {
+// doesn't store it). Also returns the AuthnRequest's ID: the caller must
+// persist it (e.g. a short-lived cookie, the same pattern
+// enterprise/internal/loginhandler uses for OIDC's state) and pass it
+// back via ParseResponse's possibleRequestIDs -- SAML's actual replay/
+// unsolicited-response defense, standing in for OIDC's simpler state
+// check. Skipping this (e.g. passing nil to ParseResponse) is exactly
+// the "don't validate you asked for this response" mistake that would
+// let an attacker replay a captured assertion.
+func (s *ServiceProvider) LoginURL(relayState string) (redirectURL, requestID string, err error) {
 	req, err := s.sp.MakeAuthenticationRequest(s.sp.GetSSOBindingLocation(saml.HTTPRedirectBinding), saml.HTTPRedirectBinding, saml.HTTPPostBinding)
 	if err != nil {
-		return "", fmt.Errorf("saml: building authentication request: %w", err)
+		return "", "", fmt.Errorf("saml: building authentication request: %w", err)
 	}
-	redirectURL, err := req.Redirect(relayState, &s.sp)
+	redirect, err := req.Redirect(relayState, &s.sp)
 	if err != nil {
-		return "", fmt.Errorf("saml: building redirect URL: %w", err)
+		return "", "", fmt.Errorf("saml: building redirect URL: %w", err)
 	}
-	return redirectURL.String(), nil
+	return redirect.String(), req.ID, nil
 }
 
 // Claims is the subset of an assertion Sentry uses -- same "extend
@@ -114,6 +121,17 @@ type Claims struct {
 // the step that actually establishes trust -- crewjam/saml's
 // ParseResponse does the XML signature verification, not this package.
 func (s *ServiceProvider) ParseResponse(r *http.Request, possibleRequestIDs []string) (*Claims, error) {
+	// crewjam/saml's ServiceProvider.ParseResponse reads req.PostForm
+	// directly rather than parsing the body itself -- net/http only
+	// populates PostForm once something calls ParseForm, which the
+	// stdlib server never does on its own. Skipping this turns every
+	// real ACS POST into an empty SAMLResponse (silently failing at the
+	// base64-decode step), a bug this package's own real-fake-IdP test
+	// caught immediately since it drives a genuine POST body.
+	if err := r.ParseForm(); err != nil {
+		return nil, fmt.Errorf("saml: parsing ACS POST body: %w", err)
+	}
+
 	assertion, err := s.sp.ParseResponse(r, possibleRequestIDs)
 	if err != nil {
 		return nil, fmt.Errorf("saml: parsing/validating response: %w", err)
@@ -125,7 +143,16 @@ func (s *ServiceProvider) ParseResponse(r *http.Request, possibleRequestIDs []st
 	}
 	for _, stmt := range assertion.AttributeStatements {
 		for _, attr := range stmt.Attributes {
-			if attr.Name == "email" || attr.Name == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress" {
+			switch attr.Name {
+			// "email" and the ADFS claims URI are what an IdP admin gets
+			// by explicitly naming the attribute that way in the SAML
+			// app's attribute-statement config. urn:oid:0.9.2342.19200300.100.1.3
+			// is the standard LDAP "mail" OID -- what crewjam's own
+			// DefaultAssertionMaker (and many real IdPs' default
+			// templates) send when nothing more specific was requested,
+			// found by tracing the actual assertion-building code this
+			// test exercises rather than assuming "email" covers it.
+			case "email", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress", "urn:oid:0.9.2342.19200300.100.1.3":
 				if len(attr.Values) > 0 {
 					claims.Email = attr.Values[0].Value
 				}

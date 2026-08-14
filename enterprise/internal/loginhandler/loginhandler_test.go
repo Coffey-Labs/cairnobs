@@ -128,7 +128,7 @@ func newTestSessionManager(t *testing.T) *session.Manager {
 
 func TestHandleLoginRedirectsAndSetsStateCookie(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -144,7 +144,7 @@ func TestHandleLoginRedirectsAndSetsStateCookie(t *testing.T) {
 	cookies := rec.Result().Cookies()
 	var stateCookie *http.Cookie
 	for _, c := range cookies {
-		if c.Name == stateCookieName {
+		if c.Name == oidcStateCookieName {
 			stateCookie = c
 		}
 	}
@@ -168,7 +168,7 @@ func fullLoginFlow(t *testing.T, h *Handler, idp *testIdP) *httptest.ResponseRec
 	mux.ServeHTTP(loginRec, httptest.NewRequest(http.MethodGet, "/auth/oidc/login", nil))
 	var stateCookie *http.Cookie
 	for _, c := range loginRec.Result().Cookies() {
-		if c.Name == stateCookieName {
+		if c.Name == oidcStateCookieName {
 			stateCookie = c
 		}
 	}
@@ -188,7 +188,7 @@ func TestFullLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 	store := newFakeUserStore()
 	store.memberships["user-user-1"] = []rbacstore.Membership{{TenantID: "acme", UserID: "user-user-1", Role: rbacstore.RoleEditor}}
 	sessionManager := newTestSessionManager(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), sessionManager, store, "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, sessionManager, store, "http://web/")
 
 	idp.setNextIDToken(t, "user-1", "person@acme.example", true, time.Now().Add(time.Hour))
 	rec := fullLoginFlow(t, h, idp)
@@ -220,7 +220,7 @@ func TestFullLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 
 func TestFullLoginFlowRefusesNoMembership(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 
 	idp.setNextIDToken(t, "user-2", "nobody@acme.example", true, time.Now().Add(time.Hour))
 	rec := fullLoginFlow(t, h, idp)
@@ -237,7 +237,7 @@ func TestFullLoginFlowRefusesMultipleMemberships(t *testing.T) {
 		{TenantID: "acme", UserID: "user-user-3", Role: rbacstore.RoleViewer},
 		{TenantID: "globex", UserID: "user-user-3", Role: rbacstore.RoleAdmin},
 	}
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), newTestSessionManager(t), store, "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), store, "http://web/")
 
 	idp.setNextIDToken(t, "user-3", "multi@example.com", true, time.Now().Add(time.Hour))
 	rec := fullLoginFlow(t, h, idp)
@@ -249,12 +249,12 @@ func TestFullLoginFlowRefusesMultipleMemberships(t *testing.T) {
 
 func TestCallbackRejectsStateMismatch(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?state=wrong&code=test-code", nil)
-	req.AddCookie(&http.Cookie{Name: stateCookieName, Value: "correct"})
+	req.AddCookie(&http.Cookie{Name: oidcStateCookieName, Value: "correct"})
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -265,7 +265,7 @@ func TestCallbackRejectsStateMismatch(t *testing.T) {
 
 func TestCallbackRejectsMissingStateCookie(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -279,7 +279,7 @@ func TestCallbackRejectsMissingStateCookie(t *testing.T) {
 
 func TestCallbackRejectsExpiredIDToken(t *testing.T) {
 	idp := newTestIdP(t)
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), newTestOIDCProvider(t, idp), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 
 	idp.setNextIDToken(t, "user-4", "person@example.com", true, time.Now().Add(-time.Hour)) // already expired
 	rec := fullLoginFlow(t, h, idp)
@@ -290,7 +290,7 @@ func TestCallbackRejectsExpiredIDToken(t *testing.T) {
 }
 
 func TestRegisterRoutesNoOpWhenOIDCNotConfigured(t *testing.T) {
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -314,7 +314,7 @@ func TestRegisterRoutesNoOpWhenOIDCNotConfigured(t *testing.T) {
 // the trap, only passing a nil-valued typed variable does.
 func TestRegisterRoutesNoOpWithTypedNilProviderVariable(t *testing.T) {
 	var provider *oidc.Provider // stays nil -- exactly main.go's shape when OIDC_ISSUER_URL is unset
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), provider, newTestSessionManager(t), newFakeUserStore(), "http://web/")
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), provider, nil, newTestSessionManager(t), newFakeUserStore(), "http://web/")
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
