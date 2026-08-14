@@ -97,6 +97,41 @@ services:
       CLICKHOUSE_HTTP: "http://clickhouse:8123"
       CLICKHOUSE_PASSWORD: "sentry-dev-only"
 
+  # Control-plane metadata store (dashboards, alert rules -- see
+  # /docs/phase-3-dashboard-design.md for why this is Postgres rather
+  # than new ClickHouse tables). Log data stays on ClickHouse/Tantivy
+  # only, unaffected.
+  metadata-postgres:
+    image: postgres:16-alpine
+    container_name: sentry-metadata-postgres
+    environment:
+      POSTGRES_DB: sentry_metadata
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: "sentry-dev-only" # not a real secret, same framing as CLICKHOUSE_PASSWORD above
+    volumes:
+      - metadata-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry -d sentry_metadata"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # One-shot: applies /metadata/migrations/*.sql, then exits 0. api waits
+  # on this completing successfully, same shape as clickhouse-migrate.
+  metadata-migrate:
+    build:
+      context: ./metadata
+    container_name: sentry-metadata-migrate
+    depends_on:
+      metadata-postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: "metadata-postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: "sentry"
+      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_DATABASE: "sentry_metadata"
+
   ingest:
     build:
       context: . # needs both ingest/ and proto/
@@ -148,25 +183,68 @@ services:
     depends_on:
       clickhouse-migrate:
         condition: service_completed_successfully
+      metadata-migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     environment:
       CLICKHOUSE_ADDR: "clickhouse:9000"
       CLICKHOUSE_PASSWORD: "sentry-dev-only"
       SEARCH_GRPC_ADDR: "search:50052"
+      POSTGRES_ADDR: "metadata-postgres:5432"
+      POSTGRES_DATABASE: "sentry_metadata"
+      POSTGRES_USERNAME: "sentry"
+      POSTGRES_PASSWORD: "sentry-dev-only"
+    healthcheck:
+      # alerting (Phase 3 task 5) depends_on api -- without this, that
+      # dependency can only mean "container started," not "actually
+      # listening," and would hammer a not-yet-ready api with errors on
+      # every evaluator tick during stack startup. api's image is
+      # distroless (no shell, no wget) so this execs the api binary's own
+      # -healthcheck self-check mode instead of an external tool.
+      test: ["CMD", "/api", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  alerting:
+    build:
+      context: alerting # self-contained, no /proto needed -- see alerting/Dockerfile
+      dockerfile: Dockerfile
+    container_name: sentry-alerting
+    depends_on:
+      metadata-migrate:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      POSTGRES_ADDR: "metadata-postgres:5432"
+      POSTGRES_DATABASE: "sentry_metadata"
+      POSTGRES_USERNAME: "sentry"
+      POSTGRES_PASSWORD: "sentry-dev-only"
+      API_QUERY_URL: "http://api:8080"
+    healthcheck:
+      test: ["CMD", "/alerting", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   web:
     build:
       context: web
       args:
         # Baked in at build time (static site, not a server) as
-        # localhost:8080 -- this is fetched from the *browser*, which
-        # resolves against the host's mapped port, not the compose
-        # network's service DNS name.
+        # localhost:8080/8081 -- fetched from the *browser*, which
+        # resolves against the host's mapped ports, not the compose
+        # network's service DNS names.
         VITE_API_BASE_URL: "http://localhost:8080"
+        VITE_ALERTING_API_BASE_URL: "http://localhost:8081"
     container_name: sentry-web
     depends_on:
       - api
+      - alerting
     ports:
       - "3000:3000"
 
@@ -174,3 +252,4 @@ volumes:
   redpanda-data:
   clickhouse-data:
   search-index-data:
+  metadata-postgres-data:

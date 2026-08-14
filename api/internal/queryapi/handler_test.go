@@ -50,14 +50,20 @@ func newTestHandler(sqlRunner *fakeSQLRunner, search *fakeSearchClient) *Handler
 	if search == nil {
 		search = &fakeSearchClient{}
 	}
-	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), sqlRunner, search, time.Second, "*")
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), sqlRunner, search, time.Second)
+}
+
+func newTestMux(h *Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+	return mux
 }
 
 func postQuery(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/query", strings.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.Routes().ServeHTTP(rec, req)
+	newTestMux(h).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -195,24 +201,9 @@ func TestHandleHealthz(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
 
-	h.Routes().ServeHTTP(rec, req)
+	newTestMux(h).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-}
-
-func TestCORSPreflight(t *testing.T) {
-	h := newTestHandler(&fakeSQLRunner{}, nil)
-	req := httptest.NewRequest(http.MethodOptions, "/query", nil)
-	rec := httptest.NewRecorder()
-
-	h.Routes().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want 204", rec.Code)
-	}
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-		t.Fatalf("Access-Control-Allow-Origin = %q, want *", got)
 	}
 }

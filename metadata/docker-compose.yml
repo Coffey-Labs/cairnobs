@@ -1,0 +1,19 @@
+# Standalone Postgres for local development against /metadata in
+# isolation (e.g. iterating on migrations). The root-level docker-compose.yml
+# runs the full stack and defines its own metadata-postgres service
+# separately — this file is not included by it.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sentry-metadata-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: sentry_metadata
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: "sentry-dev-only" # not a real secret, see root docker-compose.yml
+    volumes:
+      - metadata-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  metadata-postgres-data:

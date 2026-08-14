@@ -12,12 +12,23 @@ import (
 type Config struct {
 	HTTPListenAddr    string
 	ClickHouse        ClickHouseConfig
+	Postgres          PostgresConfig
 	SearchGRPCAddr    string
 	QueryTimeout      time.Duration
 	CORSAllowedOrigin string
 }
 
 type ClickHouseConfig struct {
+	Addr     string
+	Database string
+	Username string
+	Password string
+}
+
+// PostgresConfig is the control-plane metadata store (dashboards, panels
+// -- see /docs/phase-3-dashboard-design.md), distinct from ClickHouse
+// which remains log-data-only.
+type PostgresConfig struct {
 	Addr     string
 	Database string
 	Username string
@@ -32,6 +43,12 @@ func Load() (Config, error) {
 			Database: getenv("CLICKHOUSE_DATABASE", "sentry"),
 			Username: getenv("CLICKHOUSE_USERNAME", "default"),
 			Password: getenv("CLICKHOUSE_PASSWORD", ""),
+		},
+		Postgres: PostgresConfig{
+			Addr:     getenv("POSTGRES_ADDR", "localhost:5432"),
+			Database: getenv("POSTGRES_DATABASE", "sentry_metadata"),
+			Username: getenv("POSTGRES_USERNAME", "sentry"),
+			Password: getenv("POSTGRES_PASSWORD", ""),
 		},
 		// Search service's gRPC address (see /search) -- default matches
 		// /search's own default GRPC_LISTEN_ADDR.

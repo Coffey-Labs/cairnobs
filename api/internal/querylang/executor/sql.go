@@ -164,22 +164,41 @@ func buildWhereClause(plan *ir.Plan, recordIDFilter []string) string {
 
 	if plan.TimeRange != nil {
 		if !plan.TimeRange.From.IsZero() {
-			conds = append(conds, "`timestamp` >= "+quoteLiteral(plan.TimeRange.From.UTC().Format(time.RFC3339Nano)))
+			conds = append(conds, "`timestamp` >= "+quoteLiteral(formatClickHouseDateTime64(plan.TimeRange.From)))
 		}
 		if !plan.TimeRange.To.IsZero() {
-			conds = append(conds, "`timestamp` <= "+quoteLiteral(plan.TimeRange.To.UTC().Format(time.RFC3339Nano)))
+			conds = append(conds, "`timestamp` <= "+quoteLiteral(formatClickHouseDateTime64(plan.TimeRange.To)))
 		}
 	}
 
 	return strings.Join(conds, " AND ")
 }
 
+// formatClickHouseDateTime64 formats t the way ClickHouse's implicit
+// string->DateTime64 CAST expects for a WHERE-clause comparison:
+// "YYYY-MM-DD HH:MM:SS[.fractional]", space-separated, no 'T'/'Z'. This
+// is a real, measured requirement, not a guess: an ISO-8601/RFC3339Nano
+// literal (e.g. "2026-08-12T20:17:40.223505479Z", what time.RFC3339Nano
+// produces) fails at query time with "code: 53, Cannot convert string
+// ... to type DateTime64(9, 'UTC')" -- ClickHouse's *implicit* cast used
+// for column-vs-literal comparisons is strict, unlike the lenient
+// parseDateTimeBestEffort used elsewhere in ClickHouse. Found by
+// actually running a dashboard panel with a relative earliest= against
+// live ClickHouse (Phase 2's own unit tests never caught this: they
+// assert against a fake SQLRunner that checks the generated SQL string,
+// not that ClickHouse accepts it, and none of Phase 2's own live-stack
+// runbook queries happened to use earliest=/latest= at all).
+func formatClickHouseDateTime64(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05.999999999")
+}
+
 // buildComparisonSQL numeric-casts a non-top-level field only when the
 // compared value itself looks numeric -- `status>=500` casts (numeric
 // comparison intent), `status="unknown"` doesn't (string comparison
 // intent). Top-level fields are never cast; ClickHouse compares them
-// against a string literal natively (DateTime64 columns parse an
-// RFC3339-shaped literal, LowCardinality(String)/String compare as-is).
+// against a string literal natively (LowCardinality(String)/String
+// compare as-is; DateTime64 columns need formatClickHouseDateTime64's
+// exact literal shape, handled in buildWhereClause above, not here).
 func buildComparisonSQL(f ir.FilterPredicate) string {
 	if !topLevelFields[f.Field] && isNumericLiteral(f.Value) {
 		return "toFloat64OrZero(" + columnExpr(f.Field) + ") " + f.Op + " " + f.Value

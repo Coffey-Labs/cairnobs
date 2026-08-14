@@ -95,6 +95,42 @@ ClickHouse/Tantivy routing strategy, and
 `/docs/query-language-reference.md` for the user-facing syntax reference
 once built.
 
+## What "done" looks like for Phase 3
+
+A user can build a multi-panel dashboard from saved Phase 2 queries (at
+least a line chart panel and a table panel, working end-to-end against
+live data), save an alert rule that fires a Slack webhook when a
+condition is met (threshold comparison, or "absence" — the query returned
+zero rows in its own time window), and see the delivery attempt logged —
+all from the web UI, without touching the API directly. See
+`/docs/phase-3-dashboard-design.md` and `/docs/phase-3-alerting-design.md`
+for the data models and the alerting evaluator's firing/resolved state
+machine, and `/docs/phase-3-runbook.md` for the live-stack verification,
+including a load test of the alert evaluator against ~500 concurrent
+rules.
+
+This phase adds PostgreSQL as a new pinned-stack component (see the
+dashboard design doc for why ClickHouse can't do this job — dashboards
+and alert state need real row-level locking and transactional
+read-modify-write, which ClickHouse's MergeTree family doesn't provide),
+scoped strictly to control-plane config: dashboards, panels, notification
+targets, alert rules, alert state, delivery log. Log data itself stays on
+ClickHouse/Tantivy only, unchanged.
+
+Non-goals for this phase (same discipline as every phase so far):
+- No multi-tenancy enforcement and no `enterprise/` module work — single
+  tenant/org assumed. New tables carry a `tenant_id` column so Phase 4's
+  retrofit doesn't require a schema migration + backfill, but nothing
+  reads or enforces it yet.
+- No raw-SQL dashboard panels (time-range injection isn't reliable
+  against arbitrary SQL) — pipe-syntax queries only.
+- No per-group/multi-row threshold alerting (e.g. "alert separately per
+  host") — a threshold rule's query must resolve to a single row.
+- No debounce on the way down — a firing alert resolves on the first
+  false evaluation, no symmetric "stay firing for N more minutes" hold.
+- No Kubernetes Operator/Helm deployment work — still docker-compose,
+  `/deploy` remains stubbed.
+
 ## When in doubt
 Ask before: changing the pinned stack, adding a new external dependency
 that pulls in a large transitive tree, or making an architectural decision

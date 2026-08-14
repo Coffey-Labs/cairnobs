@@ -7,18 +7,23 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sentry/sentry/api/internal/config"
-	"github.com/sentry/sentry/api/internal/querylang/executor"
+	"github.com/sentry/sentry/api/internal/dashboards"
+	"github.com/sentry/sentry/api/internal/httpserver"
 	"github.com/sentry/sentry/api/internal/queryapi"
+	"github.com/sentry/sentry/api/internal/querylang/executor"
 	"github.com/sentry/sentry/api/internal/searchclient"
 )
 
@@ -29,6 +34,16 @@ func main() {
 	if err != nil {
 		logger.Error("loading config", "error", err)
 		os.Exit(1)
+	}
+
+	// -healthcheck: a self-check mode for Docker's HEALTHCHECK, not a
+	// flag anyone runs by hand. The api image is distroless (no shell,
+	// no wget/curl -- see api/Dockerfile), so docker-compose's
+	// healthcheck execs this binary against itself instead of an
+	// external tool. Exits before any ClickHouse/Postgres/search dial,
+	// since those aren't what "is the HTTP server up" is asking.
+	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
+		os.Exit(runHealthcheck(cfg.HTTPListenAddr))
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -60,12 +75,33 @@ func main() {
 	}
 	defer search.Close()
 
+	pgDSN := fmt.Sprintf("postgres://%s:%s@%s/%s", cfg.Postgres.Username, cfg.Postgres.Password, cfg.Postgres.Addr, cfg.Postgres.Database)
+	pgPool, err := pgxpool.New(ctx, pgDSN)
+	if err != nil {
+		logger.Error("opening postgres pool", "error", err)
+		os.Exit(1)
+	}
+	defer pgPool.Close()
+
+	if err := pgPool.Ping(ctx); err != nil {
+		logger.Error("pinging postgres", "error", err)
+		os.Exit(1)
+	}
+
 	sqlRunner := executor.NewChRunner(conn)
-	handler := queryapi.NewHandler(logger, sqlRunner, search, cfg.QueryTimeout, cfg.CORSAllowedOrigin)
+	queryHandler := queryapi.NewHandler(logger, sqlRunner, search, cfg.QueryTimeout)
+	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool))
+
+	// One shared mux, CORS applied once around the whole thing -- see
+	// internal/httpserver's doc comment for why this changed from each
+	// handler wrapping itself individually.
+	mux := http.NewServeMux()
+	queryHandler.RegisterRoutes(mux)
+	dashboardsHandler.RegisterRoutes(mux)
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,
-		Handler: handler.Routes(),
+		Handler: httpserver.WithCORS(mux, cfg.CORSAllowedOrigin),
 	}
 
 	errCh := make(chan error, 1)
@@ -87,4 +123,26 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// runHealthcheck GETs its own /healthz and returns an exit code, for
+// Docker's HEALTHCHECK to exec directly (see the -healthcheck flag
+// above). listenAddr is HTTP_LISTEN_ADDR-shaped (e.g. ":8080") --
+// "localhost" replaces a bare host part since that's this same
+// container reaching itself, not another service.
+func runHealthcheck(listenAddr string) int {
+	addr := listenAddr
+	if strings.HasPrefix(addr, ":") {
+		addr = "localhost" + addr
+	}
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + addr + "/healthz")
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
