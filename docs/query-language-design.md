@@ -209,6 +209,27 @@ ClickHouse-side text indexing, a different join strategy, or simply
 raising `max_query_size` server-side with matching memory sizing) is
 explicitly future work, out of scope for Phase 2.
 
+### Post-Phase-2 fix: `earliest=`/`latest=` never actually worked against live ClickHouse
+
+Found during Phase 3's dashboard time-range picker work (the first thing
+to run a relative `earliest=`/`latest=` query against real ClickHouse
+end-to-end — none of Phase 2's own runbook queries or unit tests
+happened to exercise it): `executor/sql.go` formatted `TimeRange` bounds
+with `time.RFC3339Nano` (e.g. `2026-08-12T20:17:40.223505479Z`), which
+ClickHouse's *implicit* string→`DateTime64` cast for a column-vs-literal
+comparison rejects outright — `code: 53, Cannot convert string ... to
+type DateTime64(9, 'UTC')`. ClickHouse's implicit cast is strict and
+wants `'YYYY-MM-DD HH:MM:SS[.fractional]'` (space-separated, no `T`/`Z`);
+the lenient ISO-8601-accepting `parseDateTimeBestEffort` is a different,
+explicitly-invoked function, not what a plain `WHERE timestamp >= '...'`
+comparison uses. Fixed by `formatClickHouseDateTime64` in `sql.go`. The
+Phase 2 unit test that covered this (`TestBuildSQLTimeRange`) only
+asserted the generated SQL *string*, against a fake `SQLRunner` — it
+never caught this because nothing in that test actually asked real
+ClickHouse whether the SQL was valid. Left here as a pointed reminder of
+why this project's "actually run it" discipline exists: a passing test
+suite and a working feature are not the same claim.
+
 ## Where this lives: `api/internal/querylang/`
 
 Not a new top-level component. This subsystem always executes in-process

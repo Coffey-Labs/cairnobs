@@ -300,10 +300,34 @@ func TestBuildSQLTimeRange(t *testing.T) {
 	to := mustParseTime(t, "2026-08-14T01:00:00Z")
 	plan := &ir.Plan{TimeRange: &ir.TimeRange{From: from, To: to}}
 	sql := buildSQL(plan, nil)
-	if !strings.Contains(sql, "`timestamp` >= '2026-08-14T00:00:00Z'") {
+	// Space-separated, no 'T'/'Z' -- ClickHouse's implicit string->DateTime64
+	// cast for a column-vs-literal comparison is strict and rejects
+	// RFC3339/ISO-8601 shaped literals ("code: 53, Cannot convert string...
+	// to type DateTime64(9, 'UTC')"), confirmed by actually running a
+	// dashboard panel with earliest= against live ClickHouse -- this test
+	// previously asserted the RFC3339 shape that ClickHouse rejects, which
+	// is exactly how the bug went unnoticed: nothing here ever executed the
+	// SQL against a real database.
+	if !strings.Contains(sql, "`timestamp` >= '2026-08-14 00:00:00'") {
 		t.Fatalf("missing From bound: %s", sql)
 	}
-	if !strings.Contains(sql, "`timestamp` <= '2026-08-14T01:00:00Z'") {
+	if !strings.Contains(sql, "`timestamp` <= '2026-08-14 01:00:00'") {
 		t.Fatalf("missing To bound: %s", sql)
+	}
+}
+
+func TestFormatClickHouseDateTime64OmitsTrailingZeroFraction(t *testing.T) {
+	// time.Time's default zero-value fractional seconds must not leave a
+	// stray "." with nothing after it -- Format's `.999999999` verb
+	// already handles this (trims to nothing when the fraction is zero),
+	// but it's worth pinning down given how easy the RFC3339Nano mistake
+	// was to miss in the first place.
+	got := formatClickHouseDateTime64(mustParseTime(t, "2026-08-14T00:00:00Z"))
+	if got != "2026-08-14 00:00:00" {
+		t.Fatalf("got %q, want no trailing fractional-seconds dot", got)
+	}
+	got = formatClickHouseDateTime64(mustParseTime(t, "2026-08-14T00:00:00.223505479Z"))
+	if got != "2026-08-14 00:00:00.223505479" {
+		t.Fatalf("got %q", got)
 	}
 }

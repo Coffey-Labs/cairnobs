@@ -26,9 +26,35 @@ auto-detection, same optional override the HTTP API itself exposes.
 Prints a table by default (stdlib `text/tabwriter`, no new dependency);
 `--json` prints the raw `{columns, rows}` response instead.
 
-No CLI framework (cobra/urfave-cli/etc.) — two commands don't need one,
-and stdlib `os.Args` handling is boring enough not to need a dependency.
-Revisit once there's a real command tree to justify one.
+```sh
+sentryctl dashboards list
+sentryctl dashboards get <id>
+sentryctl dashboards apply dashboard.json    # imports a dashboard exported via the web UI's "Export JSON" button
+
+sentryctl alerts list
+sentryctl alerts get <id>
+sentryctl alerts apply rule.json             # creates a rule from a JSON file shaped like POST /rules's body
+```
+
+`dashboards` talks to `/api` (`--api`, same override as `query`/`ping`).
+`alerts` talks to `/alerting`, a separate service with its own base URL
+(`--alerting-api`, or `$SENTRYCTL_ALERTING_API_URL`, default
+`http://localhost:8081`) — see `/docs/phase-3-alerting-design.md`'s
+component boundary for why alerting isn't just another `/api` route.
+`apply` in both cases sends the file's JSON as-is to the corresponding
+create/import endpoint — no reshaping, since the file's shape already
+matches what the endpoint expects (the same JSON the web UI's export
+button downloads, or the same shape `GET /rules/{id}` returns). This is
+deliberately the seed of a future Terraform provider: one JSON contract,
+multiple callers (web export, CLI apply, eventually a provider), not
+three different formats to keep in sync.
+
+No CLI framework (cobra/urfave-cli/etc.) — six commands split across a
+few files (`cmd_ping.go`, `cmd_query.go`, `cmd_dashboards.go`,
+`cmd_alerts.go`) is still boring enough not to need one; stdlib
+`os.Args` handling plus a hand-rolled `switch` in `main.go` covers it.
+Revisit once there's a real command tree (nested subcommands, nontrivial
+flag parsing) to justify a dependency.
 
 ## Building & testing
 

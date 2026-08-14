@@ -2,12 +2,14 @@
 	// Phase 2: single unified query page. Replaces Phase 0/1's two
 	// separate pages (raw-SQL-only /query, free-text-only /search) --
 	// see /docs/query-language-design.md and /docs/query-language-reference.md.
+	// Phase 3: query bar extracted into $lib/QueryBar.svelte (reused by
+	// the dashboard panel editor and alert rule editor), fetch calls
+	// moved into $lib/api.ts.
 
 	import ResultsTable from '$lib/ResultsTable.svelte';
+	import QueryBar from '$lib/QueryBar.svelte';
+	import { runQuery as apiRunQuery, type Language } from '$lib/api';
 
-	const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
-
-	type Language = '' | 'sql' | 'spl';
 	type HistoryEntry = { query: string; language: Language; at: number };
 
 	const HISTORY_KEY = 'sentry.queryHistory';
@@ -21,16 +23,6 @@
 	let loading = $state(false);
 	let hasRun = $state(false);
 	let history = $state<HistoryEntry[]>(loadHistory());
-
-	// Client-side mirror of the backend's auto-detect heuristic
-	// (api/internal/querylang/planner.looksLikeSQL) -- purely a UI hint,
-	// the server does its own detection independently and is the
-	// authority on what actually runs.
-	function detectedLanguage(q: string): 'sql' | 'spl' {
-		return /^\s*select\b/i.test(q) ? 'sql' : 'spl';
-	}
-	let detected = $derived(detectedLanguage(query));
-	let effectiveLanguage = $derived(language === '' ? detected : language);
 
 	function loadHistory(): HistoryEntry[] {
 		if (typeof sessionStorage === 'undefined') return [];
@@ -61,20 +53,9 @@
 		loading = true;
 		error = '';
 		try {
-			const res = await fetch(`${apiBase}/query`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query, language })
-			});
-			const body = await res.json();
-			if (!res.ok) {
-				error = body?.error ?? `request failed with status ${res.status}`;
-				columns = [];
-				rows = [];
-				return;
-			}
-			columns = body.columns ?? [];
-			rows = body.rows ?? [];
+			const result = await apiRunQuery(query, language);
+			columns = result.columns ?? [];
+			rows = result.rows ?? [];
 			saveHistory({ query, language, at: Date.now() });
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -85,16 +66,6 @@
 			hasRun = true;
 		}
 	}
-
-	function onKeydown(e: KeyboardEvent) {
-		// Cmd/Ctrl+Enter runs the query -- textarea's own Enter key needs
-		// to stay newline-for-pipe-stage-formatting, so this isn't a bare
-		// Enter binding.
-		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-			e.preventDefault();
-			runQuery();
-		}
-	}
 </script>
 
 <main>
@@ -102,35 +73,10 @@
 	<p>
 		One query bar for both filter/stats queries and free-text search — see
 		<code>/docs/query-language-reference.md</code> in the repo for the full syntax, or the cheat
-		sheet below.
+		sheet below. Build reusable queries into a <a href="/dashboards">dashboard</a>.
 	</p>
 
-	<textarea
-		bind:value={query}
-		onkeydown={onKeydown}
-		rows="4"
-		cols="100"
-		spellcheck="false"
-		placeholder={'service=api | where status>=500 | stats count by host | sort -count'}
-	></textarea>
-
-	<div class="controls">
-		<label>
-			Language:
-			<select bind:value={language}>
-				<option value="">Auto ({detected})</option>
-				<option value="spl">Pipe syntax</option>
-				<option value="sql">SQL</option>
-			</select>
-		</label>
-		<span class="detected-badge" class:sql={effectiveLanguage === 'sql'}>
-			{effectiveLanguage === 'sql' ? 'SQL' : 'pipe syntax'}
-		</span>
-		<button onclick={runQuery} disabled={loading || query.trim() === ''}>
-			{loading ? 'Running…' : 'Run query'}
-		</button>
-		<span class="hint">⌘/Ctrl+Enter to run</span>
-	</div>
+	<QueryBar bind:query bind:language onRun={runQuery} {loading} />
 
 	{#if error}
 		<p class="error">Error: {error}</p>
@@ -178,34 +124,6 @@
 		max-width: 960px;
 		margin: 2rem auto;
 		padding: 0 1rem;
-	}
-	textarea {
-		width: 100%;
-		font-family: monospace;
-		font-size: 0.9rem;
-		box-sizing: border-box;
-	}
-	.controls {
-		margin-top: 0.5rem;
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		flex-wrap: wrap;
-	}
-	.detected-badge {
-		font-size: 0.75rem;
-		padding: 0.15rem 0.5rem;
-		border-radius: 1rem;
-		background: #eef;
-		color: #224;
-	}
-	.detected-badge.sql {
-		background: #fee;
-		color: #422;
-	}
-	.hint {
-		font-size: 0.8rem;
-		color: #777;
 	}
 	.error {
 		color: #b00020;

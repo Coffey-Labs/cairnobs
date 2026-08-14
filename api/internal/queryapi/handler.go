@@ -24,38 +24,24 @@ import (
 )
 
 type Handler struct {
-	logger        *slog.Logger
-	sqlRunner     executor.SQLRunner
-	search        executor.SearchClient
-	queryTimeout  time.Duration
-	allowedOrigin string
+	logger       *slog.Logger
+	sqlRunner    executor.SQLRunner
+	search       executor.SearchClient
+	queryTimeout time.Duration
 }
 
-func NewHandler(logger *slog.Logger, sqlRunner executor.SQLRunner, search executor.SearchClient, queryTimeout time.Duration, allowedOrigin string) *Handler {
-	return &Handler{logger: logger, sqlRunner: sqlRunner, search: search, queryTimeout: queryTimeout, allowedOrigin: allowedOrigin}
+func NewHandler(logger *slog.Logger, sqlRunner executor.SQLRunner, search executor.SearchClient, queryTimeout time.Duration) *Handler {
+	return &Handler{logger: logger, sqlRunner: sqlRunner, search: search, queryTimeout: queryTimeout}
 }
 
-func (h *Handler) Routes() http.Handler {
-	mux := http.NewServeMux()
+// RegisterRoutes adds this handler's routes onto a shared mux. Phase 3
+// introduced a second handler package (internal/dashboards), so CORS is
+// now applied once, by main.go, around the fully-assembled mux rather
+// than by each handler wrapping itself individually -- see
+// httpserver.WithCORS.
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /query", h.handleQuery)
 	mux.HandleFunc("GET /healthz", h.handleHealthz)
-	return h.withCORS(mux)
-}
-
-// withCORS is deliberately permissive by default (see CORSAllowedOrigin in
-// internal/config) since there's no auth yet and the SvelteKit dev server
-// runs on a different origin. Tighten alongside adding real auth.
-func (h *Handler) withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", h.allowedOrigin)
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func (h *Handler) handleHealthz(w http.ResponseWriter, _ *http.Request) {

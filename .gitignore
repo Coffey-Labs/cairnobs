@@ -7,8 +7,11 @@ search/target/
 /ingest/ingest
 /api/api
 /cli/sentryctl
+/alerting/alerting
 /hack/windows-fixture/windows-fixture
 /hack/benchmark-fixture/benchmark-fixture
+/hack/alert-load-test/alert-load-test
+/hack/webhook-sink/webhook-sink
 
 # Node / SvelteKit (web/ has its own more detailed .gitignore too)
 web/node_modules/
