@@ -166,6 +166,18 @@ present) is needed for the matrix above — "own vs. any" in the matrix is
 `created_by = current user` vs. tenant-wide Admin/Owner authority, not a
 separate grants table for those resource types.
 
+**Implementation note (Phase 4 task 5, added after this design was
+signed off):** `dashboard_permissions` is now built --
+`enterprise/internal/rbacstore`'s CRUD plus a `DashboardPermissions`
+adapter implementing a new core interface, `api/dashboards.
+PermissionStore`, enforced in `api/dashboards`' handler. The applied
+migration (`metadata/migrations/0024_create_dashboard_permissions.sql`)
+diverged slightly from the schema above -- it allowed `role='admin'`
+and left `granted_by` nullable -- and was reconciled to match this
+document via `0033_restrict_dashboard_permissions_role.sql`, found
+while wiring the enforcement code up. See `enterprise/README.md` and
+`/docs/security/threat-model.md` for verification status.
+
 ## Enforcement shape (design only — implementation is task 5)
 
 RBAC checks happen server-side, on every `/api`/`/alerting` endpoint

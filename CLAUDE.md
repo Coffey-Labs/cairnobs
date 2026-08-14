@@ -181,7 +181,17 @@ RBAC/audit/SSO, rendering to the same Service name/port either way — a
 Helm-deployed cluster can't accidentally run the wrong one.
 `docker-compose.yml` still runs plain `api` unconditionally, though
 (local/dev parity with the Helm chart's enforcement is real remaining
-work). What still keeps this phase from being done: ingest itself has no
+work). Per-resource dashboard grants (the RBAC matrix's "(own/granted)"
+qualifier) are now enforced too: `api/dashboards.PermissionStore` (core
+interface) implemented by `enterprise/internal/rbacstore.
+DashboardPermissions`, wired in only by `enterprise-api` — an Editor can
+now only edit/delete a dashboard they created or were granted access to,
+not every dashboard in their tenant; managing grants themselves is
+stricter still (creator/Admin/Owner only, closing a self-escalation
+path). Verified against a fake store (`api/dashboards/handler_test.go`);
+real integration tests exist but haven't run against a live Postgres,
+same disclosed gap as the rest of this phase's Postgres-backed pieces.
+What still keeps this phase from being done: ingest itself has no
 tenant concept for either storage engine (every record lands in the one
 shared ClickHouse database and Tantivy index no matter what —
 undesigned, not just unbuilt), and the two

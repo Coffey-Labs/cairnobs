@@ -128,7 +128,7 @@ func (f *fakeStore) ImportDashboard(_ context.Context, tenantID string, d *Dashb
 }
 
 func newTestMux(fs *fakeStore) *http.ServeMux {
-	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), fs, nil)
+	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), fs, nil, nil)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	return mux
@@ -146,9 +146,61 @@ func (f *fakeAuthorizer) Authorize(*http.Request) (authz.Identity, error) {
 	return f.identity, nil
 }
 
+// fakePermissionStore is an in-memory PermissionStore, keyed by
+// dashboardID -> userID -> grant, enough to drive canEditDashboard/
+// canManageGrants's "granted" path and the permission-management
+// handlers without a real Postgres.
+type fakePermissionStore struct {
+	grants map[string]map[string]Permission
+}
+
+func newFakePermissionStore() *fakePermissionStore {
+	return &fakePermissionStore{grants: map[string]map[string]Permission{}}
+}
+
+func (f *fakePermissionStore) GrantedRole(_ context.Context, dashboardID, userID string) (authz.Role, bool, error) {
+	p, ok := f.grants[dashboardID][userID]
+	if !ok {
+		return "", false, nil
+	}
+	return p.Role, true, nil
+}
+
+func (f *fakePermissionStore) SetPermission(_ context.Context, dashboardID, userID string, role authz.Role, grantedBy string) error {
+	if f.grants[dashboardID] == nil {
+		f.grants[dashboardID] = map[string]Permission{}
+	}
+	f.grants[dashboardID][userID] = Permission{UserID: userID, Role: role, GrantedBy: grantedBy}
+	return nil
+}
+
+func (f *fakePermissionStore) RevokePermission(_ context.Context, dashboardID, userID string) error {
+	delete(f.grants[dashboardID], userID)
+	return nil
+}
+
+func (f *fakePermissionStore) ListPermissions(_ context.Context, dashboardID string) ([]Permission, error) {
+	var out []Permission
+	for _, p := range f.grants[dashboardID] {
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 func newTestMuxWithTenant(fs *fakeStore, tenantID string) *http.ServeMux {
 	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), fs,
-		&fakeAuthorizer{identity: authz.Identity{TenantID: tenantID, Role: authz.RoleOwner}})
+		&fakeAuthorizer{identity: authz.Identity{TenantID: tenantID, Role: authz.RoleOwner}}, nil)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+	return mux
+}
+
+// newTestMuxWithIdentity is newTestMuxWithTenant's more general sibling
+// -- lets ownership/grant tests control Role and UserID directly (Owner
+// always bypasses canEditDashboard/canManageGrants, so those tests can't
+// use newTestMuxWithTenant), and optionally wires a PermissionStore.
+func newTestMuxWithIdentity(fs *fakeStore, identity authz.Identity, permissions PermissionStore) *http.ServeMux {
+	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), fs, &fakeAuthorizer{identity: identity}, permissions)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	return mux
@@ -444,7 +496,7 @@ func TestServiceIdentityCannotAccessDashboards(t *testing.T) {
 	fs := newFakeStore()
 	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "default", Name: "Overview"}
 	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), fs,
-		&fakeAuthorizer{identity: authz.Identity{Role: authz.RoleService}})
+		&fakeAuthorizer{identity: authz.Identity{Role: authz.RoleService}}, nil)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
@@ -460,5 +512,201 @@ func TestServiceIdentityCannotAccessDashboards(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s %s: status = %d, want 403 (RoleService must never access dashboards)", tt.method, tt.path, rec.Code)
 		}
+	}
+}
+
+// --- "(own/granted)" qualifier tests (Phase 4 task 5) ---
+
+func TestEditorCannotEditOthersDashboardWithoutGrant(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, newFakePermissionStore())
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1", `{"name": "Hijacked"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", rec.Code, rec.Body.String())
+	}
+	if fs.dashboards["dash-1"].Name != "Overview" {
+		t.Fatalf("must not modify the dashboard, got Name = %q", fs.dashboards["dash-1"].Name)
+	}
+}
+
+func TestEditorCanEditOwnDashboard(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-editor"}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, newFakePermissionStore())
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1", `{"name": "Updated"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEditorCanEditDashboardGrantedEditorRole(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	perms := newFakePermissionStore()
+	if err := perms.SetPermission(context.Background(), "dash-1", "user-editor", authz.RoleEditor, "user-owner"); err != nil {
+		t.Fatalf("seeding grant: %v", err)
+	}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, perms)
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1", `{"name": "Updated"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a granted Editor role must allow editing someone else's dashboard); body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEditorCannotEditDashboardGrantedViewerRoleOnly(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	perms := newFakePermissionStore()
+	if err := perms.SetPermission(context.Background(), "dash-1", "user-editor", authz.RoleViewer, "user-owner"); err != nil {
+		t.Fatalf("seeding grant: %v", err)
+	}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, perms)
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1", `{"name": "Updated"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (a Viewer-level grant must not allow editing -- additive-only, not an escalation)", rec.Code)
+	}
+}
+
+func TestAdminCanEditAnyDashboardWithoutGrant(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-admin", Role: authz.RoleAdmin}, newFakePermissionStore())
+
+	rec := doRequest(t, mux, http.MethodDelete, "/dashboards/dash-1", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (Admin may act on any dashboard in its tenant); body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEditorCannotEditPanelsOfOthersDashboardWithoutGrant(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, newFakePermissionStore())
+
+	rec := doRequest(t, mux, http.MethodPost, "/dashboards/dash-1/panels", `{"query": "service=api", "viz_type": "table"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(fs.dashboards["dash-1"].Panels) != 0 {
+		t.Fatalf("must not attach a panel without edit access")
+	}
+}
+
+func TestNoPermissionStoreFallsBackToOwnershipOnly(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	// authorizer is real (RBAC enforced) but permissions is nil -- e.g.
+	// plain api/cmd/api with ENTERPRISE_AUTH_URL set but no enterprise
+	// permission service wired. Own/Admin must still work; "granted"
+	// simply isn't checkable.
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, nil)
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1", `{"name": "Updated"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (no permission store means no 'granted' bonus, and this user isn't the creator)", rec.Code)
+	}
+}
+
+// --- grant management endpoint tests ---
+
+func TestCreatorCanManageGrants(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-creator"}
+	perms := newFakePermissionStore()
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-creator", Role: authz.RoleEditor}, perms)
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1/permissions/user-2", `{"role": "editor"}`)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body=%s", rec.Code, rec.Body.String())
+	}
+	role, ok, err := perms.GrantedRole(context.Background(), "dash-1", "user-2")
+	if err != nil || !ok || role != authz.RoleEditor {
+		t.Fatalf("GrantedRole = (%v, %v, %v), want (editor, true, nil)", role, ok, err)
+	}
+}
+
+// TestGrantedEditorCannotManageGrants is the regression test for the
+// matrix's distinction between "(own/granted)" (edit/delete content) and
+// "(if creator)" (manage grants) -- a user who can edit only because of
+// a grant must not be able to extend or re-grant that access to anyone,
+// including themselves.
+func TestGrantedEditorCannotManageGrants(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-owner"}
+	perms := newFakePermissionStore()
+	if err := perms.SetPermission(context.Background(), "dash-1", "user-editor", authz.RoleEditor, "user-owner"); err != nil {
+		t.Fatalf("seeding grant: %v", err)
+	}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-editor", Role: authz.RoleEditor}, perms)
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1/permissions/user-3", `{"role": "editor"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (a granted Editor must not be able to grant access to others)", rec.Code)
+	}
+}
+
+func TestSetPermissionRejectsInvalidRole(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-creator"}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-creator", Role: authz.RoleEditor}, newFakePermissionStore())
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1/permissions/user-2", `{"role": "admin"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (admin is not a grantable resource-level role -- see metadata/migrations/0033)", rec.Code)
+	}
+}
+
+func TestRevokePermission(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-creator"}
+	perms := newFakePermissionStore()
+	if err := perms.SetPermission(context.Background(), "dash-1", "user-2", authz.RoleEditor, "user-creator"); err != nil {
+		t.Fatalf("seeding grant: %v", err)
+	}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-creator", Role: authz.RoleEditor}, perms)
+
+	rec := doRequest(t, mux, http.MethodDelete, "/dashboards/dash-1/permissions/user-2", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body=%s", rec.Code, rec.Body.String())
+	}
+	if _, ok, _ := perms.GrantedRole(context.Background(), "dash-1", "user-2"); ok {
+		t.Fatalf("expected the grant to be revoked")
+	}
+}
+
+func TestPermissionEndpointsReturn501WithoutPermissionStore(t *testing.T) {
+	fs := newFakeStore()
+	fs.dashboards["dash-1"] = &Dashboard{ID: "dash-1", TenantID: "acme", Name: "Overview", CreatedBy: "user-creator"}
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-creator", Role: authz.RoleEditor}, nil)
+
+	rec := doRequest(t, mux, http.MethodPut, "/dashboards/dash-1/permissions/user-2", `{"role": "editor"}`)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501 (no enterprise permission service wired)", rec.Code)
+	}
+}
+
+// TestImportStampsImportingUserAsCreator is the regression test for the
+// created_by-on-import fix: without it, an imported dashboard would keep
+// the *exported* JSON's created_by, leaving the actual importer unable
+// to edit their own freshly-imported copy.
+func TestImportStampsImportingUserAsCreator(t *testing.T) {
+	fs := newFakeStore()
+	mux := newTestMuxWithIdentity(fs, authz.Identity{TenantID: "acme", UserID: "user-importer", Role: authz.RoleEditor}, newFakePermissionStore())
+
+	rec := doRequest(t, mux, http.MethodPost, "/dashboards/import", `{"name": "Imported", "created_by": "someone-else"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var imported Dashboard
+	if err := json.Unmarshal(rec.Body.Bytes(), &imported); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if imported.CreatedBy != "user-importer" {
+		t.Fatalf("CreatedBy = %q, want %q (the importing identity, not the exported JSON's value)", imported.CreatedBy, "user-importer")
 	}
 }

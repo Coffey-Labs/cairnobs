@@ -219,12 +219,31 @@ means an operator who forgets to set `ENTERPRISE_AUTH_URL` in a
 multi-tenant deployment gets *no* enforcement at all, silently. Worth a
 deployment-time check a real rollout should add (not built here).
 
-**Not yet enforced:** the RBAC matrix's `(own/granted)` qualifier for
-Editor-level dashboard actions — `dashboard_permissions` (per-resource
-grants beyond a user's tenant-baseline role) has a schema
-(`metadata/migrations/0024_create_dashboard_permissions.sql`) but no
-handler reads it yet. Every Editor in a tenant can act on every
-dashboard in that tenant, not just their own/granted ones.
+**Now enforced:** the RBAC matrix's `(own/granted)` qualifier for
+Editor-level dashboard actions. `dashboard_permissions`
+(`metadata/migrations/0024_create_dashboard_permissions.sql`, tightened
+by `0033_restrict_dashboard_permissions_role.sql`) is read via
+`api/dashboards.PermissionStore` — a core-defined interface, same shape
+as `queryapi.AuditLogger` — implemented by
+`enterprise/internal/rbacstore.DashboardPermissions` and wired in only
+by `enterprise/cmd/enterprise-api`. A plain Editor may now only
+edit/delete a dashboard (or its panels) they created, or one where a
+grant raises their effective role to Editor; Admin/Owner still act on
+any dashboard in their tenant. Managing grants themselves
+(`PUT`/`DELETE /dashboards/{id}/permissions/{userId}`) is deliberately
+stricter than editing content — only the creator or Admin/Owner may
+grant or revoke, never a user who can edit *only* because of a grant
+(closes a self-escalation path a looser check would allow). Verified by
+`api/dashboards/handler_test.go`'s fake-store tests (the ownership/
+grant/admin matrix, plus the granted-editor-cannot-manage-grants
+regression case) — real integration tests against a live Postgres exist
+in `enterprise/internal/rbacstore/rbacstore_test.go` but, like the rest
+of this phase's rbacstore work, have not been run against one in this
+environment. A plain `api/cmd/api` deployment with RBAC enforcement on
+but no enterprise permission service wired still enforces ownership/
+Admin — only the "granted" bonus and grant management are unavailable
+there (nil `PermissionStore` is a documented no-op, same shape as a nil
+`Authorizer`).
 
 **Application-layer tenant scoping (dashboards only).** Every
 `dashboards` store query filters `WHERE tenant_id = $identity.TenantID`
@@ -389,7 +408,7 @@ terms:
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Multi-tenant-membership login (tenant picker) | **Not implemented** — refused with a clear error, not guessed |
-| Per-resource dashboard grants (`own/granted`) | **Not implemented** |
+| Per-resource dashboard grants (`own/granted`) | **Built, unit-tested against a fake store; live-Postgres integration tests written, not run in this environment** (only when `enterprise-api` serves traffic — plain `api` falls back to own/Admin only) |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |
 | Audit log tamper prevention (external anchoring) | **Design only** — `FileSink` is a dev stand-in |
