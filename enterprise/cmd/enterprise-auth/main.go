@@ -79,6 +79,9 @@ func main() {
 	revokeTenant := flag.String("revoke-membership-tenant", "", "tenant id to revoke a membership from -- both -revoke-membership-* flags are required together")
 	revokeUserEmail := flag.String("revoke-membership-user-email", "", "email of the user whose tenant_memberships row to delete")
 	listMembershipsTenant := flag.String("list-memberships-tenant", "", "print every user with a membership in this tenant (id, email, display name, role) and exit")
+	createIngestCredentialTenant := flag.String("create-ingest-credential-tenant", "", "mint a new ingest bearer token for this tenant, print it once, and exit -- see ingest/internal/grpcserver.TenantResolver")
+	listIngestCredentialsTenant := flag.String("list-ingest-credentials-tenant", "", "print every ingest credential's id/created_at for this tenant (never the token itself -- only its hash is stored) and exit")
+	revokeIngestCredential := flag.String("revoke-ingest-credential", "", "delete an ingest credential by id (see -list-ingest-credentials-tenant) and exit")
 	// -healthcheck: same self-check mode as api/-healthcheck (see that
 	// binary's doc comment) -- enterprise-auth's image is distroless too.
 	healthcheck := flag.Bool("healthcheck", false, "self-check mode for Docker's HEALTHCHECK")
@@ -131,6 +134,15 @@ func main() {
 	}
 	if *listMembershipsTenant != "" {
 		os.Exit(runListMemberships(ctx, logger, rbac, *listMembershipsTenant))
+	}
+	if *createIngestCredentialTenant != "" {
+		os.Exit(runCreateIngestCredential(ctx, logger, rbac, *createIngestCredentialTenant))
+	}
+	if *listIngestCredentialsTenant != "" {
+		os.Exit(runListIngestCredentials(ctx, logger, rbac, *listIngestCredentialsTenant))
+	}
+	if *revokeIngestCredential != "" {
+		os.Exit(runRevokeIngestCredential(ctx, logger, rbac, *revokeIngestCredential))
 	}
 
 	// oidcProvider stays nil (loginhandler.RegisterRoutes then registers
@@ -187,7 +199,7 @@ func main() {
 		OIDCEnabled: cfg.OIDC.IssuerURL != "",
 		SAMLEnabled: cfg.SAML.IDPMetadataURL != "",
 	}
-	authhandler.New(logger, sessionManager, features).RegisterRoutes(mux)
+	authhandler.New(logger, sessionManager, features, rbac).RegisterRoutes(mux)
 	loginhandler.New(logger, oidcProvider, samlProvider, sessionManager, rbac, cfg.PostLoginRedirectURL, cfg.SelectTenantRedirectURL).RegisterRoutes(mux)
 
 	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: mux}
@@ -352,6 +364,60 @@ func runListMemberships(ctx context.Context, logger *slog.Logger, rbac *rbacstor
 	for _, m := range members {
 		fmt.Printf("%s\t%s\t%s\t%s\n", m.UserID, m.Email, m.DisplayName, m.Role)
 	}
+	return 0
+}
+
+// runCreateIngestCredential mints a new ingest bearer token for a
+// tenant and prints it to stdout exactly once -- rbacstore only ever
+// stores its hash (see ingest_credentials's doc comment), so this
+// output is the only chance to capture the plaintext. An agent presents
+// it as an `Authorization: Bearer <token>` gRPC metadata entry on every
+// PushBatch call; ingest resolves it to a tenant via
+// POST /internal/authorize-ingest.
+func runCreateIngestCredential(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID string) int {
+	if _, err := rbac.GetTenant(ctx, tenantID); err != nil {
+		logger.Error("looking up tenant", "tenant_id", tenantID, "error", err)
+		return 1
+	}
+	token, err := rbac.CreateIngestCredential(ctx, tenantID)
+	if err != nil {
+		logger.Error("creating ingest credential", "error", err)
+		return 1
+	}
+	fmt.Println(token)
+	return 0
+}
+
+func runListIngestCredentials(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID string) int {
+	if _, err := rbac.GetTenant(ctx, tenantID); err != nil {
+		logger.Error("looking up tenant", "tenant_id", tenantID, "error", err)
+		return 1
+	}
+	creds, err := rbac.ListIngestCredentialsForTenant(ctx, tenantID)
+	if err != nil {
+		logger.Error("listing ingest credentials", "error", err)
+		return 1
+	}
+	if len(creds) == 0 {
+		fmt.Println("(no ingest credentials)")
+		return 0
+	}
+	for _, c := range creds {
+		fmt.Printf("%s\t%s\n", c.ID, c.CreatedAt.Format(time.RFC3339))
+	}
+	return 0
+}
+
+func runRevokeIngestCredential(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, id string) int {
+	if err := rbac.RevokeIngestCredential(ctx, id); err != nil {
+		if err == rbacstore.ErrNotFound {
+			logger.Error("no ingest credential with this id", "id", id)
+		} else {
+			logger.Error("revoking ingest credential", "error", err)
+		}
+		return 1
+	}
+	logger.Info("revoked ingest credential", "id", id)
 	return 0
 }
 

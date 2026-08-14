@@ -554,6 +554,63 @@ all -- a cross-origin `fetch` with credentials from `web`'s origin to
 actual picker UI is real, separately-scoped frontend work; this section
 only closes the backend half.
 
+## 13. Ingest tenant identity (no per-tenant write-routing yet)
+
+The identity mechanism was chosen deliberately (config-supplied
+tenant_id + a shared-secret token ingest validates, not per-tenant
+mTLS certs -- smaller real implementation, no new PKI). Verified in
+this environment without Docker or a live enterprise-auth, using the
+same fake-client-at-every-layer discipline as everything else in this
+runbook that doesn't need a live stack:
+
+```sh
+cd enterprise
+go test ./internal/rbacstore/... -run IngestCredential -v
+# skip-gated (RBACSTORE_TEST_POSTGRES_ADDR) -- CreateIngestCredential/
+# ValidateIngestCredential/RevokeIngestCredential round trip, and the
+# regression test that only a SHA-256 hash is ever persisted, never the
+# plaintext token.
+
+go test ./internal/authhandler/... -run AuthorizeIngest -v
+# real HTTP round trip against POST /internal/authorize-ingest with a
+# fake credential validator -- proves a session token (service or
+# human) does NOT work as an ingest credential, since this endpoint
+# never calls session.Manager.Validate at all.
+
+cd ../ingest
+go test ./internal/tenantresolver/... -v
+# real HTTP round trip (httptest), same shape as api/authz.
+# HTTPAuthorizer's own tests -- forwards the bearer token, parses
+# tenant_id, treats a non-2xx or an empty tenant_id as an error.
+
+go test ./internal/grpcserver/... -run 'Resolver|TenantHeader' -v
+# PushBatch with a fake TenantResolver: no resolver configured ->
+# unchanged behavior, no tenant_id header at all; resolver configured ->
+# every produced Kafka message carries a tenant_id header matching the
+# resolved tenant; missing or invalid bearer token -> the whole batch is
+# refused (codes.Unauthenticated), fail-closed, never falls back to "no
+# tenant."
+```
+
+**Not built, and explicitly scoped out for now**: per-tenant write
+routing. Neither `ingest/internal/consumer` (the ClickHouse writer) nor
+`search/src/consumer.rs` (a completely independent Redpanda consumer,
+not called through `ingest` at all -- see that file) reads the
+`tenant_id` Kafka header back to route a record's write into a
+per-tenant ClickHouse database or Tantivy index. Every record still
+lands in the one shared destination regardless of tenant, correctly
+tagged but not yet isolated at write time -- see CLAUDE.md and
+`/docs/security/threat-model.md`'s "Read this first" for the full
+disclosure. Also not built: any Helm/`docker-compose.yml` wiring that
+issues an agent a real ingest credential automatically (`enterprise-
+auth -create-ingest-credential-tenant=<id>` is, like every other
+credential-minting flag in this codebase, a manual operator action) --
+`deploy/helm/sentry/values.yaml`'s `ingest.requireTenantCredential`
+(default `false`) only turns on *validation*, deliberately not folded
+into `enterprise.enabled` directly, since flipping that flag with no
+agents holding a credential yet would refuse all ingest traffic outright
+rather than degrading gracefully.
+
 ## Known gaps (do not treat this phase as done without reading these)
 
 Full accounting: `/docs/security/threat-model.md`. Headline items:
@@ -578,11 +635,17 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   that split (declarative request vs. imperative provisioning action)
   is intentional, not the "two disconnected sources of truth" gap this
   bullet used to describe.
-- **Ingest has no tenant concept for either storage engine.** Every
-  record `ingest` produces lands in the one shared ClickHouse database
-  and the one shared Tantivy index no matter what. A newly-provisioned
-  tenant's storage is real, isolated at query time, and permanently
-  empty until this changes — undesigned, not just unbuilt.
+- **Ingest now has a real tenant identity (§13), but no per-tenant
+  write-routing yet.** An agent presents a bearer credential
+  (`enterprise-auth -create-ingest-credential-tenant=<id>`),
+  `ingest/internal/grpcserver.TenantResolver` validates it (fail-closed)
+  and attaches the resolved tenant ID to every record as a `tenant_id`
+  Kafka message header. Nothing downstream reads that header back yet --
+  every record still lands in the one shared ClickHouse database and the
+  one shared Tantivy index no matter what. A newly-provisioned tenant's
+  storage is real, isolated at query time, and permanently empty until
+  the write-routing split is built (a real, scoped follow-up, no longer
+  an undesigned one).
 - **Human SSO login now works for both OIDC (§3a) and SAML (§3b)** --
   each verified with a real fake IdP (genuine cryptographic signing and
   verification), not yet a real external IdP or a running

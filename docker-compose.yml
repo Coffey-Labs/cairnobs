@@ -156,6 +156,16 @@ services:
       # TLS_*_FILE env vars are left at their defaults
       # (/etc/sentry-ingest/{server,server-key,ca}.pem) — matches where
       # the volume below mounts the generated dev certs.
+      #
+      # ENTERPRISE_AUTH_URL is deliberately NOT set here (see
+      # ingest/internal/grpcserver's TenantResolver): with it unset,
+      # PushBatch attaches no tenant_id header to any record, matching
+      # every Phase 0-3 deployment's behavior. Setting it to
+      # "http://enterprise-auth:8082" would require every agent to
+      # present a valid `Authorization: Bearer <ingest token>` (minted
+      # via `enterprise-auth -create-ingest-credential-tenant=<id>`) or
+      # be refused outright -- not turned on here since nothing in this
+      # compose file provisions one.
     volumes:
       - ./hack/dev-certs/out:/etc/sentry-ingest:ro
 

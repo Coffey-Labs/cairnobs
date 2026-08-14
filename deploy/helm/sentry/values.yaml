@@ -71,6 +71,13 @@ ingest:
   # "boring, well-understood" preference as everywhere else in this
   # repo -- use cert-manager or an equivalent, don't hand-roll it here).
   tlsSecretName: ""
+  # Only meaningful when enterprise.enabled is also true -- see
+  # templates/ingest.yaml's ENTERPRISE_AUTH_URL comment for why this is
+  # its own deliberate opt-in, not folded into enterprise.enabled
+  # directly: turning it on requires every agent to already present a
+  # valid ingest credential (`enterprise-auth
+  # -create-ingest-credential-tenant=<id>`) or be refused outright.
+  requireTenantCredential: false
 
 search:
   image:

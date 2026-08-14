@@ -771,3 +771,122 @@ func TestListMembershipsForTenant(t *testing.T) {
 		t.Fatalf("unexpected editor entry: %+v", got)
 	}
 }
+
+func TestCreateAndValidateIngestCredential(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+
+	token, err := s.CreateIngestCredential(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("CreateIngestCredential: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected a non-empty token")
+	}
+
+	got, err := s.ValidateIngestCredential(ctx, token)
+	if err != nil {
+		t.Fatalf("ValidateIngestCredential: %v", err)
+	}
+	if got != tenantID {
+		t.Fatalf("ValidateIngestCredential tenant = %q, want %q", got, tenantID)
+	}
+}
+
+func TestValidateIngestCredentialRejectsUnknownToken(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.ValidateIngestCredential(context.Background(), "not-a-real-token"); err != ErrNotFound {
+		t.Fatalf("ValidateIngestCredential error = %v, want ErrNotFound", err)
+	}
+}
+
+// TestIngestCredentialTokenNeverStoredAsPlaintext is the regression test
+// for this table's whole reason for hashing: the raw token string must
+// not appear anywhere in the persisted row (only its hash), so a
+// database leak doesn't hand out usable credentials.
+func TestIngestCredentialTokenNeverStoredAsPlaintext(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	token, err := s.CreateIngestCredential(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("CreateIngestCredential: %v", err)
+	}
+
+	var stored string
+	row := s.pool.QueryRow(ctx, `SELECT token_hash FROM ingest_credentials WHERE tenant_id = $1`, tenantID)
+	if err := row.Scan(&stored); err != nil {
+		t.Fatalf("reading stored token_hash: %v", err)
+	}
+	if stored == token {
+		t.Fatal("the plaintext token must never be stored directly in token_hash")
+	}
+	if stored != hashIngestToken(token) {
+		t.Fatalf("stored hash = %q, want sha256(token) = %q", stored, hashIngestToken(token))
+	}
+}
+
+func TestRevokeIngestCredential(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	token, err := s.CreateIngestCredential(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("CreateIngestCredential: %v", err)
+	}
+	creds, err := s.ListIngestCredentialsForTenant(ctx, tenantID)
+	if err != nil || len(creds) != 1 {
+		t.Fatalf("ListIngestCredentialsForTenant = (%+v, %v), want exactly one", creds, err)
+	}
+
+	if err := s.RevokeIngestCredential(ctx, creds[0].ID); err != nil {
+		t.Fatalf("RevokeIngestCredential: %v", err)
+	}
+	if _, err := s.ValidateIngestCredential(ctx, token); err != ErrNotFound {
+		t.Fatalf("ValidateIngestCredential after revoke = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRevokeIngestCredentialNotFound(t *testing.T) {
+	s := testStore(t)
+	if err := s.RevokeIngestCredential(context.Background(), uuid.NewString()); err != ErrNotFound {
+		t.Fatalf("RevokeIngestCredential error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestListIngestCredentialsForTenantExcludesOtherTenants(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	otherTenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	if _, err := s.CreateTenant(ctx, otherTenantID, "Other Tenant"); err != nil {
+		t.Fatalf("CreateTenant other: %v", err)
+	}
+	if _, err := s.CreateIngestCredential(ctx, tenantID); err != nil {
+		t.Fatalf("CreateIngestCredential: %v", err)
+	}
+	if _, err := s.CreateIngestCredential(ctx, otherTenantID); err != nil {
+		t.Fatalf("CreateIngestCredential other: %v", err)
+	}
+
+	creds, err := s.ListIngestCredentialsForTenant(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("ListIngestCredentialsForTenant: %v", err)
+	}
+	if len(creds) != 1 || creds[0].TenantID != tenantID {
+		t.Fatalf("unexpected credentials: %+v", creds)
+	}
+}

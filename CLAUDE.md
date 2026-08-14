@@ -228,14 +228,30 @@ than one `tenant_memberships` row now gets a real `GET
 pending-login token, distinct from a real session by both Go type and
 JWT claim name — a real token-confusion bug this design's own tests
 caught before it shipped) instead of the flat refusal Phase 4 shipped
-with earlier. What still keeps this phase from being done: the actual
-tenant-picker *page* doesn't exist (`web` has no session/cookie-handling
-code at all yet, and `enterprise-auth` has no CORS middleware for a
-cross-origin `fetch` with credentials — both real, separately-scoped
-frontend gaps), and ingest itself has no tenant concept for either
-storage engine (every record lands in the one shared ClickHouse database
-and Tantivy index no matter what — undesigned, not just unbuilt). Full
-accounting:
+with earlier. Ingest tenant-awareness — the gap this section used to
+call "undesigned" — now has a real, if intentionally partial, design:
+`ingest` (AGPL core) gained an optional `TenantResolver`
+(`ingest/internal/grpcserver`), a per-tenant bearer credential an agent
+presents (minted via `enterprise-auth
+-create-ingest-credential-tenant=<id>`, validated over the network via a
+new `POST /internal/authorize-ingest` endpoint — never an `enterprise/`
+import, same boundary shape as `api/authz.Authorizer`), and the
+resolved tenant ID is attached to every record as a `tenant_id` Kafka
+message header before it's produced. **What's still deferred, clearly**:
+nothing downstream reads that header yet — neither `ingest`'s own
+ClickHouse writer nor `search`'s independent Redpanda consumer route a
+record's write into a per-tenant destination, so every record still
+lands in the one shared ClickHouse database/Tantivy index regardless of
+which tenant it's now correctly tagged with. That write-routing split
+(likely another "second binary," mirroring `enterprise-api`) is real,
+scoped, remaining work — attaching a verified tenant identity as early
+as possible was deliberately built as a self-contained first step, not
+the whole feature. What still keeps this phase from being done: the
+actual tenant-picker *page* doesn't exist (`web` has no session/cookie-
+handling code at all yet, and `enterprise-auth` has no CORS middleware
+for a cross-origin `fetch` with credentials — both real, separately-
+scoped frontend gaps), and per-tenant write-routing for ingest per the
+above. Full accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit
