@@ -125,7 +125,7 @@ func main() {
 	}
 	defer registry.Close()
 
-	search, err := searchclient.Dial(cfg.SearchGRPCAddr)
+	search, err := searchclient.Dial(cfg.SearchGRPCAddr, rbac)
 	if err != nil {
 		logger.Error("dialing search service", "error", err)
 		os.Exit(1)

@@ -183,3 +183,38 @@ func TestRegistryTenantCannotReadOtherTenantEvenViaRawSQL(t *testing.T) {
 		t.Fatal("tenant A's request was able to read tenant B's database by fully-qualified name -- isolation is broken")
 	}
 }
+
+// TestRegistryRefusesMidProvisioningTenant is Phase 4 task 8's item 4
+// adversarial probe (see /docs/phase-4-isolation-design.md's
+// verification plan and api/queryapi/tenant_isolation_gap_test.go):
+// a tenant row that exists in rbacstore but hasn't reached the
+// active+credentialed gate yet must be refused, not served via some
+// ambient connection. Unlike every other test in this file, this one
+// needs no live ClickHouse at all -- New never dials out for an empty
+// DataSource list, so an empty Registry (as if every tenant in
+// `tenants` were still mid-provisioning) is exactly what
+// enterprise-api's main.go would build from
+// rbacstore.ListProvisionedDataSources before any tenant clears that
+// filter. "Mid-provisioning" and "entirely unknown" collapse to the
+// identical code path here by construction: Registry has no concept of
+// "a tenant row exists," only of "a runner is in my map" -- the real
+// gate is ListProvisionedDataSources's SQL WHERE clause, already
+// covered by rbacstore_test.go's
+// TestListProvisionedDataSourcesExcludesUnprovisionedAndInactive. This
+// test is the Docker-free proof that RunSQL's refusal actually holds on
+// the empty-map end of that gate, complementing
+// TestRegistryRefusesUnknownTenant's live-ClickHouse proof on the
+// populated end.
+func TestRegistryRefusesMidProvisioningTenant(t *testing.T) {
+	ctx := context.Background()
+	reg, err := New(ctx, "unused:9000", nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer reg.Close()
+
+	reqCtx := authz.WithIdentity(ctx, authz.Identity{TenantID: "mid-provisioning-tenant", Role: authz.RoleViewer})
+	if _, err := reg.RunSQL(reqCtx, "SELECT 1"); err == nil {
+		t.Fatal("expected RunSQL to refuse a tenant that hasn't reached the active+credentialed gate, not silently serve it")
+	}
+}

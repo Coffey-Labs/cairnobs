@@ -173,7 +173,23 @@ built too
 **genuinely verified**, like the OIDC login flow: Tantivy is an embedded
 library, not a networked service, so the isolation probe (three tenants,
 same search term, scoped search returns only that tenant's document)
-actually ran in this environment, no Docker needed. The deployment-
+actually ran in this environment, no Docker needed. That same
+Docker-free advantage is what caught a real bug while closing the last
+of Phase 4 task 8's four adversarial probes (a mid-provisioning tenant
+must be refused, not served): `search/src/registry.rs`'s `IndexRegistry`
+opened-or-created an index for any syntactically-valid `tenant_id`,
+meaning a query against a tenant that exists in `rbacstore` but isn't
+active yet would have silently returned zero results from a
+freshly-created empty index instead of being refused --
+`chrunner`'s ClickHouse routing had the equivalent guarantee for free
+(a mid-provisioning tenant simply isn't in its startup-built connection
+map) but Tantivy, a separate process with no Postgres access, had no
+way to know. Fixed with a new `enterprise/internal/searchclient.
+TenantChecker` (backed by `rbacstore.TenantIsActive`); both halves of
+the fix verified Docker-free (`chrunner_test.go`'s and
+`searchclient_test.go`'s `TestSearchRefusesMidProvisioningTenant`-shaped
+tests) — see `api/queryapi/tenant_isolation_gap_test.go` for the full
+accounting of all four probes, now all closed. The deployment-
 topology gap that briefly was the largest one is now closed for Helm:
 `deploy/helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are
 mutually exclusive on the same `enterprise.enabled` flag that turns on

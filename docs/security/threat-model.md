@@ -412,5 +412,5 @@ terms:
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |
 | Audit log tamper prevention (external anchoring) | **Design only** — `FileSink` is a dev stand-in |
-| Mid-provisioning-race handling (evaluator ticks against a not-yet-active tenant) | **Unverified** — see `api/queryapi/tenant_isolation_gap_test.go` |
+| Mid-provisioning-race handling (evaluator ticks against a not-yet-active tenant) | **Closed on both storage engines** — see `api/queryapi/tenant_isolation_gap_test.go`; ClickHouse verified Docker-free (structural, not just tested), Tantivy fixed and verified Docker-free after finding it was a real gap, not just an unverified assumption |
 | Protection against a privileged DB administrator | **Explicit non-goal** |

@@ -178,6 +178,26 @@ func (s *Store) GetTenant(ctx context.Context, id string) (*Tenant, error) {
 	return &t, nil
 }
 
+// TenantIsActive answers a narrow, frequently-asked question -- it
+// implements enterprise/internal/searchclient.TenantChecker
+// structurally (no import needed in that direction; see that package's
+// doc comment for why Tantivy's per-tenant index resolution needs this
+// check where chrunner's ClickHouse routing gets the equivalent
+// guarantee for free from its immutable startup-built connection map).
+// Backed by GetTenant, never cached -- SetTenantStatus's doc comment
+// already establishes "re-check server-side, never assume 'active'" as
+// this package's convention.
+func (s *Store) TenantIsActive(ctx context.Context, tenantID string) (bool, error) {
+	t, err := s.GetTenant(ctx, tenantID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return t.Status == "active", nil
+}
+
 // SetTenantStatus is the only way a tenant's status column changes --
 // every tenant-resolution path elsewhere must re-check this via
 // GetTenant, never cache/assume 'active', per
