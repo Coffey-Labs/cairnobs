@@ -36,13 +36,27 @@ type fakeNotFoundError struct{}
 
 func (*fakeNotFoundError) Error() string { return "not found" }
 
+// fakeTenantLister is an in-memory stand-in for *rbacstore.Store's
+// ListActiveTenantIDs.
+type fakeTenantLister struct {
+	ids []string
+	err error
+}
+
+func (f *fakeTenantLister) ListActiveTenantIDs(_ context.Context) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.ids, nil
+}
+
 func testHandler(t *testing.T) (*Handler, *session.Manager) {
 	t.Helper()
 	m, err := session.NewManager([]byte("this-is-a-32-byte-test-signing-key!"))
 	if err != nil {
 		t.Fatalf("session.NewManager: %v", err)
 	}
-	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{}, newFakeIngestCredentialValidator()), m
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{}, newFakeIngestCredentialValidator(), &fakeTenantLister{}), m
 }
 
 func doAuthorize(t *testing.T, h *Handler, mutate func(*http.Request)) *httptest.ResponseRecorder {
@@ -146,7 +160,7 @@ func TestFeaturesReflectsConfiguredMechanisms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session.NewManager: %v", err)
 	}
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{OIDCEnabled: true, SAMLEnabled: false}, newFakeIngestCredentialValidator())
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{OIDCEnabled: true, SAMLEnabled: false}, newFakeIngestCredentialValidator(), &fakeTenantLister{})
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -219,7 +233,7 @@ func TestAuthorizeIngestResolvesTenant(t *testing.T) {
 	}
 	validator := newFakeIngestCredentialValidator()
 	validator.tenantByToken["real-token"] = "acme"
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{}, validator)
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{}, validator, &fakeTenantLister{})
 
 	rec := doAuthorizeIngest(t, h, func(r *http.Request) {
 		r.Header.Set("Authorization", "Bearer real-token")
@@ -271,5 +285,98 @@ func TestAuthorizeIngestRejectsSessionToken(t *testing.T) {
 	})
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401 (a session token must not validate as an ingest credential)", rec.Code)
+	}
+}
+
+func doActiveTenants(t *testing.T, h *Handler, mutate func(*http.Request)) *httptest.ResponseRecorder {
+	t.Helper()
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+	req := httptest.NewRequest(http.MethodGet, "/internal/active-tenants", nil)
+	if mutate != nil {
+		mutate(req)
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestActiveTenantsViaServiceToken(t *testing.T) {
+	m, err := session.NewManager([]byte("this-is-a-32-byte-test-signing-key!"))
+	if err != nil {
+		t.Fatalf("session.NewManager: %v", err)
+	}
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{}, newFakeIngestCredentialValidator(), &fakeTenantLister{ids: []string{"acme", "globex"}})
+	token, err := m.IssueServiceToken("search")
+	if err != nil {
+		t.Fatalf("IssueServiceToken: %v", err)
+	}
+
+	rec := doActiveTenants(t, h, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+token)
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var body activeTenantsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(body.TenantIDs) != 2 || body.TenantIDs[0] != "acme" || body.TenantIDs[1] != "globex" {
+		t.Fatalf("unexpected response: %+v", body)
+	}
+}
+
+func TestActiveTenantsNoCredentialsIsUnauthorized(t *testing.T) {
+	h, _ := testHandler(t)
+	rec := doActiveTenants(t, h, nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestActiveTenantsRejectsHumanSession is the regression test for this
+// endpoint's whole reason to distinguish token kinds: a human session
+// (even a real, validly-signed one) must not be able to list every
+// active tenant in the deployment -- only a RoleService credential can.
+func TestActiveTenantsRejectsHumanSession(t *testing.T) {
+	h, m := testHandler(t)
+	sessionToken, err := m.IssueUserSession("acme", "u1", "owner")
+	if err != nil {
+		t.Fatalf("IssueUserSession: %v", err)
+	}
+	rec := doActiveTenants(t, h, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+sessionToken)
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (a human session must not satisfy the service-only active-tenants endpoint)", rec.Code)
+	}
+}
+
+func TestActiveTenantsInvalidTokenIsUnauthorized(t *testing.T) {
+	h, _ := testHandler(t)
+	rec := doActiveTenants(t, h, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer not-a-real-token")
+	})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestActiveTenantsStoreErrorIsInternalError(t *testing.T) {
+	m, err := session.NewManager([]byte("this-is-a-32-byte-test-signing-key!"))
+	if err != nil {
+		t.Fatalf("session.NewManager: %v", err)
+	}
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), m, Features{}, newFakeIngestCredentialValidator(), &fakeTenantLister{err: errNotFound})
+	token, err := m.IssueServiceToken("search")
+	if err != nil {
+		t.Fatalf("IssueServiceToken: %v", err)
+	}
+	rec := doActiveTenants(t, h, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+token)
+	})
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
 	}
 }

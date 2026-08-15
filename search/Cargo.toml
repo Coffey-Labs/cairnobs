@@ -20,6 +20,14 @@ rskafka = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# tenants.rs's only outbound HTTP call (GET enterprise-auth's
+# /internal/active-tenants) -- default-features = false drops TLS
+# support entirely, matching every other internal service-to-service
+# call in this repo (plain HTTP, network placement is the trust
+# boundary, not TLS -- see ingest/internal/grpcserver.
+# HTTPTenantResolver's identical posture against the same service).
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -31,3 +39,8 @@ tonic-build = "0.12"
 # Already in the dependency graph transitively (tantivy/tonic-build both
 # pull it in); promoted to a direct dev-dependency for test use.
 tempfile = "3"
+# tenants.rs's tests spin up a tiny real TCP server to exercise reqwest
+# against, rather than pulling in a mocking crate -- needs tokio
+# features the main binary doesn't (edition 2021's resolver keeps these
+# out of the release build, test-only).
+tokio = { version = "1", features = ["net", "io-util"] }

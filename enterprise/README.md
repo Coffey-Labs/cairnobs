@@ -284,7 +284,7 @@ this environment.
 ## Package layout
 
 ```
-cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features/authorize-ingest endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant, -transfer-owner-*, -create-ingest-credential-tenant, -list-ingest-credentials-tenant, -revoke-ingest-credential
+cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features/authorize-ingest/active-tenants endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant, -transfer-owner-*, -create-ingest-credential-tenant, -list-ingest-credentials-tenant, -revoke-ingest-credential
 cmd/enterprise-api/     multi-tenant-aware alternative to api/cmd/api -- see its own doc comment
 cmd/enterprise-ingest/   multi-tenant-aware alternative to ingest -mode=consumer -- see its own doc comment
 internal/tenant/        the ID type -- see its package doc comment before touching it
@@ -388,6 +388,21 @@ docker compose up -d enterprise-auth
 TOKEN=$(docker compose run --rm enterprise-auth -mint-service-token=alerting)
 # api: set ENTERPRISE_AUTH_URL=http://enterprise-auth:8082 and restart
 # alerting: set API_SERVICE_TOKEN=$TOKEN and restart
+```
+
+Same shape for `search`'s write-side active-tenant gate
+(`search/src/tenants.rs` -- see `/search/README.md`'s "Per-tenant
+indices" section):
+
+```sh
+docker compose up -d enterprise-auth
+SEARCH_TOKEN=$(docker compose run --rm enterprise-auth -mint-service-token=search)
+# search: set ENTERPRISE_AUTH_URL=http://enterprise-auth:8082 and
+# ENTERPRISE_AUTH_SERVICE_TOKEN=$SEARCH_TOKEN, then restart -- unlike
+# alerting/api above, this doesn't turn on request-level auth
+# enforcement anywhere; it only gates which tenant_ids search will
+# write-route into their own index, refusing anything not in
+# GET /internal/active-tenants' response.
 ```
 
 ```sh

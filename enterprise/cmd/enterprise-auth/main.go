@@ -205,7 +205,7 @@ func main() {
 		OIDCEnabled: cfg.OIDC.IssuerURL != "",
 		SAMLEnabled: cfg.SAML.IDPMetadataURL != "",
 	}
-	authhandler.New(logger, sessionManager, features, rbac).RegisterRoutes(mux)
+	authhandler.New(logger, sessionManager, features, rbac, rbac).RegisterRoutes(mux)
 	loginhandler.New(logger, oidcProvider, samlProvider, sessionManager, rbac, cfg.PostLoginRedirectURL, cfg.SelectTenantRedirectURL).RegisterRoutes(mux)
 
 	// Credentialed, not plain, CORS: GET /auth/memberships and POST

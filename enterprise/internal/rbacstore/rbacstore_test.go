@@ -470,6 +470,41 @@ func createTestDashboard(t *testing.T, s *Store, tenantID, createdBy string) str
 	return id
 }
 
+func TestListActiveTenantIDsExcludesNonActive(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	active := "test-tenant-" + uniqueSuffix()
+	provisioning := "test-tenant-" + uniqueSuffix()
+
+	for _, id := range []string{active, provisioning} {
+		if _, err := s.CreateTenant(ctx, id, id); err != nil {
+			t.Fatalf("CreateTenant %s: %v", id, err)
+		}
+	}
+	if err := s.SetTenantStatus(ctx, active, "active"); err != nil {
+		t.Fatalf("SetTenantStatus active: %v", err)
+	}
+	// provisioning stays in 'provisioning' (CreateTenant's default).
+
+	ids, err := s.ListActiveTenantIDs(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveTenantIDs: %v", err)
+	}
+	foundActive := false
+	for _, id := range ids {
+		if id == provisioning {
+			t.Fatalf("non-active tenant %q leaked into ListActiveTenantIDs", provisioning)
+		}
+		if id == active {
+			foundActive = true
+		}
+	}
+	if !foundActive {
+		t.Fatal("expected the active tenant to be in the list")
+	}
+}
+
 func TestSetDashboardPermissionThenGet(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

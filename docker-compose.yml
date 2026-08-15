@@ -187,6 +187,16 @@ services:
       # -- found by actually checking `docker compose logs search` and
       # seeing nothing, same silent-logging gap the agent had in Phase 0.
       RUST_LOG: "info"
+      # ENTERPRISE_AUTH_URL/ENTERPRISE_AUTH_SERVICE_TOKEN are deliberately
+      # NOT set here -- same reason enterprise-auth's own service below
+      # doesn't wire alerting's API_SERVICE_TOKEN in by default: the
+      # token can't be known ahead of time (mint it with
+      # `enterprise-auth -mint-service-token search` after enterprise-auth
+      # is up), so this is a manual step, not a default. Unset means
+      # search/src/tenants.rs's ActiveTenantTracker never starts and
+      # write-routing has no active-tenant gate, same as every deployment
+      # before this tracker existed -- see search/README.md's "Per-tenant
+      # indices" section for how to turn it on for manual testing.
     volumes:
       - search-index-data:/var/lib/sentry-search
 

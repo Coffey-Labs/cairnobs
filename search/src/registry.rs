@@ -22,29 +22,27 @@ use crate::index::SearchIndex;
 /// path every Phase 0-3 deployment, and every untagged record, still
 /// uses.
 ///
-/// **Known residual gap, disclosed rather than silently accepted**:
-/// unlike the read side (gated by `enterprise/internal/searchclient`'s
-/// `TenantChecker`, which refuses to even issue a search for a tenant
-/// that isn't `active` in `rbacstore`) and unlike ClickHouse's write
-/// side (`enterprise/internal/chwriter.Registry`, built once at startup
-/// from `rbacstore.ListProvisionedDataSources` -- `active` tenants
-/// only, so an unrecognized `tenant_id` has no writer and the whole
-/// batch is refused), this registry's `resolve` has no equivalent gate
-/// on the write path: `consumer.rs` calls it directly, with no Postgres
-/// access to check tenant status against, the same reason this
-/// module's doc comment used to give for the old read-side gap
-/// `TenantChecker` was built to close. A syntactically-valid `tenant_id`
-/// on an ingest credential that's still valid but should have been
-/// revoked (deprovisioning does not yet revoke `ingest_credentials`
-/// rows -- see `/CLAUDE.md`'s Phase 4 non-goals) can therefore cause an
-/// index directory to be silently created here for a tenant that isn't
-/// really active. The blast radius is narrow -- an orphan, isolated,
-/// empty-except-for-that-tenant's-own-traffic index directory, not
-/// cross-tenant data exposure, and only reachable with a real signed
-/// ingest credential, not by an arbitrary caller -- but it is real, not
-/// hypothetical. Closing it fully would mean giving `search` (AGPL
-/// core, no `enterprise/` import allowed) some way to learn which
-/// tenants are actually active; not designed yet.
+/// `resolve` itself still has no active-tenant gate of its own -- it
+/// will happily open-or-create an index for any syntactically-valid
+/// `tenant_id`, active or not. That's deliberate: this struct's job is
+/// managing index lifecycles, not policy, the same separation
+/// `clickhousewriter.Writer` (mechanism) vs. `chwriter.Registry`
+/// (policy: which tenants get a writer at all) draws on the ClickHouse
+/// side. The gate lives one layer up, at each caller:
+/// `enterprise/internal/searchclient.TenantChecker` for the read side
+/// (refuses to even issue a search for a tenant that isn't `active` in
+/// `rbacstore`, via a direct Postgres-backed query since that code runs
+/// in `enterprise/`), and `consumer.rs`'s `tenants::ActiveTenantTracker`
+/// for the write side (a polled allowlist fetched from a new
+/// `enterprise-auth` endpoint over HTTP -- `search` is AGPL core with no
+/// Postgres access and no `enterprise/` import allowed, so it needed a
+/// network boundary instead of an import one, the same shape
+/// `ingest/internal/grpcserver.TenantResolver` already uses against the
+/// same service). Both gates are optional at this layer -- `resolve`
+/// itself works identically whether or not either caller happens to
+/// gate it -- so a future caller that forgets to gate would silently
+/// reopen this exact class of gap; see `consumer.rs`'s call site for
+/// the write side's enforcement.
 pub struct IndexRegistry {
     default_index: Arc<SearchIndex>,
     tenants_root: PathBuf,
