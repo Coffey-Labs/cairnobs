@@ -52,19 +52,50 @@ func isNotFound(err error) bool {
 // a local type, not an import of that package (this module has no
 // dependency on /api at all, matching every other cross-module boundary
 // in this repo: talk over HTTP, not Go imports, to a service that isn't
-// yours). Panels are intentionally not modeled here yet -- this
-// resource only manages dashboard-level fields; see the provider
-// README for why panels are scoped-out future work, not an oversight.
+// yours). Panels is populated by GET /dashboards/{id} (used by
+// getPanel below, since panels have no GET endpoint of their own) but
+// deliberately not settable through this type on create/update --
+// panelResource manages panels one at a time through their own
+// endpoints, never by rewriting a dashboard's whole panel list, so
+// there's no code path that would ever marshal this field outbound.
 type dashboard struct {
-	ID              string `json:"id,omitempty"`
-	TenantID        string `json:"tenant_id,omitempty"`
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	DefaultEarliest string `json:"default_earliest,omitempty"`
-	DefaultLatest   string `json:"default_latest,omitempty"`
-	CreatedBy       string `json:"created_by,omitempty"`
-	CreatedAt       string `json:"created_at,omitempty"`
-	UpdatedAt       string `json:"updated_at,omitempty"`
+	ID              string  `json:"id,omitempty"`
+	TenantID        string  `json:"tenant_id,omitempty"`
+	Name            string  `json:"name"`
+	Description     string  `json:"description"`
+	DefaultEarliest string  `json:"default_earliest,omitempty"`
+	DefaultLatest   string  `json:"default_latest,omitempty"`
+	CreatedBy       string  `json:"created_by,omitempty"`
+	CreatedAt       string  `json:"created_at,omitempty"`
+	UpdatedAt       string  `json:"updated_at,omitempty"`
+	Panels          []panel `json:"panels,omitempty"`
+}
+
+// panel mirrors api/dashboards.Panel's JSON shape. query_language
+// deliberately never accepts "sql" -- api/dashboards's own
+// validatePanel rejects it outright ("dashboards only support
+// pipe-syntax queries, since the dashboard time-range picker is
+// injected as leading query terms"), a real constraint this client
+// doesn't re-validate client-side (same "let the API be the one source
+// of truth for validation" posture the other resources already take),
+// but is worth knowing about before hitting it as a 400 from Create.
+type panel struct {
+	ID               string          `json:"id,omitempty"`
+	DashboardID      string          `json:"dashboard_id,omitempty"`
+	Title            string          `json:"title"`
+	Query            string          `json:"query"`
+	QueryLanguage    string          `json:"query_language"`
+	VizType          string          `json:"viz_type"`
+	VizConfig        json.RawMessage `json:"viz_config,omitempty"`
+	PositionX        int             `json:"position_x"`
+	PositionY        int             `json:"position_y"`
+	Width            int             `json:"width"`
+	Height           int             `json:"height"`
+	EarliestOverride *string         `json:"earliest_override,omitempty"`
+	LatestOverride   *string         `json:"latest_override,omitempty"`
+	SortOrder        int             `json:"sort_order"`
+	CreatedAt        string          `json:"created_at,omitempty"`
+	UpdatedAt        string          `json:"updated_at,omitempty"`
 }
 
 func (c *client) do(ctx context.Context, method, path string, body, out any) error {
@@ -254,4 +285,49 @@ func (c *client) getNotificationTarget(ctx context.Context, id string) (*notific
 
 func (c *client) deleteNotificationTarget(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/targets/"+id, nil, nil)
+}
+
+// createPanel, updatePanel, and deletePanel are straightforward --
+// unlike rules/targets, api/dashboards.Handler actually has a
+// PUT /dashboards/{id}/panels/{panelId}, so panelResource supports a
+// real in-place update, the same as dashboardResource does.
+func (c *client) createPanel(ctx context.Context, dashboardID string, p *panel) (*panel, error) {
+	var out panel
+	if err := c.do(ctx, http.MethodPost, "/dashboards/"+dashboardID+"/panels", p, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *client) updatePanel(ctx context.Context, dashboardID, panelID string, p *panel) (*panel, error) {
+	var out panel
+	if err := c.do(ctx, http.MethodPut, "/dashboards/"+dashboardID+"/panels/"+panelID, p, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *client) deletePanel(ctx context.Context, dashboardID, panelID string) error {
+	return c.do(ctx, http.MethodDelete, "/dashboards/"+dashboardID+"/panels/"+panelID, nil, nil)
+}
+
+// getPanel has no direct endpoint to call -- api/dashboards.Handler
+// never registered a GET /dashboards/{id}/panels/{panelId}, only
+// GET /dashboards/{id} (which includes the full panels list). This
+// fetches the parent dashboard and finds the panel by ID within it,
+// returning the same *apiError{StatusCode: 404} shape a direct GET
+// would if either the dashboard itself or the panel within it is gone
+// -- isNotFound works identically for callers regardless of which case
+// applies, so panelResource's Read doesn't need to know the difference.
+func (c *client) getPanel(ctx context.Context, dashboardID, panelID string) (*panel, error) {
+	d, err := c.getDashboard(ctx, dashboardID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range d.Panels {
+		if d.Panels[i].ID == panelID {
+			return &d.Panels[i], nil
+		}
+	}
+	return nil, &apiError{StatusCode: http.StatusNotFound, Message: fmt.Sprintf("panel %q not found on dashboard %q", panelID, dashboardID)}
 }

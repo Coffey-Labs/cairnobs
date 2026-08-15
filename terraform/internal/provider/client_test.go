@@ -316,3 +316,130 @@ func TestDeleteNotificationTargetSendsToCorrectPath(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestCreatePanelSendsExpectedRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/dashboards/dash-1/panels" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body panel
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		if body.Query != "status>=500 | stats count" || body.VizType != "line" {
+			t.Errorf("unexpected request body: %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(panel{ID: "panel-1", DashboardID: "dash-1", Query: body.Query, VizType: body.VizType})
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	out, err := c.createPanel(context.Background(), "dash-1", &panel{Query: "status>=500 | stats count", VizType: "line"})
+	if err != nil {
+		t.Fatalf("createPanel: %v", err)
+	}
+	if out.ID != "panel-1" {
+		t.Fatalf("unexpected response: %+v", out)
+	}
+}
+
+func TestUpdatePanelSendsToCorrectPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/dashboards/dash-1/panels/panel-1" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(panel{ID: "panel-1", Title: "Renamed"})
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	out, err := c.updatePanel(context.Background(), "dash-1", "panel-1", &panel{Title: "Renamed"})
+	if err != nil {
+		t.Fatalf("updatePanel: %v", err)
+	}
+	if out.Title != "Renamed" {
+		t.Fatalf("Title = %q, want Renamed", out.Title)
+	}
+}
+
+func TestDeletePanelSendsToCorrectPath(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != http.MethodDelete || r.URL.Path != "/dashboards/dash-1/panels/panel-1" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	if err := c.deletePanel(context.Background(), "dash-1", "panel-1"); err != nil {
+		t.Fatalf("deletePanel: %v", err)
+	}
+	if !called {
+		t.Fatal("expected the server to receive a DELETE request")
+	}
+}
+
+func TestGetPanelFindsPanelWithinParentDashboard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/dashboards/dash-1" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(dashboard{
+			ID: "dash-1",
+			Panels: []panel{
+				{ID: "panel-1", Title: "First"},
+				{ID: "panel-2", Title: "Second"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	out, err := c.getPanel(context.Background(), "dash-1", "panel-2")
+	if err != nil {
+		t.Fatalf("getPanel: %v", err)
+	}
+	if out.Title != "Second" {
+		t.Fatalf("Title = %q, want Second", out.Title)
+	}
+}
+
+func TestGetPanelNotFoundWhenPanelMissingFromDashboard(t *testing.T) {
+	// Same "not found" shape as a real 404 -- proves isNotFound works
+	// for a panel absent from an otherwise-real dashboard response, not
+	// just for a literal 404 status code.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(dashboard{ID: "dash-1", Panels: []panel{{ID: "panel-1"}}})
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	_, err := c.getPanel(context.Background(), "dash-1", "does-not-exist")
+	if err == nil {
+		t.Fatal("expected an error for a panel not present on the dashboard")
+	}
+	if !isNotFound(err) {
+		t.Fatalf("isNotFound(%v) = false, want true", err)
+	}
+}
+
+func TestGetPanelPropagatesDashboardNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	_, err := c.getPanel(context.Background(), "does-not-exist", "panel-1")
+	if err == nil || !isNotFound(err) {
+		t.Fatalf("err = %v, want a recognizable not-found when the parent dashboard itself is gone", err)
+	}
+}

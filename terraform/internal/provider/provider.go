@@ -129,6 +129,7 @@ func (p *sentryProvider) Configure(ctx context.Context, req provider.ConfigureRe
 func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		newDashboardResource,
+		newDashboardPanelResource,
 		newAlertRuleResource,
 		newNotificationTargetResource,
 	}
@@ -137,6 +138,7 @@ func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource
 func (p *sentryProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		newDashboardDataSource,
+		newDashboardPanelDataSource,
 		newAlertRuleDataSource,
 		newNotificationTargetDataSource,
 	}

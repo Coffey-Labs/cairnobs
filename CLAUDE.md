@@ -20,14 +20,17 @@ described there without flagging it to me first.
   UI-only logic. CLI (`sentryctl`) and Terraform provider are first-class,
   not afterthoughts. **Status**: `sentryctl` has been built out phase by
   phase since Phase 3. The Terraform provider (`/terraform`) only exists
-  as of this note -- three resources (`sentry_dashboard`, full CRUD;
-  `sentry_alert_rule` and `sentry_notification_target`, both create/
-  destroy only -- `alerting` has no `PUT /rules/{id}` or
-  `PUT /targets/{id}` to update against), each paired with a read-only
-  data source, built on HashiCorp's `terraform-plugin-framework`,
-  reusing the exact same REST contracts `sentryctl dashboards apply`/
-  web's dashboard export and `sentryctl alerts apply` already use.
-  Tenant/RBAC resources are real, disclosed future work -- see
+  as of this note -- four resources (`sentry_dashboard` and
+  `sentry_dashboard_panel`, both full CRUD, panels as their own resource
+  rather than a nested block since the API manages them independently
+  of their parent dashboard; `sentry_alert_rule` and
+  `sentry_notification_target`, both create/destroy only -- `alerting`
+  has no `PUT /rules/{id}` or `PUT /targets/{id}` to update against),
+  each paired with a read-only data source, built on HashiCorp's
+  `terraform-plugin-framework`, reusing the exact same REST contracts
+  `sentryctl dashboards apply`/web's dashboard export and
+  `sentryctl alerts apply` already use. Tenant/RBAC resources are real,
+  disclosed future work -- see
   `/terraform/README.md` for the full accounting of what is and isn't
   built, and the same
   "written but not run against a live stack" verification caveat as
