@@ -11,7 +11,7 @@ stack**, not asserted. This one is different, and says so plainly rather
 than papering over it: for the great majority of this phase's work,
 **there was no working Docker daemon access and no reachable Kubernetes
 cluster**, so most of what follows is a *procedure to run*, not a report
-of what was already run and passed. Two genuine exceptions:
+of what was already run and passed. Five genuine exceptions so far:
 
 - `enterprise/internal/audit`'s hash-chain, tamper-detection, and
   concurrent-write guarantees (task 4) -- verified live against a real
@@ -175,10 +175,14 @@ browser, complete the IdP's login, and confirm you land on
 -provision-tenant`'s ClickHouse/Tantivy data-plane provisioning (§8),
 so a tenant created this way can log users in immediately but can't yet
 serve their queries until that's run too, the same "two separate
-operator actions" gap named in "Known gaps" below. Not yet built: an
-equivalent for revoking/listing memberships, or anything for
-`dashboard_permissions` grants (§5a) beyond calling the HTTP endpoints
-directly.
+operator actions" gap named in "Known gaps" below.
+`-revoke-membership-*`/`-list-memberships-tenant`/`-transfer-owner-*`
+cover revoking, listing, and reassigning ownership the same way
+`-grant-membership-*` covers granting (all offline operator flags, same
+shape as `-create-tenant`) -- `dashboard_permissions` grants (§5a) are
+the one thing here still only reachable via the HTTP endpoints
+directly, no operator flag, since `sentryctl dashboards permissions
+list|grant|revoke` already exists as that surface instead (§5a).
 
 ## 3b. `enterprise-auth`: human login via SAML (new -- same "verified
 live in this session, not against a real running container or a real
@@ -408,9 +412,14 @@ cd search
 cargo build
 cargo clippy --all-targets -- -D warnings
 cargo test
-# expect 14 tests passing, including
+# expect 24 tests passing, including
 # registry::tests::tenant_index_is_isolated_from_default_and_other_tenants
-# -- item 3 of /docs/phase-4-isolation-design.md's verification plan.
+# -- item 3 of /docs/phase-4-isolation-design.md's verification plan --
+# and, since §14's write-routing pass, registry::tests::
+# commit_all_commits_default_and_every_opened_tenant_index and the
+# tenants:: module's real-TCP-server tests for ActiveTenantTracker
+# (start_fetches_and_serves_the_initial_list,
+# start_fails_closed_when_the_first_fetch_fails, etc. -- see §14).
 
 cd ../enterprise
 go test ./internal/searchclient/... -v
@@ -694,12 +703,17 @@ without Docker, using the same fake-transport discipline as §13:
 
 ```sh
 cd enterprise
-go test ./internal/chwriter/... -run TestRegistry -v
+go test ./internal/chwriter/... -run 'TestWriteBatchRefuses' -v
 # Docker-free: constructs a Registry directly (bypassing New(), the only
 # part that dials ClickHouse) to prove the fail-closed paths -- an empty
 # TenantID, or a TenantID with no registered writer, refuses the WHOLE
 # batch rather than silently dropping just those records or falling back
-# to a default destination.
+# to a default destination. (Note: -run TestRegistry, an earlier version
+# of this command, actually matches TestRegistryWritesEachTenantToItsOwnDatabase/
+# TestRegistryRefusesUnprovisionedTenant instead -- the live-ClickHouse
+# tests below, which just skip -- not the Docker-free ones this
+# paragraph is about; caught by actually running this command while
+# revisiting the runbook.)
 
 go test ./internal/tenantprovision/... -run TestProvisionedUserCanInsertIntoOwnDatabase -v
 # skip-gated (needs a live ClickHouse) -- regression test for the bug
