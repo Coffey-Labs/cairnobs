@@ -171,17 +171,21 @@ escape hatch is opaque to any compiler-injected filter.
   index. No "second binary" needed here, unlike ClickHouse — Tantivy has
   no grant system to gate a commercially-licensed credential behind, so
   `IndexRegistry` already lived directly in this AGPL-core binary, and
-  read/write just share it. One gap is disclosed rather than closed by
-  this change: unlike `chwriter.Registry` (an active-tenants-only
-  snapshot built at startup) and unlike the read side (gated by
-  `searchclient.TenantChecker`), this consumer's `resolve()` call has no
-  active-tenant check — the process has no Postgres access to check
-  against — so a still-valid-but-should-be-revoked ingest credential can
-  cause an index directory to be created for a tenant that's no longer
-  active. Narrow blast radius (an orphan, isolated, empty index, not
-  cross-tenant leakage, and only reachable with a real signed
-  credential), but real; see `search/src/registry.rs`'s doc comment on
-  `resolve`.
+  read/write just share it. The active-tenant gap this design left open
+  is now closed too: `search/src/tenants.rs`'s `ActiveTenantTracker`
+  polls a new `GET /internal/active-tenants` endpoint on
+  `enterprise-auth` — `search` has no Postgres access, so unlike
+  `chwriter.Registry`'s direct `rbacstore` query or the read side's
+  `searchclient.TenantChecker`, this needed a network call instead (the
+  same "network boundary, not import boundary" shape `ingest`'s
+  `TenantResolver` already uses against the same service, authenticated
+  with a RoleService credential like `alerting`↔`api`) — and
+  `consumer.rs` refuses any tagged record whose tenant isn't in the
+  polled allowlist. Off unless configured, fail-closed on the first
+  fetch, last-known-good on later refresh failures; see
+  `search/src/tenants.rs`'s doc comment for the full design and
+  `search/src/registry.rs`'s for how mechanism (index lifecycle) and
+  policy (the gate) responsibilities split.
 - `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
   are now unified, deliberately lightweight: `-provision-tenant` stays
   the sole real actor (ClickHouse + `rbacstore`), and now also syncs its

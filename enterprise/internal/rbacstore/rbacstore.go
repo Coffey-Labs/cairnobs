@@ -198,6 +198,34 @@ func (s *Store) TenantIsActive(ctx context.Context, tenantID string) (bool, erro
 	return t.Status == "active", nil
 }
 
+// ListActiveTenantIDs backs enterprise-auth's GET /internal/active-tenants
+// -- search (AGPL core) polls this to learn which tenant_ids it may
+// safely write-route into their own Tantivy index, since it has no
+// Postgres access of its own (see search/src/tenants.rs's doc comment
+// for the full design). Deliberately narrower than
+// ListProvisionedDataSources (which also requires ClickHouse
+// credentials to be present, since chwriter.Registry needs those to
+// actually connect): search's write path needs nothing but the id.
+func (s *Store) ListActiveTenantIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM tenants WHERE status = 'active'`)
+	if err != nil {
+		return nil, fmt.Errorf("rbacstore: listing active tenant ids: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("rbacstore: scanning active tenant id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rbacstore: iterating active tenant ids: %w", err)
+	}
+	return ids, nil
+}
+
 // SetTenantStatus is the only way a tenant's status column changes --
 // every tenant-resolution path elsewhere must re-check this via
 // GetTenant, never cache/assume 'active', per

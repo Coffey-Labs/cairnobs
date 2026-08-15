@@ -39,14 +39,18 @@ of what was already run and passed. Two genuine exceptions:
   OIDC: not yet tried against a real external IdP or a running
   `enterprise-auth` container.
 - Tantivy tenant isolation, both directions -- `search/src/registry.rs`'s
-  cross-tenant read isolation (§9) and, since this pass,
-  `search/src/consumer.rs`'s per-tenant write-routing (§14) -- verified
-  live, no disclaimer needed, because Tantivy is an embedded library with
-  no Docker/broker dependency: real indices, real documents, real
-  commits, run in this environment. The one thing about it that's still
-  unverified is not Tantivy itself but the upstream credential/header
-  plumbing feeding it (ingest's `TenantResolver`, `enterprise-auth`'s
-  `/internal/authorize-ingest`) against a real running stack.
+  cross-tenant read isolation (§9), `search/src/consumer.rs`'s per-tenant
+  write-routing (§14), and `search/src/tenants.rs`'s active-tenant gate
+  (§14) -- verified live, no disclaimer needed, because Tantivy is an
+  embedded library with no Docker/broker dependency, and the active-
+  tenant gate's only external dependency (`enterprise-auth`'s HTTP API)
+  was exercised against a real hand-rolled test server, not a live
+  container: real indices, real documents, real commits, real HTTP
+  requests, all run in this environment. The one thing about it that's
+  still unverified is not Tantivy itself but the upstream credential/
+  header plumbing feeding it (ingest's `TenantResolver`, `enterprise-auth`'s
+  `/internal/authorize-ingest` and `/internal/active-tenants`) against a
+  real running stack.
 - The tenant-picker frontend page (§12) -- the first frontend-only piece
   in this phase exercised in a real browser rather than only
   type-checked: `web/src/routes/select-tenant`'s cross-origin
@@ -746,21 +750,54 @@ cargo test --quiet
 # ingest/cmd/ingest's own guard test does on the Go side.
 ```
 
-**What's still not built, for either engine**: a live active-tenant
-recheck at write time. `chwriter.Registry`'s per-tenant writer map is a
-snapshot built once at `enterprise-ingest` startup from
-`rbacstore.ListProvisionedDataSources` (active tenants only) -- an
-unrecognized `tenant_id` is refused outright, but a tenant deprovisioned
-*after* startup keeps writing successfully until the next restart.
-`IndexRegistry.resolve()` has no allowlist at all on either the read or
-write side -- `search` has no Postgres access to check tenant status
-against -- so a still-valid-but-should-be-revoked ingest credential can
-cause an orphan Tantivy index directory to be created for a tenant
-that's no longer active. Narrow blast radius either way (isolated, not
-cross-tenant leakage, reachable only with a real signed credential), but
-real and disclosed, not silently accepted -- see
-`search/src/registry.rs`'s doc comment on `resolve` and
-`/docs/security/threat-model.md`'s "Read this first".
+**Tantivy's write path is now active-tenant-gated too.**
+`search/src/tenants.rs`'s `ActiveTenantTracker` polls a new
+`GET /internal/active-tenants` endpoint on `enterprise-auth` (Go side:
+`rbacstore.ListActiveTenantIDs` + `authhandler.handleActiveTenants`,
+RoleService-credentialed -- mint one with
+`enterprise-auth -mint-service-token search`, the same generic flag
+`alerting` already uses, just a different subject name) and
+`consumer.rs` refuses any tagged record whose tenant isn't in the polled
+set. Off unless `ENTERPRISE_AUTH_URL`/`ENTERPRISE_AUTH_SERVICE_TOKEN` are
+both set (`search/src/config.rs` rejects exactly one being set); startup
+blocks on the first fetch succeeding (fail-closed cold start), and a
+later refresh failure keeps serving the last-known-good set rather than
+clearing it. Genuinely verified in this environment, no live
+enterprise-auth needed:
+
+```sh
+cd search
+cargo test --quiet tenants::
+# start_fetches_and_serves_the_initial_list / start_sends_the_bearer_token
+# run against a real (hand-rolled, dependency-free) TCP server -- actual
+# reqwest request construction (the Authorization: Bearer header, the
+# /internal/active-tenants path) and actual JSON response parsing, not a
+# fake HTTP client. start_fails_closed_when_the_first_fetch_fails and
+# start_fails_closed_when_the_server_is_unreachable prove the cold-start
+# refusal: ActiveTenantTracker::start returns Err rather than falling
+# back to an empty (accept-nothing, silently-safe-looking-but-wrong-for-
+# operators) or permissive (accept-anything, the exact bug being closed)
+# default.
+go test ./internal/authhandler/... -run TestActiveTenants -v
+# GET /internal/active-tenants requires a RoleService credential -- a
+# valid human session (even for a real Owner) is rejected the same way
+# an invalid/missing token is, the regression test for this endpoint's
+# whole reason to distinguish token kinds.
+```
+
+**One asymmetry remains, disclosed rather than fixed**: `chwriter.
+Registry`'s per-tenant writer map is a snapshot built once at
+`enterprise-ingest` startup, never refreshed -- a tenant deprovisioned
+after startup keeps writing successfully to ClickHouse until the next
+restart, a real staleness window `ActiveTenantTracker`'s 60-second
+refresh doesn't have on the Tantivy side. Neither is a live per-write
+check (a database/HTTP round trip on every record would be a real
+throughput cost neither implementation accepts), so both have *some*
+staleness window by design -- the gap between the two windows is what's
+disclosed as inconsistent here, not a claim that either is fully live.
+Closing it would mean adding a periodic refresh to `chwriter.Registry`
+too; not done in this pass. See `/docs/security/threat-model.md`'s "Read
+this first".
 
 **Also not built**: Helm/`docker-compose.yml` do gate *whether*
 `enterprise-ingest` runs at all (`ingest.requireTenantCredential`, same
@@ -811,12 +848,14 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   see §14). `search/src/consumer.rs` reads the same header and routes
   each record into its own tenant's Tantivy index -- genuinely verified
   in this environment, unlike the ClickHouse side, since Tantivy needs
-  no Docker to exercise real logic. Both engines share one remaining,
-  disclosed gap: neither write path rechecks tenant-active status live
-  (ClickHouse: a startup-time snapshot, stale until restart; Tantivy: no
-  allowlist at all, since `search` has no Postgres access) -- narrow
-  blast radius, not cross-tenant leakage, but real; see §14 and
-  `/docs/security/threat-model.md`'s "Read this first". A
+  no Docker to exercise real logic. Both engines now also gate writes on
+  an active-tenant check: ClickHouse's is a startup-time snapshot with
+  no refresh (stale until the next `enterprise-ingest` restart), while
+  Tantivy's `ActiveTenantTracker` polls `enterprise-auth` every 60
+  seconds, a tighter staleness bound the ClickHouse side wasn't updated
+  to match -- a real, disclosed asymmetry between the two, not a gap in
+  either alone; see §14 and `/docs/security/threat-model.md`'s "Read
+  this first". A
   newly-provisioned tenant's ClickHouse database and Tantivy index are
   both now real, isolated, and actually populated by write-routed
   traffic (the ClickHouse claim pending live confirmation, the Tantivy

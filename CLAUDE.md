@@ -267,17 +267,24 @@ gate a commercially-licensed credential behind, so there was never an
 import-boundary reason to split it out), so read and write share one
 registry directly. The periodic Tantivy commit now commits every tenant
 index that's seen a write, not just the default one
-(`IndexRegistry::commit_all`). **One gap disclosed, not fixed, in this
-same change**: unlike `chwriter.Registry` (built from an
-active-tenants-only snapshot at startup) and unlike the read side (gated
-by `searchclient.TenantChecker`), this consumer's `resolve()` call has
-no active-tenant check — this process has no Postgres access to check
-against, so a still-valid-but-should-be-revoked ingest credential can
-cause an index directory to be created for a tenant that's no longer
-active. Narrow blast radius (an orphan, isolated, empty index — not
-cross-tenant leakage — and only reachable with a real signed
-credential), but real; see `search/src/registry.rs`'s doc comment on
-`resolve`. **The tenant-picker page is now built too**:
+(`IndexRegistry::commit_all`). **The active-tenant gap this same change
+originally disclosed is now closed too**: `search/src/tenants.rs`'s
+`ActiveTenantTracker` polls a new `GET /internal/active-tenants`
+endpoint on `enterprise-auth` (`search` has no Postgres access, unlike
+`chwriter.Registry`'s direct `rbacstore` query or the read side's
+`searchclient.TenantChecker`, so this needed a network call — the same
+"network boundary, not import boundary" shape `ingest`'s
+`TenantResolver` already uses against the same service, authenticated
+with a RoleService credential the same way `alerting` authenticates to
+`api`) and `consumer.rs` refuses any tagged record whose tenant isn't in
+the polled allowlist. Off unless both `ENTERPRISE_AUTH_URL` and
+`ENTERPRISE_AUTH_SERVICE_TOKEN` are set (same "off unless configured"
+default as everything else optional in this codebase); when they are,
+startup blocks on the first fetch succeeding and later refresh failures
+keep serving the last-known-good set rather than clearing it. Verified
+with real HTTP round trips against a hand-rolled TCP test server in this
+environment, no live enterprise-auth needed. **The tenant-picker page is
+now built too**:
 `web/src/routes/select-tenant` calls `GET /auth/memberships`/
 `POST /auth/select-tenant` via `fetch(..., {credentials: 'include'})`
 (new `$lib/api.ts` functions), which needed a second CORS posture

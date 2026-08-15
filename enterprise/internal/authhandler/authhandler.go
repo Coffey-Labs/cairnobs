@@ -13,6 +13,9 @@
 // api/authz) and a different credential type (an ingest bearer token
 // checked against rbacstore's ingest_credentials table, not a
 // session.Manager JWT) -- see ingestCredentialValidator's doc comment.
+//
+// GET /internal/active-tenants is a third sibling, for `search`
+// (core/AGPL, Rust) -- see tenantLister's doc comment.
 package authhandler
 
 import (
@@ -50,21 +53,36 @@ type ingestCredentialValidator interface {
 	ValidateIngestCredential(ctx context.Context, token string) (tenantID string, err error)
 }
 
+// tenantLister is the narrow interface GET /internal/active-tenants
+// needs -- *rbacstore.Store is the production implementation (the same
+// concrete type ingestCredentials above already wires in, just a
+// second narrow interface it happens to also satisfy). Backs
+// search/src/tenants.rs's ActiveTenantTracker: search is AGPL core with
+// no Postgres access and no enterprise/ import allowed, so its write-
+// routing needed a network boundary to learn which tenants are active,
+// the same shape ingest/internal/grpcserver.TenantResolver already uses
+// against this exact service (see that package's doc comment).
+type tenantLister interface {
+	ListActiveTenantIDs(ctx context.Context) ([]string, error)
+}
+
 type Handler struct {
 	logger            *slog.Logger
 	manager           *session.Manager
 	features          Features
 	ingestCredentials ingestCredentialValidator
+	tenants           tenantLister
 }
 
-func New(logger *slog.Logger, manager *session.Manager, features Features, ingestCredentials ingestCredentialValidator) *Handler {
-	return &Handler{logger: logger, manager: manager, features: features, ingestCredentials: ingestCredentials}
+func New(logger *slog.Logger, manager *session.Manager, features Features, ingestCredentials ingestCredentialValidator, tenants tenantLister) *Handler {
+	return &Handler{logger: logger, manager: manager, features: features, ingestCredentials: ingestCredentials, tenants: tenants}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/authorize", h.handleAuthorize)
 	mux.HandleFunc("GET /auth/features", h.handleFeatures)
 	mux.HandleFunc("POST /internal/authorize-ingest", h.handleAuthorizeIngest)
+	mux.HandleFunc("GET /internal/active-tenants", h.handleActiveTenants)
 }
 
 type featuresResponse struct {
@@ -144,6 +162,44 @@ func (h *Handler) handleAuthorizeIngest(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(authorizeIngestResponse{TenantID: tenantID})
+}
+
+type activeTenantsResponse struct {
+	TenantIDs []string `json:"tenant_ids"`
+}
+
+// handleActiveTenants is search/src/tenants.rs's ActiveTenantTracker's
+// server side -- polled periodically, not per-write, to build a local
+// allowlist for its write-routing gate (see that module's doc comment).
+// Requires a RoleService Bearer credential (session.Manager-issued,
+// Role == "service"), not a human session -- server-to-server, the same
+// authentication shape /alerting presents to /api, minted via
+// `enterprise-auth -mint-service-token search` (the flag is already
+// generic over caller name; no change needed there for a new caller).
+// Deliberately does NOT accept the tenant-scoped credential a human
+// session or an ingest credential would carry: this endpoint answers
+// "which tenants exist," a question no single tenant's identity should
+// be able to ask on its own.
+func (h *Handler) handleActiveTenants(w http.ResponseWriter, r *http.Request) {
+	token := bearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		http.Error(w, "no credentials presented", http.StatusUnauthorized)
+		return
+	}
+	claims, err := h.manager.Validate(token)
+	if err != nil || claims.Role != "service" {
+		http.Error(w, "invalid or expired credentials", http.StatusUnauthorized)
+		return
+	}
+
+	ids, err := h.tenants.ListActiveTenantIDs(r.Context())
+	if err != nil {
+		h.logger.Error("listing active tenant ids", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(activeTenantsResponse{TenantIDs: ids})
 }
 
 func bearerToken(header string) string {

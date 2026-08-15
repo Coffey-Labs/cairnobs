@@ -10,6 +10,7 @@ use crate::config::Config;
 use crate::logsv1;
 use crate::offsets::OffsetStore;
 use crate::registry::IndexRegistry;
+use crate::tenants::ActiveTenantTracker;
 
 /// Kafka message header a resolved tenant ID rides in, attached by
 /// ingest's gRPC front end. Mirrors `ingest/internal/grpcserver.
@@ -30,7 +31,12 @@ const TENANT_ID_HEADER_KEY: &str = "tenant_id";
 /// discovered dynamically, since it has to match what
 /// /transport/provision-topics.sh actually created anyway (documented
 /// cross-component contract, same as the topic name already is).
-pub async fn run(cfg: Arc<Config>, registry: Arc<IndexRegistry>, partition_count: i32) -> Result<()> {
+pub async fn run(
+    cfg: Arc<Config>,
+    registry: Arc<IndexRegistry>,
+    partition_count: i32,
+    active_tenants: Option<Arc<ActiveTenantTracker>>,
+) -> Result<()> {
     let client = ClientBuilder::new(cfg.redpanda_brokers.clone())
         .build()
         .await
@@ -65,9 +71,10 @@ pub async fn run(cfg: Arc<Config>, registry: Arc<IndexRegistry>, partition_count
         let client = Arc::clone(&client);
         let registry = Arc::clone(&registry);
         let offsets = Arc::clone(&offsets);
+        let active_tenants = active_tenants.clone();
         let topic = cfg.redpanda_topic.clone();
         handles.push(tokio::spawn(async move {
-            consume_partition(client, topic, partition, start_offset, registry, offsets).await
+            consume_partition(client, topic, partition, start_offset, registry, offsets, active_tenants).await
         }));
     }
 
@@ -100,6 +107,7 @@ async fn consume_partition(
     start_offset: i64,
     registry: Arc<IndexRegistry>,
     offsets: Arc<Mutex<OffsetStore>>,
+    active_tenants: Option<Arc<ActiveTenantTracker>>,
 ) -> Result<()> {
     let partition_client = client
         .partition_client(topic.clone(), partition, UnknownTopicHandling::Error)
@@ -143,17 +151,33 @@ async fn consume_partition(
             }
 
             let tenant_id = tenant_id_from_headers(&record_and_offset.record.headers);
+
+            // Fail-closed active-tenant gate (see tenants.rs's doc
+            // comment) -- only applies to tagged records and only when
+            // a tracker is actually configured, matching resolve()'s
+            // own "empty tenant_id always means the default index"
+            // rule and this codebase's "off unless configured" default
+            // everywhere else. This is the check registry.rs's `resolve`
+            // doc comment used to name as missing entirely.
+            if !tenant_id.is_empty() {
+                if let Some(tracker) = &active_tenants {
+                    if !tracker.is_active(&tenant_id).await {
+                        tracing::warn!(record_id = %rec.record_id, tenant_id, "skipping record: tenant is not active");
+                        continue;
+                    }
+                }
+            }
+
             let index = match registry.resolve(&tenant_id).await {
                 Ok(index) => index,
                 Err(e) => {
                     // Shouldn't normally happen -- ingest/grpcserver only
                     // ever attaches a tenant_id it validated against a
-                    // real credential -- but an unsafe/malformed
-                    // tenant_id is a hard skip, never a silent fall-back
-                    // to the default or any other tenant's index. See
-                    // registry.rs's doc comment for the one residual gap
-                    // this consumer doesn't close (no active-tenant
-                    // check, since this process has no Postgres access).
+                    // real credential, and the active-tenant gate above
+                    // already refused anything not currently active when
+                    // configured -- but an unsafe/malformed tenant_id is
+                    // a hard skip regardless, never a silent fall-back to
+                    // the default or any other tenant's index.
                     tracing::error!(error = %e, record_id = %rec.record_id, tenant_id, "skipping record: failed to resolve tenant index");
                     continue;
                 }

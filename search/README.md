@@ -62,19 +62,28 @@ binary" needed. The periodic Tantivy commit (`COMMIT_INTERVAL_MS`) now
 commits every tenant index that's actually seen a write, plus the
 default index, via `IndexRegistry::commit_all`, not just one index.
 
-**One residual gap, disclosed rather than fixed here**: unlike the read
-side (gated by `enterprise/internal/searchclient`'s `TenantChecker`,
-which refuses to search a tenant that isn't `active` in `rbacstore`) and
-unlike ClickHouse's write side (`chwriter.Registry`, built from an
-active-tenants-only snapshot at startup, so an unrecognized tenant has
-no writer at all), this consumer's `registry.resolve()` call has no
-active-tenant gate — this process has no Postgres access to check
-against, the same reason `IndexRegistry` couldn't do the mid-provisioning
-check itself before `TenantChecker` was added for the read side. A
-still-valid (not yet revoked) ingest credential for a tenant that's no
-longer active can cause an index directory to be created for it here.
-See `src/registry.rs`'s doc comment on `resolve` for the full writeup,
-including why closing it fully isn't scoped yet.
+**The active-tenant gap is closed too, the same way the read side closes
+it**: `src/tenants.rs`'s `ActiveTenantTracker` polls a new
+`GET /internal/active-tenants` endpoint on `enterprise-auth` (this
+process has no Postgres access, so unlike `enterprise/internal/
+searchclient`'s `TenantChecker` — a direct `rbacstore.TenantIsActive`
+call, since that code runs in `enterprise/` — this needed a network
+call instead), and `consumer.rs` refuses (logs and skips, never falls
+back to the default or another tenant's index) any tagged record whose
+`tenant_id` isn't in the polled allowlist. Off unless
+`ENTERPRISE_AUTH_URL`/`ENTERPRISE_AUTH_SERVICE_TOKEN` are both set (see
+Configuration below) — when they aren't, write-routing behaves exactly
+as it did before this tracker existed, trusting any syntactically-valid
+`tenant_id`. When they are, startup blocks on the first fetch succeeding
+(fail-closed cold start — see `tenants.rs`'s doc comment for why a
+partial/degraded startup isn't the safer choice, and for the
+last-known-good behavior periodic refresh failures fall back to).
+Verified with real HTTP round trips against a hand-rolled TCP test
+server (no mocking crate needed for one endpoint) — the Bearer token
+actually sent, the initial-fetch-fails-closed path, and an unreachable
+server also failing closed. See `src/registry.rs`'s doc comment on
+`resolve` for how the mechanism (index lifecycle) and policy (who gets
+gated) responsibilities are split.
 
 ## Offset tracking: why this isn't a Kafka consumer group
 
@@ -118,6 +127,8 @@ Environment variables (see `src/config.rs`):
 | `TENANTS_INDEX_PATH` | `/var/lib/sentry-search/tenants` | Per-tenant index directories live under here, one subdirectory per tenant_id (Phase 4) |
 | `OFFSETS_PATH` | `/var/lib/sentry-search/offsets.json` | Offset tracking file |
 | `COMMIT_INTERVAL_MS` | `2000` | How often buffered writes become searchable |
+| `ENTERPRISE_AUTH_URL` | (empty) | Enables `tenants::ActiveTenantTracker` -- empty means write-routing has no active-tenant gate, same as every deployment before Phase 4. Must be set together with `ENTERPRISE_AUTH_SERVICE_TOKEN` below, or `Config::load` fails |
+| `ENTERPRISE_AUTH_SERVICE_TOKEN` | (empty) | RoleService Bearer credential for `GET /internal/active-tenants`, minted via `enterprise-auth -mint-service-token search` |
 
 ## Building & testing
 
@@ -147,7 +158,11 @@ pure `tenant_id_from_headers` header-extraction helper it uses is
 factored out and unit-tested the same way `ingest/consumer`'s Go
 equivalent is, including a guard test
 (`test_tenant_id_header_key_matches_go`) against the header-key literal
-drifting from the Go side's.
+drifting from the Go side's. `tenants.rs`'s tests genuinely exercise
+`reqwest` against a real (if hand-rolled, dependency-free) TCP server —
+the actual `Authorization: Bearer` header construction, JSON response
+parsing, and both fail-closed paths (a rejected first fetch, an
+unreachable server), not a fake HTTP client substituted in.
 
 ```sh
 # from the repo root, not search/

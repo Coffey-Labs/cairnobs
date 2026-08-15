@@ -9,21 +9,27 @@ for the full design rationale behind the controls described here.
 
 ## Read this first: the single most important open finding
 
-**Updated a fourth time.** This section originally read "log data
-queried through `POST /query` is not tenant-isolated at all," then
-"ClickHouse is isolated but Tantivy isn't," then "ingest tags records
-with a tenant identity but nothing routes the write," then "ClickHouse
-write-routing is built but Tantivy's isn't." Both storage engines are
-now isolated on both the read and write paths. What's left is narrower:
-**whether a given deployment actually runs the isolated binaries**
-(deployment-time, not code-level), and two disclosed write-side gaps,
-different in kind: ClickHouse's write registry is a startup-time
-snapshot of active tenants with no live recheck (a *deprovisioned*
-tenant can keep writing successfully until the next `enterprise-ingest`
-restart), while Tantivy's write path has no active-tenant allowlist at
-all — it opens an index for *any* syntactically-valid `tenant_id` a
-record carries, active, deprovisioned, or never real. See below for
-both, in full.
+**Updated a fifth time.** This section originally read "log data queried
+through `POST /query` is not tenant-isolated at all," then "ClickHouse
+is isolated but Tantivy isn't," then "ingest tags records with a tenant
+identity but nothing routes the write," then "ClickHouse write-routing
+is built but Tantivy's isn't," then "both are write-routed but neither
+rechecks tenant-active status live." Both storage engines are now
+isolated on both the read and write paths, **and both now gate writes
+on an active-tenant check** — ClickHouse's (`chwriter.Registry`) and
+Tantivy's (`search/src/tenants.rs`'s `ActiveTenantTracker`, new) differ
+in staleness bound, not in whether the gate exists at all: ClickHouse's
+is a startup-time snapshot with no refresh (a *deprovisioned* tenant can
+keep writing successfully until the next `enterprise-ingest` restart);
+Tantivy's polls `enterprise-auth` every 60 seconds and keeps serving the
+last-known-good set through a transient refresh failure, a materially
+tighter staleness window with no code changed on the ClickHouse side to
+match it — a real, disclosed asymmetry between the two, not a claim
+they're now identical. What's left is narrower still: **whether a given
+deployment actually runs the isolated binaries** (deployment-time, not
+code-level), and closing ClickHouse's staleness gap to match Tantivy's
+if that inconsistency matters for a given deployment. See below for
+both engines' write-routing, in full.
 
 **ClickHouse (the SQL path) is built.** `enterprise/internal/
 tenantprovision` (real `CREATE DATABASE`/`CREATE USER`/`GRANT`) and
@@ -117,25 +123,35 @@ library with no Docker dependency. No "second binary" was needed here,
 unlike ClickHouse: Tantivy has no grant system to gate a
 commercially-licensed credential behind, so `IndexRegistry` already
 lived directly in this AGPL-core `search` binary, and read/write simply
-share it.
+share it. This write path is now also active-tenant-gated:
+`search/src/tenants.rs`'s `ActiveTenantTracker` polls a new
+`GET /internal/active-tenants` endpoint on `enterprise-auth` every 60
+seconds (RoleService-credentialed, the same auth shape `alerting` uses
+against `api`) and `consumer.rs` refuses any tagged record whose tenant
+isn't in the polled allowlist — fail-closed on the first fetch (startup
+blocks until it succeeds), last-known-good on any later refresh failure.
+Off unless `ENTERPRISE_AUTH_URL`/`ENTERPRISE_AUTH_SERVICE_TOKEN` are
+both set. Genuinely verified here too: real HTTP round trips (the Bearer
+header actually sent, JSON parsing, both fail-closed paths) against a
+hand-rolled TCP test server, no live enterprise-auth needed since
+`reqwest` doesn't care that the other end is real.
 
 **Both engines share one open question** — deployment topology, covered
-above — and Tantivy specifically has one gap ClickHouse's design doesn't:
-`chwriter.Registry`'s map is built once at startup from an
-active-tenants-only query, so an unrecognized `tenant_id` is refused
-outright; `IndexRegistry.resolve()` (used for both read and write) has
-no equivalent allowlist at all, because `search` has no Postgres access
-to check tenant status against — a syntactically-valid `tenant_id` on a
-still-valid-but-should-be-revoked ingest credential can cause an orphan
-index directory to be created for a tenant that's no longer active.
-Narrow blast radius (isolated, empty except for that traffic, not
-cross-tenant leakage, and reachable only with a real signed credential),
-but real, and not closed by this change; see
-`search/src/registry.rs`'s doc comment on `resolve`. A newly-provisioned
-tenant's ClickHouse database and Tantivy index are both now real,
-isolated, and actually populated by write-routed agent traffic (the
-ClickHouse claim pending live confirmation, the Tantivy claim already
-verified).
+above — and now differ only in staleness bound, not in whether an
+active-tenant gate exists at all: `chwriter.Registry`'s map is built
+once at `enterprise-ingest` startup from an active-tenants-only query
+and never refreshed, so a tenant deprovisioned after startup keeps
+writing successfully until the next restart; `ActiveTenantTracker`
+refreshes every 60 seconds, a materially tighter window, with no
+corresponding change made to the ClickHouse side to match it. Neither
+is a live per-write check (that would mean a database round trip on
+every record, a real throughput cost neither implementation accepts),
+so both have *some* staleness window by design — the asymmetry between
+the two windows is the one thing disclosed as inconsistent, not fixed,
+here. A newly-provisioned tenant's ClickHouse database and Tantivy index
+are both now real, isolated, and actually populated by write-routed
+agent traffic (the ClickHouse claim pending live confirmation, the
+Tantivy claim already verified).
 
 ## System overview
 
@@ -494,7 +510,7 @@ terms:
 | Tantivy tenant_id resolution (`enterprise/internal/searchclient`) | **Enforced, verified live** — real gRPC wire-level test |
 | Ingest tenant *identity* (credential validation, tagging) | **Built and tested** — fail-closed `TenantResolver`, `tenant_id` Kafka header attached per record |
 | Ingest tenant *write-routing*, ClickHouse | **Built, not yet confirmed against a real ClickHouse** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; Docker-free tests pass, live-database tests are skip-gated. Startup-time active-tenant snapshot, no live recheck — a deprovisioned tenant can keep writing until the next restart |
-| Ingest tenant *write-routing*, Tantivy | **Built and genuinely verified** — `search/src/consumer.rs` routes each record into its own tenant's index via `IndexRegistry`, same registry the (already-verified) read side uses; no Docker needed, real tests pass. No active-tenant allowlist at all on write (`search` has no Postgres access) — a syntactically-valid `tenant_id` on a still-valid credential can create an orphan index for a no-longer-active tenant; narrow, disclosed, not cross-tenant leakage |
+| Ingest tenant *write-routing*, Tantivy | **Built and genuinely verified** — `search/src/consumer.rs` routes each record into its own tenant's index via `IndexRegistry`, same registry the (already-verified) read side uses; no Docker needed, real tests pass. Active-tenant-gated too: `tenants::ActiveTenantTracker` polls `enterprise-auth` every 60s (off unless configured), refusing any tenant not in the polled allowlist — tighter staleness bound than ClickHouse's startup-only snapshot, an asymmetry disclosed above, not a gap on Tantivy's side specifically |
 | Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; verified via `docker compose config`, not an actual `docker compose up` in this environment |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
