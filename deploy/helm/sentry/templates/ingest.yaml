@@ -22,6 +22,18 @@ spec:
         - name: ingest
           image: "{{ .Values.ingest.image.repository }}:{{ .Values.ingest.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          {{- if and .Values.enterprise.enabled .Values.ingest.requireTenantCredential }}
+          # -mode=server only: this Deployment stops running the
+          # ClickHouse-writing consumer half (the default -mode=all)
+          # once per-tenant write-routing is on -- enterprise-ingest.yaml
+          # (below) takes over consuming sentry.logs.raw instead, so it
+          # can write each tenant's records to their own database rather
+          # than the one shared table ingest's own consumer always
+          # writes to. The agent-facing server half (PushBatch, tenant
+          # tagging via TenantResolver) keeps running here unconditionally
+          # either way -- only which process consumes the topic changes.
+          args: ["-mode=server"]
+          {{- end }}
           env:
             - name: REDPANDA_BROKERS
               value: "{{ .Release.Name }}-redpanda:9092"

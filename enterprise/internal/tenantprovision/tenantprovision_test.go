@@ -80,6 +80,41 @@ func TestProvisionClickHouseCreatesUsableTenantConnection(t *testing.T) {
 	}
 }
 
+// TestProvisionedUserCanInsertIntoOwnDatabase is the regression test for
+// a real bug found while building enterprise/internal/chwriter: this
+// credential is also the one chwriter.Registry uses to write ingested
+// records, so it must be able to INSERT into its own database, not just
+// SELECT from it -- the grant originally only covered SELECT, which
+// would have made every real per-tenant ClickHouse write fail with a
+// permission error.
+func TestProvisionedUserCanInsertIntoOwnDatabase(t *testing.T) {
+	admin := testAdminConn(t)
+	p := New(admin)
+	tenantID := testTenantID()
+	ctx := context.Background()
+
+	creds, err := p.ProvisionClickHouse(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("ProvisionClickHouse: %v", err)
+	}
+	if err := admin.Exec(ctx, fmt.Sprintf("CREATE TABLE `%s`.marker (id UInt8) ENGINE = Memory", tenantID)); err != nil {
+		t.Fatalf("creating marker table: %v", err)
+	}
+
+	tenantConn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{os.Getenv("TENANTPROVISION_TEST_CLICKHOUSE_ADDR")},
+		Auth: clickhouse.Auth{Database: tenantID, Username: creds.Username, Password: creds.Password},
+	})
+	if err != nil {
+		t.Fatalf("opening tenant connection: %v", err)
+	}
+	defer tenantConn.Close()
+
+	if err := tenantConn.Exec(ctx, "INSERT INTO marker VALUES (42)"); err != nil {
+		t.Fatalf("INSERT as the provisioned tenant user into its own database: %v", err)
+	}
+}
+
 // TestProvisionedUserCannotReadOtherTenantDatabase is one of the four
 // adversarial probes /docs/phase-4-isolation-design.md's verification
 // plan names for Phase 4 task 8 (see api/queryapi/

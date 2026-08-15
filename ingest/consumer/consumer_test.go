@@ -12,7 +12,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/sentry/sentry/ingest/internal/config"
 	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
 
@@ -55,18 +54,18 @@ func (f *fakeReader) commitCount() int {
 
 type fakeWriter struct {
 	mu       sync.Mutex
-	batches  [][]*logsv1.LogRecord
+	batches  [][]Record
 	failNext bool
 }
 
-func (f *fakeWriter) WriteBatch(_ context.Context, records []*logsv1.LogRecord) error {
+func (f *fakeWriter) WriteBatch(_ context.Context, records []Record) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.failNext {
 		f.failNext = false
 		return errors.New("simulated clickhouse failure")
 	}
-	batch := make([]*logsv1.LogRecord, len(records))
+	batch := make([]Record, len(records))
 	copy(batch, records)
 	f.batches = append(f.batches, batch)
 	return nil
@@ -78,12 +77,12 @@ func (f *fakeWriter) batchCount() int {
 	return len(f.batches)
 }
 
-func newTestConsumer(r reader, w chWriter, batchCfg config.BatchConfig) *Consumer {
+func newTestConsumer(r reader, w chWriter, cfg Config) *Consumer {
 	return &Consumer{
-		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		reader:   r,
-		writer:   w,
-		batchCfg: batchCfg,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		reader: r,
+		writer: w,
+		cfg:    cfg,
 	}
 }
 
@@ -111,7 +110,7 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 func TestConsumerFlushesOnBatchSize(t *testing.T) {
 	fr := newFakeReader()
 	fw := &fakeWriter{}
-	c := newTestConsumer(fr, fw, config.BatchConfig{MaxSize: 2, FlushIntervalMS: 60_000})
+	c := newTestConsumer(fr, fw, Config{BatchMaxSize: 2, FlushIntervalMS: 60_000})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -135,7 +134,7 @@ func TestConsumerFlushesOnBatchSize(t *testing.T) {
 func TestConsumerFlushesOnTimeout(t *testing.T) {
 	fr := newFakeReader()
 	fw := &fakeWriter{}
-	c := newTestConsumer(fr, fw, config.BatchConfig{MaxSize: 1000, FlushIntervalMS: 20})
+	c := newTestConsumer(fr, fw, Config{BatchMaxSize: 1000, FlushIntervalMS: 20})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -156,7 +155,7 @@ func TestConsumerFlushesOnTimeout(t *testing.T) {
 func TestConsumerDoesNotCommitOnWriteFailure(t *testing.T) {
 	fr := newFakeReader()
 	fw := &fakeWriter{failNext: true}
-	c := newTestConsumer(fr, fw, config.BatchConfig{MaxSize: 1, FlushIntervalMS: 60_000})
+	c := newTestConsumer(fr, fw, Config{BatchMaxSize: 1, FlushIntervalMS: 60_000})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -174,5 +173,42 @@ func TestConsumerDoesNotCommitOnWriteFailure(t *testing.T) {
 	// The batch was attempted even though writer returned an error.
 	if fw.batchCount() != 0 {
 		t.Fatalf("fakeWriter should not record a failed batch, got %d recorded", fw.batchCount())
+	}
+}
+
+// TestConsumerExtractsTenantIDFromHeader is the read-side half of the
+// producer/consumer tenant_id contract -- ingest/internal/grpcserver
+// attaches this header on the way in; this proves the consumer reads it
+// back correctly (and that a message with no header at all -- the
+// single-tenant/no-resolver case -- gets an empty TenantID, not an
+// error).
+func TestConsumerExtractsTenantIDFromHeader(t *testing.T) {
+	fr := newFakeReader()
+	fw := &fakeWriter{}
+	c := newTestConsumer(fr, fw, Config{BatchMaxSize: 2, FlushIntervalMS: 60_000})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = c.Run(ctx) }()
+
+	fr.push(kafka.Message{
+		Value:   mustMarshal(t, &logsv1.LogRecord{Message: "tagged"}),
+		Headers: []kafka.Header{{Key: TenantIDHeaderKey, Value: []byte("acme")}},
+	})
+	fr.push(kafka.Message{Value: mustMarshal(t, &logsv1.LogRecord{Message: "untagged"})})
+
+	waitFor(t, time.Second, func() bool { return fw.batchCount() == 1 })
+
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+	byMessage := map[string]string{}
+	for _, r := range fw.batches[0] {
+		byMessage[r.Record.GetMessage()] = r.TenantID
+	}
+	if byMessage["tagged"] != "acme" {
+		t.Fatalf("TenantID for the tagged message = %q, want acme", byMessage["tagged"])
+	}
+	if byMessage["untagged"] != "" {
+		t.Fatalf("TenantID for the untagged message = %q, want empty", byMessage["untagged"])
 	}
 }

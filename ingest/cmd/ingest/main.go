@@ -21,13 +21,35 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/sentry/sentry/ingest/internal/clickhousewriter"
+	"github.com/sentry/sentry/ingest/clickhousewriter"
+	"github.com/sentry/sentry/ingest/consumer"
 	"github.com/sentry/sentry/ingest/internal/config"
-	"github.com/sentry/sentry/ingest/internal/consumer"
 	"github.com/sentry/sentry/ingest/internal/grpcserver"
 	"github.com/sentry/sentry/ingest/internal/producer"
 	"github.com/sentry/sentry/ingest/internal/tenantresolver"
+	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
+
+// singleTenantWriter adapts *clickhousewriter.Writer -- which only
+// knows how to write to the one ClickHouse database it was constructed
+// with -- to consumer.chWriter's tenant-tagged signature, by simply
+// ignoring the tag. This is this binary's single-tenant behavior,
+// unchanged from before per-tenant ingest credentials existed: every
+// record lands in the same shared database regardless of which tenant
+// (if any) it was resolved to. enterprise/cmd/enterprise-ingest is
+// where a tag-respecting writer (enterprise/internal/chwriter.Registry)
+// actually routes per tenant instead.
+type singleTenantWriter struct {
+	w *clickhousewriter.Writer
+}
+
+func (s singleTenantWriter) WriteBatch(ctx context.Context, records []consumer.Record) error {
+	plain := make([]*logsv1.LogRecord, len(records))
+	for i, r := range records {
+		plain[i] = r.Record
+	}
+	return s.w.WriteBatch(ctx, plain)
+}
 
 func main() {
 	mode := flag.String("mode", "all", "which half of ingest to run: server | consumer | all")
@@ -70,13 +92,19 @@ func main() {
 	}
 
 	if *mode == "consumer" || *mode == "all" {
-		chw, err := clickhousewriter.New(ctx, cfg.ClickHouse)
+		chw, err := clickhousewriter.New(ctx, clickhousewriter.Config{
+			Addr: cfg.ClickHouse.Addr, Database: cfg.ClickHouse.Database,
+			Username: cfg.ClickHouse.Username, Password: cfg.ClickHouse.Password,
+		})
 		if err != nil {
 			logger.Error("connecting to clickhouse", "error", err)
 			os.Exit(1)
 		}
 		defer chw.Close()
-		c := consumer.New(logger, cfg.Redpanda, cfg.Batch, chw)
+		c := consumer.New(logger, consumer.Config{
+			Brokers: cfg.Redpanda.Brokers, Topic: cfg.Redpanda.Topic, ConsumerGroup: cfg.Redpanda.ConsumerGroup,
+			BatchMaxSize: cfg.Batch.MaxSize, FlushIntervalMS: cfg.Batch.FlushIntervalMS,
+		}, singleTenantWriter{w: chw})
 		g.Go(func() error { return c.Run(ctx) })
 	}
 

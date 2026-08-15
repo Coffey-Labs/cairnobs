@@ -43,9 +43,11 @@ import (
 )
 
 // TenantIDHeaderKey is the Kafka message header a resolved tenant ID is
-// attached under -- exported so internal/consumer (or a future per-
-// tenant write-routing consumer) can read it back by the same name
-// without duplicating the literal.
+// attached under. ingest/consumer.TenantIDHeaderKey names the identical
+// literal on the read side -- duplicated rather than imported (this
+// package is the agent-facing producer side; consumer is a different
+// concern, and importing across them for one string constant isn't
+// worth the coupling), so a change here must be mirrored there.
 const TenantIDHeaderKey = "tenant_id"
 
 type Server struct {

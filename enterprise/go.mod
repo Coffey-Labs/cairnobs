@@ -9,6 +9,12 @@ go 1.25.0
 // the package that defines it.
 replace github.com/sentry/sentry/api => ../api
 
+// Same allowed direction, against ingest/ instead -- enterprise/internal/
+// chwriter implements ingest/consumer's chWriter interface, which
+// structurally requires importing the package that defines it (see
+// that package's doc comment).
+replace github.com/sentry/sentry/ingest => ../ingest
+
 // api's own go.mod replace directive for proto/ is module-local and
 // doesn't propagate here -- enterprise/ needs its own, or `go build`
 // tries to fetch github.com/sentry/sentry/proto from a real (nonexistent)
@@ -16,7 +22,10 @@ replace github.com/sentry/sentry/api => ../api
 // the generated search gRPC stubs.
 replace github.com/sentry/sentry/proto => ../proto
 
-require github.com/sentry/sentry/api v0.0.0-00010101000000-000000000000
+require (
+	github.com/sentry/sentry/api v0.0.0-00010101000000-000000000000
+	github.com/sentry/sentry/ingest v0.0.0-00010101000000-000000000000
+)
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
@@ -71,6 +80,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/russellhaering/goxmldsig v1.4.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/segmentio/kafka-go v0.4.51 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

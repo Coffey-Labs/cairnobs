@@ -365,6 +365,46 @@ services:
       timeout: 5s
       retries: 30
 
+  # Per-tenant write-routing for ingest (enterprise/internal/chwriter) --
+  # see enterprise/cmd/enterprise-ingest/main.go's doc comment. Unlike
+  # api/enterprise-api's COMPOSE_PROFILES trick, this is NOT wired to be
+  # mutually exclusive with `ingest`'s own consumer half in this file:
+  # `ingest` always runs -mode=all here regardless of profile (splitting
+  # its server/consumer halves into separate compose services isn't done
+  # -- real, disclosed scope, see /docs/phase-4-runbook.md), so with the
+  # "enterprise" profile active both this service AND ingest's own
+  # consumer independently read every message (different consumer
+  # groups) and write it -- ingest into the one shared `logs` table,
+  # this into each tenant's own database. Harmless duplication for local
+  # testing/verification purposes, not what a real deployment does (see
+  # deploy/helm/sentry's ingest.yaml/enterprise-ingest.yaml, which
+  # actually achieve exclusivity via -mode=server/-mode=consumer).
+  enterprise-ingest:
+    profiles: ["enterprise"]
+    build:
+      context: .
+      dockerfile: enterprise/cmd/enterprise-ingest/Dockerfile
+    container_name: sentry-enterprise-ingest
+    depends_on:
+      redpanda-provision:
+        condition: service_completed_successfully
+      clickhouse-migrate:
+        condition: service_completed_successfully
+      metadata-migrate:
+        condition: service_completed_successfully
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      CLICKHOUSE_ADDR: "clickhouse:9000"
+      POSTGRES_ADDR: "metadata-postgres:5432"
+      POSTGRES_DATABASE: "sentry_metadata"
+      POSTGRES_USERNAME: "sentry"
+      POSTGRES_PASSWORD: "sentry-dev-only"
+    healthcheck:
+      test: ["CMD", "/enterprise-ingest", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   web:
     build:
       context: web

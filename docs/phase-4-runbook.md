@@ -554,7 +554,7 @@ all -- a cross-origin `fetch` with credentials from `web`'s origin to
 actual picker UI is real, separately-scoped frontend work; this section
 only closes the backend half.
 
-## 13. Ingest tenant identity (no per-tenant write-routing yet)
+## 13. Ingest tenant identity
 
 The identity mechanism was chosen deliberately (config-supplied
 tenant_id + a shared-secret token ingest validates, not per-tenant
@@ -592,24 +592,77 @@ go test ./internal/grpcserver/... -run 'Resolver|TenantHeader' -v
 # tenant."
 ```
 
-**Not built, and explicitly scoped out for now**: per-tenant write
-routing. Neither `ingest/internal/consumer` (the ClickHouse writer) nor
-`search/src/consumer.rs` (a completely independent Redpanda consumer,
-not called through `ingest` at all -- see that file) reads the
-`tenant_id` Kafka header back to route a record's write into a
-per-tenant ClickHouse database or Tantivy index. Every record still
-lands in the one shared destination regardless of tenant, correctly
-tagged but not yet isolated at write time -- see CLAUDE.md and
-`/docs/security/threat-model.md`'s "Read this first" for the full
-disclosure. Also not built: any Helm/`docker-compose.yml` wiring that
-issues an agent a real ingest credential automatically (`enterprise-
-auth -create-ingest-credential-tenant=<id>` is, like every other
-credential-minting flag in this codebase, a manual operator action) --
-`deploy/helm/sentry/values.yaml`'s `ingest.requireTenantCredential`
-(default `false`) only turns on *validation*, deliberately not folded
-into `enterprise.enabled` directly, since flipping that flag with no
-agents holding a credential yet would refuse all ingest traffic outright
-rather than degrading gracefully.
+Also not built as part of the identity mechanism itself: any Helm/
+`docker-compose.yml` wiring that issues an agent a real ingest credential
+automatically (`enterprise-auth -create-ingest-credential-tenant=<id>`
+is, like every other credential-minting flag in this codebase, a manual
+operator action) -- `deploy/helm/sentry/values.yaml`'s
+`ingest.requireTenantCredential` (default `false`) only turns on
+*validation*, deliberately not folded into `enterprise.enabled`
+directly, since flipping that flag with no agents holding a credential
+yet would refuse all ingest traffic outright rather than degrading
+gracefully. See §14 below for what the identity is actually used for on
+the write path.
+
+## 14. Ingest write-routing (ClickHouse built, Tantivy not yet)
+
+`enterprise/cmd/enterprise-ingest` (mirrors `enterprise-api`'s "second
+binary" shape) consumes the `tenant_id` Kafka header §13 attaches and
+routes each record's ClickHouse write into that tenant's own database,
+via `enterprise/internal/chwriter.Registry` -- a per-tenant
+`*ingest/clickhousewriter.Writer` registry that reuses `ingest/
+consumer`'s own flush loop unchanged. Verified in this environment
+without Docker, using the same fake-transport discipline as §13:
+
+```sh
+cd enterprise
+go test ./internal/chwriter/... -run TestRegistry -v
+# Docker-free: constructs a Registry directly (bypassing New(), the only
+# part that dials ClickHouse) to prove the fail-closed paths -- an empty
+# TenantID, or a TenantID with no registered writer, refuses the WHOLE
+# batch rather than silently dropping just those records or falling back
+# to a default destination.
+
+go test ./internal/tenantprovision/... -run TestProvisionedUserCanInsertIntoOwnDatabase -v
+# skip-gated (needs a live ClickHouse) -- regression test for the bug
+# found while building this: the per-tenant credential chwriter reuses
+# from chrunner only had SELECT granted, which would make every real
+# write fail with a permission error. Fixed by granting SELECT, INSERT
+# (tenantprovision.go). This test proves the fix, not just documents it,
+# whenever a real ClickHouse is available to run it against.
+
+go test ./internal/chwriter/... -run TestRegistryRoutesToCorrectTenant -v
+# skip-gated (CHWRITER_TEST_CLICKHOUSE_ADDR) -- writes a mixed batch
+# spanning two tenants in one WriteBatch call and confirms each row
+# lands in its own tenant's database, none in the other's.
+```
+
+**Not run in this environment**: no live ClickHouse was available while
+this was built, so the skip-gated tests above are correct Go that has
+never actually executed -- "the test exists" is not the same claim as
+"write-routing is confirmed," same caveat §8 already states for the
+read-side `chrunner` tests.
+
+**Not built**: Tantivy's side of this. `search/src/consumer.rs` is a
+completely independent Redpanda consumer, not called through `ingest` or
+`enterprise-ingest` at all, and does not read the `tenant_id` header --
+every record still lands in the one shared (default) Tantivy index
+regardless of tenant. See CLAUDE.md and `/docs/security/threat-model.md`'s
+"Read this first" for the full disclosure.
+
+**Also not built**: Helm/`docker-compose.yml` do gate *whether*
+`enterprise-ingest` runs at all (`ingest.requireTenantCredential`, same
+flag §13 uses for validation -- see `deploy/helm/sentry/templates/
+enterprise-ingest.yaml`), but `docker-compose.yml`'s version is a
+disclosed, weaker approximation of Helm's: Helm achieves genuine
+`-mode=server`/`-mode=consumer` mutual exclusivity between `ingest` and
+`enterprise-ingest`; compose's `enterprise-ingest` service is a
+profile-gated opt-in extra that does NOT split `ingest`'s own
+server/consumer halves, so with the `enterprise` profile active, both
+`ingest -mode=all` and `enterprise-ingest` independently consume every
+message via different consumer groups -- harmless duplication for local
+verification, not a topology compose actually enforces the way Helm
+does.
 
 ## Known gaps (do not treat this phase as done without reading these)
 
@@ -635,17 +688,22 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   that split (declarative request vs. imperative provisioning action)
   is intentional, not the "two disconnected sources of truth" gap this
   bullet used to describe.
-- **Ingest now has a real tenant identity (§13), but no per-tenant
-  write-routing yet.** An agent presents a bearer credential
-  (`enterprise-auth -create-ingest-credential-tenant=<id>`),
-  `ingest/internal/grpcserver.TenantResolver` validates it (fail-closed)
-  and attaches the resolved tenant ID to every record as a `tenant_id`
-  Kafka message header. Nothing downstream reads that header back yet --
-  every record still lands in the one shared ClickHouse database and the
-  one shared Tantivy index no matter what. A newly-provisioned tenant's
-  storage is real, isolated at query time, and permanently empty until
-  the write-routing split is built (a real, scoped follow-up, no longer
-  an undesigned one).
+- **Ingest now has a real tenant identity (§13), and ClickHouse
+  write-routing is built (§14) -- Tantivy write-routing is the one gap
+  left.** An agent presents a bearer credential (`enterprise-auth
+  -create-ingest-credential-tenant=<id>`), `ingest/internal/grpcserver.
+  TenantResolver` validates it (fail-closed) and attaches the resolved
+  tenant ID to every record as a `tenant_id` Kafka message header.
+  `enterprise-ingest` reads that header back and routes each record's
+  ClickHouse write into its own tenant's database (not yet confirmed
+  against a real ClickHouse in this environment -- see §14). Nothing
+  reads that header on the Tantivy side yet -- every record still lands
+  in the one shared Tantivy index no matter what. A newly-provisioned
+  tenant's ClickHouse database is real, isolated, and actually
+  populated by write-routed traffic (once confirmed live); its Tantivy
+  index remains real, isolated at query time, and permanently empty
+  until Tantivy's write-routing split is built (a real, scoped
+  follow-up, no longer an undesigned one).
 - **Human SSO login now works for both OIDC (§3a) and SAML (§3b)** --
   each verified with a real fake IdP (genuine cryptographic signing and
   verification), not yet a real external IdP or a running
