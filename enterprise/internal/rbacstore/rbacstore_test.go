@@ -180,6 +180,107 @@ func TestSetOwnerAndMembershipRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTransferOwnerMovesOwnershipAndDowngradesPreviousOwner(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	oldOwner, err := s.UpsertUserBySSO(ctx, "sub-old-owner-"+uniqueSuffix(), "old-owner-"+uniqueSuffix()+"@example.com", "Old Owner")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO (old owner): %v", err)
+	}
+	newOwner, err := s.UpsertUserBySSO(ctx, "sub-new-owner-"+uniqueSuffix(), "new-owner-"+uniqueSuffix()+"@example.com", "New Owner")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO (new owner): %v", err)
+	}
+	if err := s.SetMembership(ctx, tenantID, oldOwner.ID, RoleOwner); err != nil {
+		t.Fatalf("SetMembership: %v", err)
+	}
+	if err := s.SetOwner(ctx, tenantID, oldOwner.ID); err != nil {
+		t.Fatalf("SetOwner: %v", err)
+	}
+
+	if err := s.TransferOwner(ctx, tenantID, newOwner.ID, RoleAdmin); err != nil {
+		t.Fatalf("TransferOwner: %v", err)
+	}
+
+	tenant, err := s.GetTenant(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("GetTenant: %v", err)
+	}
+	if tenant.OwnerUserID != newOwner.ID {
+		t.Fatalf("tenant OwnerUserID = %q, want %q", tenant.OwnerUserID, newOwner.ID)
+	}
+
+	newOwnerMembership, err := s.GetMembership(ctx, tenantID, newOwner.ID)
+	if err != nil {
+		t.Fatalf("GetMembership (new owner): %v", err)
+	}
+	if newOwnerMembership.Role != RoleOwner {
+		t.Fatalf("new owner's role = %q, want owner", newOwnerMembership.Role)
+	}
+
+	// The point of TransferOwner over calling SetOwner alone: the
+	// previous owner keeps a real membership (downgraded, not deleted or
+	// left stale at "owner") -- otherwise tenant_memberships would claim
+	// two owners while tenants.owner_user_id can only name one.
+	oldOwnerMembership, err := s.GetMembership(ctx, tenantID, oldOwner.ID)
+	if err != nil {
+		t.Fatalf("GetMembership (old owner): %v", err)
+	}
+	if oldOwnerMembership.Role != RoleAdmin {
+		t.Fatalf("old owner's role after transfer = %q, want admin (downgraded, not left as owner)", oldOwnerMembership.Role)
+	}
+
+	// The previous owner is no longer Owner, so RevokeMembership must now
+	// accept revoking them -- proves the downgrade is real, not cosmetic.
+	if err := s.RevokeMembership(ctx, tenantID, oldOwner.ID); err != nil {
+		t.Fatalf("RevokeMembership on the downgraded former owner: %v", err)
+	}
+}
+
+func TestTransferOwnerRefusesTenantWithNoCurrentOwner(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	newOwner, err := s.UpsertUserBySSO(ctx, "sub-"+uniqueSuffix(), "user-"+uniqueSuffix()+"@example.com", "Someone")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO: %v", err)
+	}
+
+	if err := s.TransferOwner(ctx, tenantID, newOwner.ID, RoleAdmin); err == nil {
+		t.Fatal("expected TransferOwner to refuse a tenant with no current owner")
+	}
+}
+
+func TestTransferOwnerRefusesTransferToCurrentOwner(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	tenantID := "test-tenant-" + uniqueSuffix()
+	if _, err := s.CreateTenant(ctx, tenantID, "Test Tenant"); err != nil {
+		t.Fatalf("CreateTenant: %v", err)
+	}
+	owner, err := s.UpsertUserBySSO(ctx, "sub-"+uniqueSuffix(), "owner-"+uniqueSuffix()+"@example.com", "Owner")
+	if err != nil {
+		t.Fatalf("UpsertUserBySSO: %v", err)
+	}
+	if err := s.SetMembership(ctx, tenantID, owner.ID, RoleOwner); err != nil {
+		t.Fatalf("SetMembership: %v", err)
+	}
+	if err := s.SetOwner(ctx, tenantID, owner.ID); err != nil {
+		t.Fatalf("SetOwner: %v", err)
+	}
+
+	if err := s.TransferOwner(ctx, tenantID, owner.ID, RoleAdmin); err == nil {
+		t.Fatal("expected TransferOwner to refuse transferring ownership to its current holder")
+	}
+}
+
 func TestGetMembershipNotFound(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
