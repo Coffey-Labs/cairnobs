@@ -150,3 +150,94 @@ func TestApiErrorSurfacesPlainTextBodyWhenNotJSON(t *testing.T) {
 		t.Fatalf("err = %v, want it to surface the plain-text body", err)
 	}
 }
+
+func TestCreateRuleSendsExpectedRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/rules" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body rule
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		if body.Name != "High Error Rate" || body.ConditionType != "threshold" {
+			t.Errorf("unexpected request body: %+v", body)
+		}
+		if body.Comparator == nil || *body.Comparator != "gt" {
+			t.Errorf("Comparator = %v, want gt", body.Comparator)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		comparator := "gt"
+		threshold := 5.0
+		_ = json.NewEncoder(w).Encode(rule{
+			ID: "rule-1", TenantID: "acme", Name: body.Name,
+			ConditionType: "threshold", Comparator: &comparator, ThresholdValue: &threshold,
+			EvalIntervalSeconds: 60, NotificationTargetID: "target-1",
+		})
+	}))
+	defer srv.Close()
+
+	comparator := "gt"
+	threshold := 5.0
+	c := newClient(srv.URL, "")
+	out, err := c.createRule(context.Background(), &rule{
+		Name: "High Error Rate", Query: "status>=500 | stats count", ConditionType: "threshold",
+		Comparator: &comparator, ThresholdValue: &threshold,
+		EvalIntervalSeconds: 60, NotificationTargetID: "target-1",
+	})
+	if err != nil {
+		t.Fatalf("createRule: %v", err)
+	}
+	if out.ID != "rule-1" || out.EvalIntervalSeconds != 60 {
+		t.Fatalf("unexpected response: %+v", out)
+	}
+}
+
+func TestGetRuleParsesFlattenedRuleWithStateResponse(t *testing.T) {
+	// alerting/internal/httpapi's GET /rules/{id} returns
+	// rulestore.RuleWithState -- Rule's fields promoted to the top
+	// level via anonymous embedding, plus a "state" object this
+	// client's rule type deliberately has no field for (see client.go's
+	// doc comment). This test proves that extra "state" key doesn't
+	// break parsing the fields this provider does care about.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "rule-1", "tenant_id": "acme", "name": "High Error Rate",
+			"condition_type": "threshold", "comparator": "gt", "threshold_value": 5,
+			"eval_interval_seconds": 60, "notification_target_id": "target-1", "enabled": true,
+			"state": {"rule_id": "rule-1", "state": "ok", "last_eval_status": "ok", "consecutive_errors": 0}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	out, err := c.getRule(context.Background(), "rule-1")
+	if err != nil {
+		t.Fatalf("getRule: %v", err)
+	}
+	if out.Name != "High Error Rate" || out.Comparator == nil || *out.Comparator != "gt" {
+		t.Fatalf("unexpected response: %+v", out)
+	}
+}
+
+func TestDeleteRuleSendsToCorrectPath(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != http.MethodDelete || r.URL.Path != "/rules/rule-1" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	if err := c.deleteRule(context.Background(), "rule-1"); err != nil {
+		t.Fatalf("deleteRule: %v", err)
+	}
+	if !called {
+		t.Fatal("expected the server to receive a DELETE request")
+	}
+}

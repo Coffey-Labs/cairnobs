@@ -33,8 +33,21 @@ type sentryProvider struct {
 }
 
 type sentryProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
-	Token    types.String `tfsdk:"token"`
+	Endpoint         types.String `tfsdk:"endpoint"`
+	AlertingEndpoint types.String `tfsdk:"alerting_endpoint"`
+	Token            types.String `tfsdk:"token"`
+}
+
+// providerData is what Configure hands resources/data sources via
+// req.ProviderData -- two separate clients, not one, because `alerting`
+// is a genuinely separate service with its own base URL (its own
+// REST API, its own port, sometimes its own deployment) -- same split
+// web/src/lib/api.ts's apiBase/alertingBase and cli/cmd/sentryctl's
+// --api/--alerting-api already draw, not something invented for this
+// provider.
+type providerData struct {
+	api      *client
+	alerting *client
 }
 
 func (p *sentryProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -44,13 +57,21 @@ func (p *sentryProvider) Metadata(_ context.Context, _ provider.MetadataRequest,
 
 func (p *sentryProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages Sentry log-aggregation-platform resources. Dashboards only for now -- alert rules, notification targets, and tenant/RBAC resources are real, disclosed future work, not built in this pass; see the provider README.",
+		Description: "Manages Sentry log-aggregation-platform resources. Dashboards and alert rules for now -- notification targets and tenant/RBAC resources are real, disclosed future work, not built in this pass; see the provider README.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				Optional: true,
 				Description: "Base URL of the api service, e.g. \"http://localhost:8080\". Defaults to " +
 					"$SENTRY_API_ENDPOINT, or \"http://localhost:8080\" if that's unset too -- same " +
 					"default sentryctl's --api/$SENTRYCTL_API_URL uses (cli/cmd/sentryctl/main.go).",
+			},
+			"alerting_endpoint": schema.StringAttribute{
+				Optional: true,
+				Description: "Base URL of the alerting service, e.g. \"http://localhost:8081\" -- a " +
+					"separate service from api, not a path under endpoint above (see " +
+					"/docs/phase-3-alerting-design.md's component boundary). Defaults to " +
+					"$SENTRY_ALERTING_API_ENDPOINT, or \"http://localhost:8081\" if that's unset too -- " +
+					"same default sentryctl's --alerting-api/$SENTRYCTL_ALERTING_API_URL uses.",
 			},
 			"token": schema.StringAttribute{
 				Optional:  true,
@@ -84,19 +105,31 @@ func (p *sentryProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		endpoint = "http://localhost:8080"
 	}
 
+	alertingEndpoint := config.AlertingEndpoint.ValueString()
+	if alertingEndpoint == "" {
+		alertingEndpoint = os.Getenv("SENTRY_ALERTING_API_ENDPOINT")
+	}
+	if alertingEndpoint == "" {
+		alertingEndpoint = "http://localhost:8081"
+	}
+
 	token := config.Token.ValueString()
 	if token == "" {
 		token = os.Getenv("SENTRY_API_TOKEN")
 	}
 
-	c := newClient(endpoint, token)
-	resp.DataSourceData = c
-	resp.ResourceData = c
+	data := &providerData{
+		api:      newClient(endpoint, token),
+		alerting: newClient(alertingEndpoint, token),
+	}
+	resp.DataSourceData = data
+	resp.ResourceData = data
 }
 
 func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		newDashboardResource,
+		newAlertRuleResource,
 	}
 }
 

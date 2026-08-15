@@ -141,3 +141,62 @@ func (c *client) updateDashboard(ctx context.Context, id string, d *dashboard) (
 func (c *client) deleteDashboard(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/dashboards/"+id, nil, nil)
 }
+
+// rule mirrors alerting/internal/rulestore.Rule's JSON shape, plus the
+// request-only `enabled` field POST /rules accepts
+// (httpapi.createRuleRequest embeds rulestore.Rule and adds this
+// pointer specifically so "omitted" (defaults to enabled) and
+// "explicitly false" are distinguishable -- see handleCreateRule's doc
+// comment) -- deliberately a local type, not an import of either
+// package, same "talk HTTP, not Go imports, to a service that isn't
+// yours" posture as dashboard above. GET/POST /rules both return this
+// shape flattened (no separate "state" wrapper needed here since this
+// resource doesn't manage or expose alert_state -- see the provider
+// README on why).
+type rule struct {
+	ID                      string   `json:"id,omitempty"`
+	TenantID                string   `json:"tenant_id,omitempty"`
+	Name                    string   `json:"name"`
+	Description             string   `json:"description"`
+	Query                   string   `json:"query"`
+	QueryLanguage           string   `json:"query_language"`
+	ConditionType           string   `json:"condition_type"`
+	Comparator              *string  `json:"comparator,omitempty"`
+	ThresholdValue          *float64 `json:"threshold_value,omitempty"`
+	EvalIntervalSeconds     int      `json:"eval_interval_seconds"`
+	ForMinutes              int      `json:"for_minutes"`
+	RenotifyIntervalMinutes *int     `json:"renotify_interval_minutes,omitempty"`
+	NotificationTargetID    string   `json:"notification_target_id"`
+	Enabled                 *bool    `json:"enabled,omitempty"`
+	CreatedBy               string   `json:"created_by,omitempty"`
+}
+
+// createRule and getRule are the only mutating/reading calls this
+// client makes against /rules -- there is deliberately no updateRule:
+// alerting/internal/httpapi has no PUT /rules/{id} at all (confirmed
+// down to rulestore.Store, which has Create/List/Get/Delete but no
+// Update method to even wire one to) -- a real, pre-existing gap in
+// alerting's own API, not something this provider works around by
+// faking an update via delete+recreate under the hood. alertRuleResource
+// models this honestly: every attribute is RequiresReplace, so
+// Terraform destroys and recreates on any change rather than pretending
+// an in-place update exists.
+func (c *client) createRule(ctx context.Context, r *rule) (*rule, error) {
+	var out rule
+	if err := c.do(ctx, http.MethodPost, "/rules", r, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *client) getRule(ctx context.Context, id string) (*rule, error) {
+	var out rule
+	if err := c.do(ctx, http.MethodGet, "/rules/"+id, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *client) deleteRule(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/rules/"+id, nil, nil)
+}

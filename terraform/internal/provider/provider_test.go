@@ -24,7 +24,7 @@ func TestProviderSchemaValid(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("provider schema has errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{"endpoint", "token"} {
+	for _, attr := range []string{"endpoint", "alerting_endpoint", "token"} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("provider schema missing expected attribute %q", attr)
 		}
@@ -62,5 +62,40 @@ func TestDashboardResourceMetadataSetsTypeName(t *testing.T) {
 	newDashboardResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
 	if resp.TypeName != "sentry_dashboard" {
 		t.Fatalf("TypeName = %q, want sentry_dashboard", resp.TypeName)
+	}
+}
+
+func TestAlertRuleResourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := resource.SchemaRequest{}
+	resp := &resource.SchemaResponse{}
+
+	newAlertRuleResource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_alert_rule schema has errors: %v", resp.Diagnostics)
+	}
+	for _, attr := range []string{
+		"id", "tenant_id", "name", "description", "query", "query_language",
+		"condition_type", "comparator", "threshold_value", "eval_interval_seconds",
+		"for_minutes", "renotify_interval_minutes", "notification_target_id", "enabled", "created_by",
+	} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("sentry_alert_rule schema missing expected attribute %q", attr)
+		}
+	}
+	if !resp.Schema.Attributes["name"].IsRequired() {
+		t.Error(`"name" must be Required`)
+	}
+	if !resp.Schema.Attributes["id"].IsComputed() {
+		t.Error(`"id" must be Computed`)
+	}
+}
+
+func TestAlertRuleResourceMetadataSetsTypeName(t *testing.T) {
+	resp := &resource.MetadataResponse{}
+	newAlertRuleResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
+	if resp.TypeName != "sentry_alert_rule" {
+		t.Fatalf("TypeName = %q, want sentry_alert_rule", resp.TypeName)
 	}
 }
