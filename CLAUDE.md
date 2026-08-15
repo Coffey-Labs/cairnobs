@@ -237,21 +237,30 @@ presents (minted via `enterprise-auth
 new `POST /internal/authorize-ingest` endpoint — never an `enterprise/`
 import, same boundary shape as `api/authz.Authorizer`), and the
 resolved tenant ID is attached to every record as a `tenant_id` Kafka
-message header before it's produced. **What's still deferred, clearly**:
-nothing downstream reads that header yet — neither `ingest`'s own
-ClickHouse writer nor `search`'s independent Redpanda consumer route a
-record's write into a per-tenant destination, so every record still
-lands in the one shared ClickHouse database/Tantivy index regardless of
-which tenant it's now correctly tagged with. That write-routing split
-(likely another "second binary," mirroring `enterprise-api`) is real,
-scoped, remaining work — attaching a verified tenant identity as early
-as possible was deliberately built as a self-contained first step, not
-the whole feature. What still keeps this phase from being done: the
-actual tenant-picker *page* doesn't exist (`web` has no session/cookie-
-handling code at all yet, and `enterprise-auth` has no CORS middleware
-for a cross-origin `fetch` with credentials — both real, separately-
-scoped frontend gaps), and per-tenant write-routing for ingest per the
-above. Full accounting:
+message header before it's produced. **ClickHouse write-routing is now
+built too**: `enterprise/cmd/enterprise-ingest` (another "second binary,"
+mirroring `enterprise-api`) reuses `ingest/consumer`'s own flush loop
+with `enterprise/internal/chwriter.Registry` swapped in as the writer —
+one dedicated ClickHouse connection per tenant, routing each batch's
+records by their `tenant_id` tag, fail-closed on an untagged or
+unprovisioned tenant. Building it found and fixed a real bug:
+`tenantprovision.ProvisionClickHouse` originally granted a tenant's
+ClickHouse user `SELECT` only, which would have made every real
+per-tenant write fail with a permission error — fixed by granting
+`SELECT, INSERT` (one credential, both directions; no cross-tenant
+boundary is crossed by also allowing INSERT within a tenant's own
+database). **What's still deferred, clearly**: Tantivy's side.
+`search/src/consumer.rs` is a completely independent Redpanda consumer
+(not called through `ingest` or `enterprise-ingest` at all) and still
+writes every record into the one shared (default) index regardless of
+tenant — a different codebase (Rust) and a different process, real,
+disclosed, separately-scoped remaining work, not just "the same fix
+applied twice." What still keeps this phase from being done: the actual
+tenant-picker *page* doesn't exist (`web` has no session/cookie-handling
+code at all yet, and `enterprise-auth` has no CORS middleware for a
+cross-origin `fetch` with credentials — both real, separately-scoped
+frontend gaps), and Tantivy write-routing per the above. Full
+accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit

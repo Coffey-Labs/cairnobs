@@ -182,18 +182,14 @@ silently left out:
   a cross-origin `fetch` with credentials from `web`'s origin needs
   it), neither of which is verifiable in this environment without a
   live backend and a browser session to exercise.
-- **Ingest write-routing, for either storage engine** -- identity is now
-  real (see "Ingest tenant identity" below), but nothing consumes it
-  yet: `chrunner`/`searchclient` prove read isolation given tenant-
-  scoped data exists, and every record `ingest` produces is now tagged
-  with a real tenant ID, but neither `ingest/internal/consumer` (the
-  ClickHouse writer) nor `search/src/consumer.rs` (a completely
-  independent Redpanda consumer) reads that tag back to route the write
-  anywhere per-tenant. Every record still lands in the single shared
-  ClickHouse database and the single shared Tantivy index regardless of
-  tenant. A newly-provisioned tenant's storage is real and isolated, and
-  permanently empty. Now scoped, disclosed remaining work, not an
-  undesigned gap -- see `/docs/security/threat-model.md`.
+- **Ingest write-routing, for Tantivy** -- `search/src/consumer.rs` (a
+  completely independent Redpanda consumer, not called through `ingest`
+  or `enterprise-ingest` at all) still writes every record into the one
+  shared (default) Tantivy index, regardless of tenant. The ClickHouse
+  half is now built (see "Ingest write-routing" below); Tantivy's is
+  real, disclosed, separate follow-up work -- a different codebase
+  (Rust) and a different consumer process, not just "the same fix
+  applied twice."
 
 Deployment-topology routing (does traffic actually reach `enterprise-api`
 instead of `api`) is no longer deferred -- both `deploy/helm/sentry` and
@@ -226,17 +222,67 @@ import (`ingest` is AGPL core), same "network boundary, not import
 boundary" shape `api/authz.HTTPAuthorizer` already uses for the query
 path.
 
-**What this does not do**: change where a record is actually written.
-See "Deliberately deferred" above -- attaching a verified tenant
-identity as early as possible (right where the credential is presented)
-was built as a self-contained first step; per-tenant write-routing for
-both storage engines is separate, scoped follow-up work.
+## Ingest write-routing (ClickHouse)
+
+`enterprise/cmd/enterprise-ingest` is `ingest -mode=consumer`'s multi-
+tenant alternative -- same "second binary" shape as `enterprise-api`
+next to `api/cmd/api` (AGPL core must never import `enterprise/`, so the
+tenant-aware wiring has to live in a binary that imports *into* core,
+not the reverse). It reuses `ingest/consumer.Consumer`'s exact flush
+loop unchanged, swapping in `enterprise/internal/chwriter.Registry` --
+chrunner's write-side counterpart -- as the writer: one fully separate
+`*ingest/clickhousewriter.Writer` (and the `driver.Conn` under it) per
+tenant, built once at startup from `rbacstore.
+ListProvisionedDataSources` (the same source of truth `chrunner` already
+uses for reads). `WriteBatch` groups a Kafka batch's records by their
+`tenant_id` tag and writes each tenant's group through its own
+dedicated connection, refusing the whole call (matching `ingest/
+consumer`'s existing all-or-nothing batch contract -- no offsets commit,
+the batch redelivers) if any record is untagged or tagged with a tenant
+that isn't provisioned. `ingest/consumer` and `ingest/clickhousewriter`
+moved out of `internal/` for this -- same Go compiler-enforced
+visibility reasoning as every other package this phase moved out of
+`internal/` for a cross-module import (see `ingest/README.md`'s "Multi-
+tenant write-routing" section).
+
+A real bug was found and fixed while wiring this up:
+`tenantprovision.ProvisionClickHouse` originally granted a tenant's
+ClickHouse user `SELECT` only -- correct for `chrunner`'s query path,
+but it would have made every real per-tenant write from `chwriter` fail
+with a permission error, since it's the *same* credential used for
+both. Fixed by granting `SELECT, INSERT` (not a second, separate
+write-only credential -- there's no cross-tenant boundary crossed by
+also granting INSERT within a tenant's own database, so one credential
+for both directions is the simpler, still-correctly-scoped choice).
+
+A real multi-tenant deployment runs `ingest -mode=server` (agent-facing,
+tags records, unchanged) alongside `enterprise-ingest` (consumer,
+per-tenant writes) *instead of* `ingest -mode=consumer` -- see `deploy/
+helm/sentry`'s `ingest.requireTenantCredential` value (gates both the
+credential-validation requirement and this mode split together, since
+write-routing is only meaningful once records actually carry a
+tenant_id to route on) and `docker-compose.yml`'s `enterprise-ingest`
+service (a simpler opt-in there -- true `-mode=server`/`-mode=consumer`
+exclusivity isn't wired in compose, a disclosed local-dev-only gap; see
+that service's own comment).
+
+Verified: `enterprise/internal/chwriter`'s fail-closed paths (empty/
+unknown `tenant_id`) run genuinely without Docker (constructing a
+`Registry` directly, bypassing `New`, which is the only part that would
+dial ClickHouse); the actual per-tenant write-isolation probe
+(`TestRegistryWritesEachTenantToItsOwnDatabase`) and the
+`tenantprovision` INSERT-grant regression test are real integration
+tests against a live ClickHouse, same `CHWRITER_TEST_CLICKHOUSE_ADDR`/
+`TENANTPROVISION_TEST_CLICKHOUSE_ADDR` convention as every other
+ClickHouse-backed test this phase -- not run against a live database in
+this environment.
 
 ## Package layout
 
 ```
 cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features/authorize-ingest endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant, -create-ingest-credential-tenant, -list-ingest-credentials-tenant, -revoke-ingest-credential
 cmd/enterprise-api/     multi-tenant-aware alternative to api/cmd/api -- see its own doc comment
+cmd/enterprise-ingest/   multi-tenant-aware alternative to ingest -mode=consumer -- see its own doc comment
 internal/tenant/        the ID type -- see its package doc comment before touching it
 internal/oidc/           coreos/go-oidc wiring: discovery, login redirect, code exchange + ID token verification
 internal/saml/            crewjam/saml wiring: SP setup, login redirect, response parsing/validation
@@ -247,10 +293,12 @@ internal/rbacstore/          users/tenants/tenant_memberships/data_sources/dashb
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
 internal/tenantcrd/            syncs -provision-tenant's real result into deploy/operator's Tenant CRD (K8s dynamic client, no cluster needed to test)
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
+internal/chwriter/              tenant-scoped ingest/consumer.chWriter -- chrunner's write-side counterpart
 internal/searchclient/          tenant-scoped api/querylang/executor.SearchClient
 internal/audit/            append-only, hash-chained query audit log, plus the
                             api/queryapi.AuditLogger adapter (queryapi_adapter.go)
 internal/apiconfig/       enterprise-api's own env-var config
+internal/ingestconfig/     enterprise-ingest's own env-var config
 internal/config/          enterprise-auth's env-var config
 ```
 

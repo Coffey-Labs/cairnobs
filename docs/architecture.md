@@ -139,23 +139,34 @@ escape hatch is opaque to any compiler-injected filter.
   ran in the environment it was built in — Tantivy is an embedded
   library, so the cross-tenant isolation probe needed no live database
   or Docker to execute for real, and it passed.
-- **Ingest identity is now built, though write-routing isn't.** `ingest`
-  (AGPL core) gained an optional `TenantResolver`
+- **Ingest identity and ClickHouse write-routing are now built; Tantivy's
+  isn't.** `ingest` (AGPL core) gained an optional `TenantResolver`
   (`ingest/internal/grpcserver`): an agent presents a per-tenant bearer
   credential (`enterprise-auth -create-ingest-credential-tenant=<id>`
   mints one, only its hash stored), validated over the network via a new
   `POST /internal/authorize-ingest` endpoint (never an `enterprise/`
   import — same "network boundary, not import boundary" shape
   `api/authz.Authorizer` already uses), and the resolved tenant ID rides
-  as a `tenant_id` Kafka message header on every record produced. What
-  isn't built yet: neither `ingest`'s own ClickHouse writer nor
-  `search`'s independent Redpanda consumer reads that header back to
-  route the write anywhere per-tenant — every record still lands in the
-  one shared ClickHouse database and Tantivy index regardless of tenant,
-  correctly tagged but not yet isolated at write time. That per-tenant
-  write-routing split is real, scoped remaining work (likely another
-  "second binary," mirroring `enterprise-api`), not something this
-  change claims to have closed.
+  as a `tenant_id` Kafka message header on every record produced.
+  `enterprise/cmd/enterprise-ingest` (another "second binary," mirroring
+  `enterprise-api`) consumes that tag: it reuses `ingest/consumer`'s own
+  flush loop with `enterprise/internal/chwriter.Registry` swapped in as
+  the writer, routing each batch's records to a per-tenant ClickHouse
+  connection (one per tenant, built from `rbacstore.
+  ListProvisionedDataSources` — the same source `chrunner` already uses
+  for reads), fail-closed on an untagged or unprovisioned tenant.
+  Building it found and fixed a real bug: `tenantprovision.
+  ProvisionClickHouse` originally granted a tenant's ClickHouse user
+  `SELECT` only, which would have made every real per-tenant write fail
+  with a permission error — fixed by granting `SELECT, INSERT` (one
+  credential, both directions; no cross-tenant boundary is crossed by
+  also allowing INSERT within a tenant's own database). What isn't built
+  yet: `search`'s independent Redpanda consumer (a different codebase —
+  Rust — and a different process, not reachable through either `ingest`
+  or `enterprise-ingest`) still writes every record into the one shared
+  Tantivy index regardless of tenant. That's real, disclosed, separately
+  scoped remaining work, not something this change claims to have
+  closed.
 - `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
   are now unified, deliberately lightweight: `-provision-tenant` stays
   the sole real actor (ClickHouse + `rbacstore`), and now also syncs its

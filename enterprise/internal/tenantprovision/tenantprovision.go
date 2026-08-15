@@ -59,8 +59,16 @@ func New(admin driver.Conn) *Provisioner {
 }
 
 // ProvisionClickHouse creates tenantID's database and a fresh user for
-// it, granted SELECT on exactly that database and nothing else.
-// Database creation is idempotent (CREATE DATABASE IF NOT EXISTS --
+// it, granted SELECT and INSERT on exactly that database and nothing
+// else -- one credential covers both enterprise/internal/chrunner's
+// query path and enterprise/internal/chwriter's ingest-write path
+// (found while building chwriter: the grant here originally covered
+// SELECT only, which would have made every real per-tenant ClickHouse
+// write fail with a permission error -- there's no cross-tenant
+// boundary crossed by also granting INSERT within a tenant's own
+// database, so a single credential for both directions is the simpler,
+// still-correctly-scoped choice over provisioning a second write-only
+// credential). Database creation is idempotent (CREATE DATABASE IF NOT EXISTS --
 // harmless to repeat). User creation deliberately is NOT idempotent
 // (plain CREATE USER, no IF NOT EXISTS): ClickHouse has no way to read
 // back an existing user's password, so silently succeeding on a second
@@ -108,8 +116,8 @@ func (p *Provisioner) ProvisionClickHouse(ctx context.Context, tenantID string) 
 		return Credentials{}, fmt.Errorf("tenantprovision: creating user (already provisioned? this call is not safe to retry): %w", err)
 	}
 
-	if err := p.admin.Exec(ctx, fmt.Sprintf("GRANT SELECT ON `%s`.* TO `%s`", database, username)); err != nil {
-		return Credentials{}, fmt.Errorf("tenantprovision: granting select: %w", err)
+	if err := p.admin.Exec(ctx, fmt.Sprintf("GRANT SELECT, INSERT ON `%s`.* TO `%s`", database, username)); err != nil {
+		return Credentials{}, fmt.Errorf("tenantprovision: granting select/insert: %w", err)
 	}
 
 	return Credentials{Username: username, Password: password}, nil

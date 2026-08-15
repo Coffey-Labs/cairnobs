@@ -1,0 +1,64 @@
+{{/*
+Only rendered once per-tenant write-routing is actually turned on (see
+ingest.yaml's -mode=server comment) -- this Deployment is what takes
+over consuming sentry.logs.raw once ingest.yaml's own consumer half
+stops, routing each record to its own tenant's dedicated ClickHouse
+database (enterprise/internal/chwriter) instead of the one shared table.
+No Service: this is a pure background worker, nothing calls it, only
+kubelet's own probes talk to its /healthz.
+*/}}
+{{- if and .Values.enterprise.enabled .Values.ingest.requireTenantCredential }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-enterprise-ingest
+  labels:
+    {{- include "sentry.labels" . | nindent 4 }}
+    {{- include "sentry.selectorLabels" (list $ "enterprise-ingest") | nindent 4 }}
+spec:
+  replicas: {{ .Values.ingest.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sentry.selectorLabels" (list $ "enterprise-ingest") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sentry.selectorLabels" (list $ "enterprise-ingest") | nindent 8 }}
+    spec:
+      initContainers:
+        {{- include "sentry.waitForTCP" (list "redpanda" (printf "%s-redpanda" .Release.Name) "9092") | nindent 8 }}
+        {{- include "sentry.waitForTCP" (list "clickhouse" (printf "%s-clickhouse" .Release.Name) "9000") | nindent 8 }}
+        {{- include "sentry.waitForTCP" (list "postgres" (printf "%s-postgres" .Release.Name) "5432") | nindent 8 }}
+      containers:
+        - name: enterprise-ingest
+          image: "{{ .Values.enterprise.ingestImage.repository }}:{{ .Values.enterprise.ingestImage.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: REDPANDA_BROKERS
+              value: "{{ .Release.Name }}-redpanda:9092"
+            - name: CLICKHOUSE_ADDR
+              value: "{{ .Release.Name }}-clickhouse:9000"
+            - name: POSTGRES_ADDR
+              value: "{{ .Release.Name }}-postgres:5432"
+            - name: POSTGRES_DATABASE
+              value: sentry_metadata
+            - name: POSTGRES_USERNAME
+              value: sentry
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: password
+          readinessProbe:
+            exec:
+              command: ["/enterprise-ingest", "-healthcheck"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/enterprise-ingest", "-healthcheck"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.ingest.resources | nindent 12 }}
+{{- end }}
