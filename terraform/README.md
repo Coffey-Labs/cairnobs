@@ -5,7 +5,8 @@ names this a first-class deliverable alongside `sentryctl`
 ("CLI and Terraform provider are first-class, not afterthoughts"), but
 no phase before this one had actually built any of it. Three resources
 so far (`sentry_dashboard`, `sentry_alert_rule`,
-`sentry_notification_target`), not a finished provider, built on
+`sentry_notification_target`), each paired with a read-only data source
+of the same name, not a finished provider, built on
 [HashiCorp's `terraform-plugin-framework`][framework] (the
 actively-developed library, not the legacy SDKv2 -- there's no existing
 provider code here to migrate, so there's no reason to start on the
@@ -130,6 +131,35 @@ the standard, well-known Terraform caveat for any sensitive attribute
 (encrypt the state backend, restrict who can read it), named here rather
 than left implicit.
 
+## Data sources
+
+Each resource above has a matching read-only data source (`data
+"sentry_dashboard"`, `data "sentry_alert_rule"`, `data
+"sentry_notification_target"`), a single `id` attribute in, every other
+attribute out -- a lookup against the same `GET`/`{id}` endpoint the
+matching resource's own `Read` already uses, nothing new added to
+`client.go` beyond that. Mechanical and low-risk by design: no new
+architectural question, no new external service, no new write path --
+just reusing the resource's own model/conversion functions
+(`dashboardModelFromAPI` etc.) against a `Required` `id` input instead
+of a full config.
+
+```hcl
+data "sentry_notification_target" "ops" {
+  id = "target-abc123"
+}
+
+resource "sentry_alert_rule" "checkout_5xx" {
+  # ...
+  notification_target_id = data.sentry_notification_target.ops.id
+}
+```
+
+`sentry_notification_target`'s data source has the same `secret`
+caveat its resource does -- `Sensitive`, but a real value visible in
+Terraform state; see "`sentry_notification_target`'s `secret`
+attribute" above.
+
 **Also not built, all real and disclosed, not attempted here:**
 - Tenant/RBAC resources (`enterprise-auth`'s tenant/membership/grant
   surface) -- meaningfully different auth model (offline operator flags
@@ -137,9 +167,6 @@ than left implicit.
   idempotently -- see `/enterprise/README.md`'s "Bootstrapping a tenant"
   section) and Phase 4 commercial licensing, so this would need its own
   design pass, not just "add another resource file."
-- Data sources (read-only lookup by ID/name) for any of the three
-  resources -- straightforward given the resources already exist, just
-  not built yet.
 - Dashboard panels (see "Panels are not managed by this resource" above).
 - Publishing to the real Terraform Registry -- `main.go`'s `Address`
   (`registry.terraform.io/sentry/sentry`) is the address a real
@@ -167,26 +194,29 @@ extra `"state"` key this client deliberately has no field for still
 parse cleanly, and (for targets) proving `secret` really does come back
 unredacted -- documenting real `alerting` behavior with a test, not just
 a comment, so a future change to that behavior would be caught here too.
-`internal/provider/provider_test.go` validates the provider and all
-three resource schemas are internally well-formed (attribute names, the
-`Required`/`Computed`/`Sensitive` split) without needing a Terraform
-binary or a live `api`/`alerting` service at all.
+`internal/provider/provider_test.go` validates the provider's, all
+three resources', and all three data sources' schemas are internally
+well-formed (attribute names, the `Required`/`Computed`/`Sensitive`
+split -- for data sources, specifically that `id` is `Required` and
+everything else is `Computed`) without needing a Terraform binary or a
+live `api`/`alerting` service at all.
 
-`internal/provider/dashboard_resource_test.go`'s
-`TestAccDashboardResource_basic`,
-`internal/provider/alert_rule_resource_test.go`'s
-`TestAccAlertRuleResource_basic`, and
-`internal/provider/notification_target_resource_test.go`'s
-`TestAccNotificationTargetResource_basic` are real acceptance tests
-using [`terraform-plugin-testing`][testing] -- skipped unless `TF_ACC=1`
-is set, that framework's own standard convention, the same shape every
-other live-infrastructure test in this repo uses (`docker`-gated env
-vars for Postgres/ClickHouse tests elsewhere). The rule and target tests
-both use a `plancheck.ExpectResourceAction` assertion proving a config
-change actually plans a destroy-then-create, not an in-place update --
-the concrete, checked version of the "create/destroy only" design
-decision documented above, not just a claim in a comment. Even with
-`TF_ACC=1` all three tests also need real running `api`/`alerting`
+Each resource and data source pair has a matching `TestAcc*_basic` in
+its own `_test.go` file (`dashboard_resource_test.go`/
+`dashboard_data_source_test.go`, and likewise for the other two) -- six
+real acceptance tests total, using [`terraform-plugin-testing`][testing]
+-- skipped unless `TF_ACC=1` is set, that framework's own standard
+convention, the same shape every other live-infrastructure test in this
+repo uses (`docker`-gated env vars for Postgres/ClickHouse tests
+elsewhere). The rule and target *resource* tests both use a
+`plancheck.ExpectResourceAction` assertion proving a config change
+actually plans a destroy-then-create, not an in-place update -- the
+concrete, checked version of the "create/destroy only" design decision
+documented above, not just a claim in a comment; the *data source*
+tests each create a resource then look it up via `resource.
+TestCheckResourceAttrPair`, proving the data source's `Read` actually
+agrees with what the resource wrote, not just that both compile. Even
+with `TF_ACC=1` all six tests also need real running `api`/`alerting`
 services (Postgres + ClickHouse) to apply against, which this
 environment has no Docker access to bring up -- **not run here**, same
 disclosed gap as every other live-infra test across this repo (see
