@@ -1,16 +1,18 @@
-# notification_target_id has to name an already-existing target --
-# no sentry_notification_target resource exists yet (see the provider
-# README), so create one via sentryctl/curl/the web UI first and pass
-# its id in here.
+resource "sentry_notification_target" "ops_webhook" {
+  name        = "Ops Webhook"
+  kind        = "webhook"
+  webhook_url = "https://ops.example.com/hooks/sentry-alerts"
+}
+
 resource "sentry_alert_rule" "checkout_5xx" {
-  name                   = "Checkout 5xx spike"
-  query                  = "service=checkout status>=500 | stats count"
-  condition_type         = "threshold"
-  comparator             = "gt"
-  threshold_value        = 50
-  eval_interval_seconds  = 60
-  for_minutes            = 5
-  notification_target_id = "target-abc123"
+  name                    = "Checkout 5xx spike"
+  query                   = "service=checkout status>=500 | stats count"
+  condition_type          = "threshold"
+  comparator              = "gt"
+  threshold_value         = 50
+  eval_interval_seconds   = 60
+  for_minutes             = 5
+  notification_target_id = sentry_notification_target.ops_webhook.id
 }
 
 # Create/destroy only -- alerting has no PUT /rules/{id} today, so

@@ -20,15 +20,15 @@ described there without flagging it to me first.
   UI-only logic. CLI (`sentryctl`) and Terraform provider are first-class,
   not afterthoughts. **Status**: `sentryctl` has been built out phase by
   phase since Phase 3. The Terraform provider (`/terraform`) only exists
-  as of this note -- two resources (`sentry_dashboard`, full CRUD;
-  `sentry_alert_rule`, create/destroy only -- `alerting` has no
-  `PUT /rules/{id}` to update against), built on HashiCorp's
+  as of this note -- three resources (`sentry_dashboard`, full CRUD;
+  `sentry_alert_rule` and `sentry_notification_target`, both create/
+  destroy only -- `alerting` has no `PUT /rules/{id}` or
+  `PUT /targets/{id}` to update against), built on HashiCorp's
   `terraform-plugin-framework`, reusing the exact same REST contracts
   `sentryctl dashboards apply`/web's dashboard export and
-  `sentryctl alerts apply` already use. Notification targets and
-  tenant/RBAC resources are real, disclosed future work -- see
-  `/terraform/README.md` for the full accounting of what is and isn't
-  built, and the same
+  `sentryctl alerts apply` already use. Tenant/RBAC resources are real,
+  disclosed future work -- see `/terraform/README.md` for the full
+  accounting of what is and isn't built, and the same
   "written but not run against a live stack" verification caveat as
   everything else Docker-gated in this repo.
 

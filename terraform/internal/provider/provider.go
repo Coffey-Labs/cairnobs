@@ -57,7 +57,7 @@ func (p *sentryProvider) Metadata(_ context.Context, _ provider.MetadataRequest,
 
 func (p *sentryProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages Sentry log-aggregation-platform resources. Dashboards and alert rules for now -- notification targets and tenant/RBAC resources are real, disclosed future work, not built in this pass; see the provider README.",
+		Description: "Manages Sentry log-aggregation-platform resources. Dashboards, alert rules, and notification targets for now -- tenant/RBAC resources are real, disclosed future work, not built in this pass; see the provider README.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				Optional: true,
@@ -130,6 +130,7 @@ func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource
 	return []func() resource.Resource{
 		newDashboardResource,
 		newAlertRuleResource,
+		newNotificationTargetResource,
 	}
 }
 

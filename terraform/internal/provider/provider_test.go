@@ -99,3 +99,37 @@ func TestAlertRuleResourceMetadataSetsTypeName(t *testing.T) {
 		t.Fatalf("TypeName = %q, want sentry_alert_rule", resp.TypeName)
 	}
 }
+
+func TestNotificationTargetResourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := resource.SchemaRequest{}
+	resp := &resource.SchemaResponse{}
+
+	newNotificationTargetResource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_notification_target schema has errors: %v", resp.Diagnostics)
+	}
+	for _, attr := range []string{
+		"id", "tenant_id", "name", "kind", "webhook_url",
+		"payload_template", "headers", "secret", "created_by",
+	} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("sentry_notification_target schema missing expected attribute %q", attr)
+		}
+	}
+	if !resp.Schema.Attributes["name"].IsRequired() {
+		t.Error(`"name" must be Required`)
+	}
+	if !resp.Schema.Attributes["secret"].IsSensitive() {
+		t.Error(`"secret" must be Sensitive`)
+	}
+}
+
+func TestNotificationTargetResourceMetadataSetsTypeName(t *testing.T) {
+	resp := &resource.MetadataResponse{}
+	newNotificationTargetResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
+	if resp.TypeName != "sentry_notification_target" {
+		t.Fatalf("TypeName = %q, want sentry_notification_target", resp.TypeName)
+	}
+}
