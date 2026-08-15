@@ -31,10 +31,23 @@ sentryctl dashboards list
 sentryctl dashboards get <id>
 sentryctl dashboards apply dashboard.json    # imports a dashboard exported via the web UI's "Export JSON" button
 
+sentryctl dashboards permissions list <dashboard-id>
+sentryctl dashboards permissions grant <dashboard-id> <user-id> viewer|editor
+sentryctl dashboards permissions revoke <dashboard-id> <user-id>
+
 sentryctl alerts list
 sentryctl alerts get <id>
 sentryctl alerts apply rule.json             # creates a rule from a JSON file shaped like POST /rules's body
 ```
+
+`dashboards permissions` is Phase 4's per-resource dashboard grant
+(`api/dashboards.PermissionStore`) — additive-only, raises someone to
+`viewer` or `editor` on one specific dashboard (Admin/Owner already have
+tenant-wide access, so the server rejects any other role). On plain
+`api` (no `enterprise-api`, no permission service wired in) every
+`permissions` call fails with a 501 whose message says so explicitly —
+that's the deployment telling you this feature isn't available, not a
+CLI bug.
 
 `dashboards` talks to `/api` (`--api`, same override as `query`/`ping`).
 `alerts` talks to `/alerting`, a separate service with its own base URL

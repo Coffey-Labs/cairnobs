@@ -55,6 +55,9 @@ Usage:
   sentryctl ping [--api <url>]
   sentryctl query "<query>" [--api <url>] [--language sql|spl] [--json]
   sentryctl dashboards list|get <id>|apply <file> [--api <url>]
+  sentryctl dashboards permissions list <dashboard-id> [--api <url>]
+  sentryctl dashboards permissions grant <dashboard-id> <user-id> viewer|editor [--api <url>]
+  sentryctl dashboards permissions revoke <dashboard-id> <user-id> [--api <url>]
   sentryctl alerts list|get <id>|apply <file> [--alerting-api <url>]
 
 Commands:
@@ -67,6 +70,12 @@ Commands:
               "apply <file>" imports a dashboard exported via the web
               UI's Export JSON button or GET /dashboards/{id}/export --
               the same JSON shape both places, Terraform-friendly.
+              "permissions" grants/revokes/lists per-resource dashboard
+              access (a Phase 4, enterprise-api-only feature -- a 501 on
+              plain api means no enterprise permission service is wired
+              in on this deployment, not a client error). A grant only
+              ever raises someone to viewer or editor on one dashboard;
+              Admin/Owner already have tenant-wide access.
   alerts      list/get/apply against alerting's rule CRUD endpoints.
               "apply <file>" creates a rule from a JSON file with the
               same shape POST /rules accepts.
