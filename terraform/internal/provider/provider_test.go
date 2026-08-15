@@ -66,6 +66,44 @@ func TestDashboardResourceMetadataSetsTypeName(t *testing.T) {
 	}
 }
 
+func TestDashboardPanelResourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := resource.SchemaRequest{}
+	resp := &resource.SchemaResponse{}
+
+	newDashboardPanelResource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_dashboard_panel schema has errors: %v", resp.Diagnostics)
+	}
+	for _, attr := range []string{
+		"id", "dashboard_id", "title", "query", "query_language", "viz_type", "viz_config",
+		"position_x", "position_y", "width", "height",
+		"earliest_override", "latest_override", "sort_order", "created_at", "updated_at",
+	} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("sentry_dashboard_panel schema missing expected attribute %q", attr)
+		}
+	}
+	if !resp.Schema.Attributes["query"].IsRequired() {
+		t.Error(`"query" must be Required`)
+	}
+	if !resp.Schema.Attributes["dashboard_id"].IsRequired() {
+		t.Error(`"dashboard_id" must be Required`)
+	}
+	if !resp.Schema.Attributes["id"].IsComputed() {
+		t.Error(`"id" must be Computed`)
+	}
+}
+
+func TestDashboardPanelResourceMetadataSetsTypeName(t *testing.T) {
+	resp := &resource.MetadataResponse{}
+	newDashboardPanelResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
+	if resp.TypeName != "sentry_dashboard_panel" {
+		t.Fatalf("TypeName = %q, want sentry_dashboard_panel", resp.TypeName)
+	}
+}
+
 func TestAlertRuleResourceSchemaValid(t *testing.T) {
 	ctx := context.Background()
 	req := resource.SchemaRequest{}
@@ -153,6 +191,27 @@ func TestDashboardDataSourceSchemaValid(t *testing.T) {
 	}
 }
 
+func TestDashboardPanelDataSourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := datasource.SchemaRequest{}
+	resp := &datasource.SchemaResponse{}
+
+	newDashboardPanelDataSource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_dashboard_panel data source schema has errors: %v", resp.Diagnostics)
+	}
+	if !resp.Schema.Attributes["dashboard_id"].IsRequired() {
+		t.Error(`"dashboard_id" must be Required`)
+	}
+	if !resp.Schema.Attributes["id"].IsRequired() {
+		t.Error(`"id" must be Required`)
+	}
+	if !resp.Schema.Attributes["query"].IsComputed() {
+		t.Error(`"query" must be Computed`)
+	}
+}
+
 func TestAlertRuleDataSourceSchemaValid(t *testing.T) {
 	ctx := context.Background()
 	req := datasource.SchemaRequest{}
@@ -195,6 +254,7 @@ func TestDataSourcesMetadataSetTypeNames(t *testing.T) {
 		wantType string
 	}{
 		{newDashboardDataSource, "sentry_dashboard"},
+		{newDashboardPanelDataSource, "sentry_dashboard_panel"},
 		{newAlertRuleDataSource, "sentry_alert_rule"},
 		{newNotificationTargetDataSource, "sentry_notification_target"},
 	}
