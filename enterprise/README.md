@@ -249,6 +249,21 @@ visibility reasoning as every other package this phase moved out of
 `internal/` for a cross-module import (see `ingest/README.md`'s "Multi-
 tenant write-routing" section).
 
+The writer map isn't frozen at startup anymore: `Registry.
+StartRefreshing` (called from `cmd/enterprise-ingest/main.go` right
+after construction) spawns a goroutine that re-lists data sources every
+minute and reconciles the map -- opens a connection for a newly-active
+tenant, closes and removes one no longer active. This closes the same
+staleness gap `search/src/tenants.rs`'s `ActiveTenantTracker` closes on
+the Tantivy side (see `/search/README.md`'s "Per-tenant indices"
+section), at the same one-minute interval, so a deprovisioned tenant
+loses write access on both storage engines within roughly the same
+window instead of ClickHouse's writer surviving until the next
+`enterprise-ingest` restart. A refresh failure (rbacstore unreachable,
+or one tenant's new connection failing to open) logs and leaves the
+existing map untouched for that tick, the same last-known-good posture
+the Rust tracker uses.
+
 A real bug was found and fixed while wiring this up:
 `tenantprovision.ProvisionClickHouse` originally granted a tenant's
 ClickHouse user `SELECT` only -- correct for `chrunner`'s query path,
@@ -271,15 +286,17 @@ exclusivity isn't wired in compose, a disclosed local-dev-only gap; see
 that service's own comment).
 
 Verified: `enterprise/internal/chwriter`'s fail-closed paths (empty/
-unknown `tenant_id`) run genuinely without Docker (constructing a
-`Registry` directly, bypassing `New`, which is the only part that would
-dial ClickHouse); the actual per-tenant write-isolation probe
-(`TestRegistryWritesEachTenantToItsOwnDatabase`) and the
-`tenantprovision` INSERT-grant regression test are real integration
-tests against a live ClickHouse, same `CHWRITER_TEST_CLICKHOUSE_ADDR`/
-`TENANTPROVISION_TEST_CLICKHOUSE_ADDR` convention as every other
-ClickHouse-backed test this phase -- not run against a live database in
-this environment.
+unknown `tenant_id`, and now a failed refresh keeping the last-known-good
+map) run genuinely without Docker (constructing a `Registry` directly,
+bypassing `New`, which is the only part that would dial ClickHouse); the
+actual per-tenant write-isolation probe
+(`TestRegistryWritesEachTenantToItsOwnDatabase`), the `tenantprovision`
+INSERT-grant regression test, and refresh's add/remove reconciliation
+(`TestRefreshAddsNewlyActiveTenant`/`TestRefreshRemovesNoLongerActiveTenant`)
+are real integration tests against a live ClickHouse, same
+`CHWRITER_TEST_CLICKHOUSE_ADDR`/`TENANTPROVISION_TEST_CLICKHOUSE_ADDR`
+convention as every other ClickHouse-backed test this phase -- not run
+against a live database in this environment.
 
 ## Package layout
 

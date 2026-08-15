@@ -283,8 +283,16 @@ default as everything else optional in this codebase); when they are,
 startup blocks on the first fetch succeeding and later refresh failures
 keep serving the last-known-good set rather than clearing it. Verified
 with real HTTP round trips against a hand-rolled TCP test server in this
-environment, no live enterprise-auth needed. **The tenant-picker page is
-now built too**:
+environment, no live enterprise-auth needed. **This closing move exposed
+the ClickHouse side's own gap by comparison** — `chwriter.Registry`'s
+writer map was still a startup-only snapshot with no refresh at all, a
+real asymmetry once Tantivy's tracker refreshed every minute and
+ClickHouse's didn't — so `Registry.StartRefreshing` (new) closes that
+too: same one-minute interval, same last-known-good posture on a failed
+refresh, opening connections for newly-active tenants and closing ones
+no longer active. Both engines now share the same active-tenant
+staleness bound instead of one being materially staler than the other.
+**The tenant-picker page is now built too**:
 `web/src/routes/select-tenant` calls `GET /auth/memberships`/
 `POST /auth/select-tenant` via `fetch(..., {credentials: 'include'})`
 (new `$lib/api.ts` functions), which needed a second CORS posture
