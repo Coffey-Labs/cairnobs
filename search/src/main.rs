@@ -35,11 +35,10 @@ async fn main() -> Result<()> {
     let index = Arc::new(
         SearchIndex::open_or_create(&cfg.index_path).context("opening tantivy index")?,
     );
-    // Per-tenant indices (Phase 4) are resolved on demand by
-    // IndexRegistry, opened under cfg.tenants_index_path -- see
-    // registry.rs's doc comment for what this does and doesn't isolate
-    // yet (read-side only; the consumer below still only ever writes
-    // into the single default `index` above).
+    // Per-tenant indices are resolved on demand by IndexRegistry, opened
+    // under cfg.tenants_index_path -- see registry.rs's doc comment for
+    // what this isolates (both read and write now) and the one residual
+    // gap it doesn't close.
     let registry = Arc::new(IndexRegistry::new(Arc::clone(&index), cfg.tenants_index_path.clone()));
 
     let partition_count: i32 = std::env::var("REDPANDA_TOPIC_PARTITIONS")
@@ -48,9 +47,9 @@ async fn main() -> Result<()> {
         .unwrap_or(DEFAULT_PARTITION_COUNT);
 
     let consumer_cfg = Arc::clone(&cfg);
-    let consumer_index = Arc::clone(&index);
+    let consumer_registry = Arc::clone(&registry);
     let consumer_handle = tokio::spawn(async move {
-        if let Err(e) = consumer::run(consumer_cfg, consumer_index, partition_count).await {
+        if let Err(e) = consumer::run(consumer_cfg, consumer_registry, partition_count).await {
             tracing::error!(error = %e, "redpanda consumer exited with error");
         }
     });

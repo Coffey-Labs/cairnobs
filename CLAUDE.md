@@ -249,18 +249,33 @@ ClickHouse user `SELECT` only, which would have made every real
 per-tenant write fail with a permission error — fixed by granting
 `SELECT, INSERT` (one credential, both directions; no cross-tenant
 boundary is crossed by also allowing INSERT within a tenant's own
-database). **What's still deferred, clearly**: Tantivy's side.
-`search/src/consumer.rs` is a completely independent Redpanda consumer
-(not called through `ingest` or `enterprise-ingest` at all) and still
-writes every record into the one shared (default) index regardless of
-tenant — a different codebase (Rust) and a different process, real,
-disclosed, separately-scoped remaining work, not just "the same fix
-applied twice." What still keeps this phase from being done: the actual
-tenant-picker *page* doesn't exist (`web` has no session/cookie-handling
-code at all yet, and `enterprise-auth` has no CORS middleware for a
-cross-origin `fetch` with credentials — both real, separately-scoped
-frontend gaps), and Tantivy write-routing per the above. Full
-accounting:
+database). **Tantivy write-routing is now built too** —
+`search/src/consumer.rs` (a completely independent Redpanda consumer,
+not called through `ingest` or `enterprise-ingest` at all: a different
+codebase and process) now resolves each record's `tenant_id` header
+through the *same* `IndexRegistry` the read side already used, and
+routes the write there instead of always into the default index. Unlike
+the ClickHouse side, this needed no "second binary": `IndexRegistry`
+already lives in this AGPL-core binary (Tantivy has no grant system to
+gate a commercially-licensed credential behind, so there was never an
+import-boundary reason to split it out), so read and write share one
+registry directly. The periodic Tantivy commit now commits every tenant
+index that's seen a write, not just the default one
+(`IndexRegistry::commit_all`). **One gap disclosed, not fixed, in this
+same change**: unlike `chwriter.Registry` (built from an
+active-tenants-only snapshot at startup) and unlike the read side (gated
+by `searchclient.TenantChecker`), this consumer's `resolve()` call has
+no active-tenant check — this process has no Postgres access to check
+against, so a still-valid-but-should-be-revoked ingest credential can
+cause an index directory to be created for a tenant that's no longer
+active. Narrow blast radius (an orphan, isolated, empty index — not
+cross-tenant leakage — and only reachable with a real signed
+credential), but real; see `search/src/registry.rs`'s doc comment on
+`resolve`. What still keeps this phase from being done: only the
+tenant-picker *page* now — `web` has no session/cookie-handling code at
+all yet, and `enterprise-auth` has no CORS middleware for a cross-origin
+`fetch` with credentials, both real, separately-scoped frontend gaps.
+Full accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit

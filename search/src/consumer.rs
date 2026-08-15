@@ -2,13 +2,25 @@ use anyhow::{Context, Result};
 use prost::Message;
 use rskafka::client::partition::UnknownTopicHandling;
 use rskafka::client::ClientBuilder;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::config::Config;
-use crate::index::SearchIndex;
 use crate::logsv1;
 use crate::offsets::OffsetStore;
+use crate::registry::IndexRegistry;
+
+/// Kafka message header a resolved tenant ID rides in, attached by
+/// ingest's gRPC front end. Mirrors `ingest/internal/grpcserver.
+/// TenantIDHeaderKey` / `ingest/consumer.TenantIDHeaderKey` -- those two
+/// Go packages duplicate the same literal rather than importing across a
+/// producer/consumer boundary (see their doc comments), and this Rust
+/// consumer is a third independent reader of the same header, so it
+/// duplicates the literal too. `TestTenantIDHeaderKeyMatchesGo` below
+/// guards against drift the same way `ingest/cmd/ingest`'s
+/// `TestTenantIDHeaderKeyConstantsMatch` does on the Go side.
+const TENANT_ID_HEADER_KEY: &str = "tenant_id";
 
 /// Reads the same `sentry.logs.raw` topic ingest's ClickHouse-writer
 /// consumer reads, as an independent consumer group in spirit (its own
@@ -18,7 +30,7 @@ use crate::offsets::OffsetStore;
 /// discovered dynamically, since it has to match what
 /// /transport/provision-topics.sh actually created anyway (documented
 /// cross-component contract, same as the topic name already is).
-pub async fn run(cfg: Arc<Config>, index: Arc<SearchIndex>, partition_count: i32) -> Result<()> {
+pub async fn run(cfg: Arc<Config>, registry: Arc<IndexRegistry>, partition_count: i32) -> Result<()> {
     let client = ClientBuilder::new(cfg.redpanda_brokers.clone())
         .build()
         .await
@@ -32,14 +44,16 @@ pub async fn run(cfg: Arc<Config>, index: Arc<SearchIndex>, partition_count: i32
 
     // Periodic Tantivy commit, batched for throughput the same way
     // ingest's ClickHouse writer batches inserts rather than inserting
-    // per-record.
+    // per-record. Commits every tenant index a write has actually been
+    // routed to (plus the default index), not just one -- see
+    // registry.rs's commit_all doc comment.
     let commit_interval = cfg.commit_interval;
-    let index_for_commit = Arc::clone(&index);
+    let registry_for_commit = Arc::clone(&registry);
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(commit_interval);
         loop {
             ticker.tick().await;
-            if let Err(e) = index_for_commit.commit().await {
+            if let Err(e) = registry_for_commit.commit_all().await {
                 tracing::error!(error = %e, "periodic tantivy commit failed");
             }
         }
@@ -49,11 +63,11 @@ pub async fn run(cfg: Arc<Config>, index: Arc<SearchIndex>, partition_count: i32
     for partition in 0..partition_count {
         let start_offset = offsets.lock().await.get(partition);
         let client = Arc::clone(&client);
-        let index = Arc::clone(&index);
+        let registry = Arc::clone(&registry);
         let offsets = Arc::clone(&offsets);
         let topic = cfg.redpanda_topic.clone();
         handles.push(tokio::spawn(async move {
-            consume_partition(client, topic, partition, start_offset, index, offsets).await
+            consume_partition(client, topic, partition, start_offset, registry, offsets).await
         }));
     }
 
@@ -65,13 +79,26 @@ pub async fn run(cfg: Arc<Config>, index: Arc<SearchIndex>, partition_count: i32
     Ok(())
 }
 
+/// Extracts the `tenant_id` header's value, or "" if absent -- an empty
+/// string is exactly what `IndexRegistry::resolve` treats as "route to
+/// the default index," so an untagged record (every Phase 0-3 message,
+/// and any Phase 4 message from a deployment that never turned on
+/// `ingest`'s `TenantResolver`) keeps landing in the same shared index
+/// it always has. Mirrors `ingest/consumer.tenantIDFromHeaders` exactly.
+fn tenant_id_from_headers(headers: &BTreeMap<String, Vec<u8>>) -> String {
+    headers
+        .get(TENANT_ID_HEADER_KEY)
+        .map(|v| String::from_utf8_lossy(v).into_owned())
+        .unwrap_or_default()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn consume_partition(
     client: Arc<rskafka::client::Client>,
     topic: String,
     partition: i32,
     start_offset: i64,
-    index: Arc<SearchIndex>,
+    registry: Arc<IndexRegistry>,
     offsets: Arc<Mutex<OffsetStore>>,
 ) -> Result<()> {
     let partition_client = client
@@ -115,8 +142,25 @@ async fn consume_partition(
                 continue;
             }
 
+            let tenant_id = tenant_id_from_headers(&record_and_offset.record.headers);
+            let index = match registry.resolve(&tenant_id).await {
+                Ok(index) => index,
+                Err(e) => {
+                    // Shouldn't normally happen -- ingest/grpcserver only
+                    // ever attaches a tenant_id it validated against a
+                    // real credential -- but an unsafe/malformed
+                    // tenant_id is a hard skip, never a silent fall-back
+                    // to the default or any other tenant's index. See
+                    // registry.rs's doc comment for the one residual gap
+                    // this consumer doesn't close (no active-tenant
+                    // check, since this process has no Postgres access).
+                    tracing::error!(error = %e, record_id = %rec.record_id, tenant_id, "skipping record: failed to resolve tenant index");
+                    continue;
+                }
+            };
+
             if let Err(e) = index.upsert(&rec.record_id, &rec.message).await {
-                tracing::error!(error = %e, record_id = %rec.record_id, "failed to index record");
+                tracing::error!(error = %e, record_id = %rec.record_id, tenant_id, "failed to index record");
             }
         }
 
@@ -130,5 +174,43 @@ async fn consume_partition(
                 tracing::error!(error = %e, partition, "failed to persist offset");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tenant_id_from_headers_returns_empty_string_when_absent() {
+        let headers = BTreeMap::new();
+        assert_eq!(tenant_id_from_headers(&headers), "");
+    }
+
+    #[test]
+    fn tenant_id_from_headers_extracts_the_tenant_id_header() {
+        let mut headers = BTreeMap::new();
+        headers.insert(TENANT_ID_HEADER_KEY.to_string(), b"acme".to_vec());
+        assert_eq!(tenant_id_from_headers(&headers), "acme");
+    }
+
+    #[test]
+    fn tenant_id_from_headers_ignores_unrelated_headers() {
+        let mut headers = BTreeMap::new();
+        headers.insert("some-other-header".to_string(), b"acme".to_vec());
+        assert_eq!(tenant_id_from_headers(&headers), "");
+    }
+
+    /// Guards against the exact literal drift
+    /// `ingest/cmd/ingest`'s `TestTenantIDHeaderKeyConstantsMatch` guards
+    /// against on the Go side -- three independent readers/writers of the
+    /// same Kafka header (`ingest/internal/grpcserver` producing,
+    /// `ingest/consumer` and this file both consuming) duplicate the same
+    /// literal by design rather than sharing an import across a
+    /// producer/consumer or language boundary, so nothing but a test
+    /// catches them drifting apart.
+    #[test]
+    fn test_tenant_id_header_key_matches_go() {
+        assert_eq!(TENANT_ID_HEADER_KEY, "tenant_id");
     }
 }

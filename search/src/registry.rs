@@ -6,26 +6,45 @@ use tokio::sync::RwLock;
 
 use crate::index::SearchIndex;
 
-/// Resolves a `tenant_id` (from `SearchRequest.tenant_id`, per
-/// search.proto's doc comment: set only by a trusted server-side caller
-/// -- `enterprise/internal/searchclient`, from the authenticated request
-/// identity, never a value a browser/client controls directly) to its
-/// own `SearchIndex`, opening one on demand under `<tenants_root>/
-/// <tenant_id>` the first time it's requested.
+/// Resolves a `tenant_id` to its own `SearchIndex`, opening one on
+/// demand under `<tenants_root>/<tenant_id>` the first time it's
+/// requested. Used on both sides now: the read side
+/// (`SearchRequest.tenant_id`, per search.proto's doc comment -- set
+/// only by a trusted server-side caller, `enterprise/internal/
+/// searchclient`, from the authenticated request identity, never a
+/// value a browser/client controls directly) and the write side
+/// (`consumer.rs`, from a Kafka message's `tenant_id` header, attached
+/// server-side by `ingest/internal/grpcserver` after validating an
+/// agent's per-tenant credential -- never a value the agent's message
+/// body controls directly either).
 ///
 /// An empty `tenant_id` resolves to `default_index` -- the single index
-/// path every Phase 0-3 deployment already uses. This is intentionally
-/// where the per-tenant story stops today: `consumer.rs`'s Redpanda
-/// consumer (the only thing that ever *writes* into an index) only ever
-/// writes into `default_index`, because `ingest`/the log-record schema
-/// itself carries no tenant concept yet -- see
-/// /docs/security/threat-model.md's "ingest path... carries no tenant
-/// concept" caveat. A tenant's own index therefore starts, and stays,
-/// empty until something upstream of this service becomes tenant-aware
-/// on the write side too. What this registry proves is that *read*
-/// isolation is real once there's tenant-scoped data to isolate --
-/// exactly the same scope boundary enterprise/internal/chrunner drew for
-/// ClickHouse (see that package's doc comment).
+/// path every Phase 0-3 deployment, and every untagged record, still
+/// uses.
+///
+/// **Known residual gap, disclosed rather than silently accepted**:
+/// unlike the read side (gated by `enterprise/internal/searchclient`'s
+/// `TenantChecker`, which refuses to even issue a search for a tenant
+/// that isn't `active` in `rbacstore`) and unlike ClickHouse's write
+/// side (`enterprise/internal/chwriter.Registry`, built once at startup
+/// from `rbacstore.ListProvisionedDataSources` -- `active` tenants
+/// only, so an unrecognized `tenant_id` has no writer and the whole
+/// batch is refused), this registry's `resolve` has no equivalent gate
+/// on the write path: `consumer.rs` calls it directly, with no Postgres
+/// access to check tenant status against, the same reason this
+/// module's doc comment used to give for the old read-side gap
+/// `TenantChecker` was built to close. A syntactically-valid `tenant_id`
+/// on an ingest credential that's still valid but should have been
+/// revoked (deprovisioning does not yet revoke `ingest_credentials`
+/// rows -- see `/CLAUDE.md`'s Phase 4 non-goals) can therefore cause an
+/// index directory to be silently created here for a tenant that isn't
+/// really active. The blast radius is narrow -- an orphan, isolated,
+/// empty-except-for-that-tenant's-own-traffic index directory, not
+/// cross-tenant data exposure, and only reachable with a real signed
+/// ingest credential, not by an arbitrary caller -- but it is real, not
+/// hypothetical. Closing it fully would mean giving `search` (AGPL
+/// core, no `enterprise/` import allowed) some way to learn which
+/// tenants are actually active; not designed yet.
 pub struct IndexRegistry {
     default_index: Arc<SearchIndex>,
     tenants_root: PathBuf,
@@ -72,6 +91,36 @@ impl IndexRegistry {
             .entry(tenant_id.to_string())
             .or_insert_with(|| Arc::new(opened));
         Ok(Arc::clone(idx))
+    }
+
+    /// Commits `default_index` plus every tenant index opened so far --
+    /// the periodic-commit ticker in consumer.rs calls this instead of
+    /// committing a single index, now that a batch of records can span
+    /// several tenants' indices. An index that was never opened (no
+    /// write ever routed to it) is never touched, matching `resolve`'s
+    /// own on-demand-open behavior -- nothing to commit for a tenant
+    /// with no traffic yet. One tenant's commit failing does not stop
+    /// the others from being attempted -- a single broken index
+    /// shouldn't stall every other tenant's documents from becoming
+    /// searchable. Returns the last error encountered, if any, after
+    /// every index has been tried.
+    pub async fn commit_all(&self) -> Result<()> {
+        let mut last_err = self.default_index.commit().await.context("committing default index").err();
+        let tenants = self.tenants.read().await;
+        for (tenant_id, idx) in tenants.iter() {
+            if let Err(e) = idx
+                .commit()
+                .await
+                .with_context(|| format!("committing index for tenant {tenant_id:?}"))
+            {
+                tracing::error!(error = %e, tenant_id, "failed to commit tenant tantivy index");
+                last_err = Some(e);
+            }
+        }
+        match last_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 }
 
@@ -181,5 +230,38 @@ mod tests {
         for r in &results[1..] {
             assert!(Arc::ptr_eq(&results[0], r), "expected every concurrent resolve to return the same Arc<SearchIndex>");
         }
+    }
+
+    #[tokio::test]
+    async fn commit_all_commits_default_and_every_opened_tenant_index() {
+        let (registry, default_index, _dir) = new_test_registry();
+
+        default_index.upsert("default-1", "hello").await.unwrap();
+        let acme_idx = registry.resolve("acme").await.unwrap();
+        acme_idx.upsert("acme-1", "hello").await.unwrap();
+        let globex_idx = registry.resolve("globex").await.unwrap();
+        globex_idx.upsert("globex-1", "hello").await.unwrap();
+
+        // Nothing committed yet -- none of the three should be
+        // searchable, proving this test would actually catch commit_all
+        // silently skipping an index rather than passing vacuously.
+        assert!(default_index.search("hello", 10).unwrap().is_empty());
+        assert!(acme_idx.search("hello", 10).unwrap().is_empty());
+        assert!(globex_idx.search("hello", 10).unwrap().is_empty());
+
+        registry.commit_all().await.unwrap();
+
+        assert_eq!(default_index.search("hello", 10).unwrap(), vec!["default-1"]);
+        assert_eq!(acme_idx.search("hello", 10).unwrap(), vec!["acme-1"]);
+        assert_eq!(globex_idx.search("hello", 10).unwrap(), vec!["globex-1"]);
+    }
+
+    #[tokio::test]
+    async fn commit_all_is_a_noop_for_tenants_never_resolved() {
+        // A tenant with no traffic yet has no directory created at all --
+        // commit_all must not try to open/commit anything for it.
+        let (registry, _default, dir) = new_test_registry();
+        registry.commit_all().await.unwrap();
+        assert!(!dir.path().join("tenants").join("never-seen").exists());
     }
 }
