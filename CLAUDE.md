@@ -18,7 +18,16 @@ described there without flagging it to me first.
   schema-on-read fallback for unstructured text.
 - Every UI action must correspond to a documented REST/gRPC call. No
   UI-only logic. CLI (`sentryctl`) and Terraform provider are first-class,
-  not afterthoughts.
+  not afterthoughts. **Status**: `sentryctl` has been built out phase by
+  phase since Phase 3. The Terraform provider (`/terraform`) only exists
+  as of this note -- one resource (`sentry_dashboard`), built on
+  HashiCorp's `terraform-plugin-framework`, reusing the exact same REST
+  contract `sentryctl dashboards apply` and web's dashboard export
+  already use. Alert rules, notification targets, and tenant/RBAC
+  resources are real, disclosed future work -- see `/terraform/README.md`
+  for the full accounting of what is and isn't built, and the same
+  "written but not run against a live stack" verification caveat as
+  everything else Docker-gated in this repo.
 
 ## Tech stack (pinned — do not substitute without discussion)
 | Component        | Language/Tool          |
