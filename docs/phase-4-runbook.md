@@ -785,19 +785,44 @@ go test ./internal/authhandler/... -run TestActiveTenants -v
 # whole reason to distinguish token kinds.
 ```
 
-**One asymmetry remains, disclosed rather than fixed**: `chwriter.
-Registry`'s per-tenant writer map is a snapshot built once at
-`enterprise-ingest` startup, never refreshed -- a tenant deprovisioned
-after startup keeps writing successfully to ClickHouse until the next
-restart, a real staleness window `ActiveTenantTracker`'s 60-second
-refresh doesn't have on the Tantivy side. Neither is a live per-write
-check (a database/HTTP round trip on every record would be a real
-throughput cost neither implementation accepts), so both have *some*
-staleness window by design -- the gap between the two windows is what's
-disclosed as inconsistent here, not a claim that either is fully live.
-Closing it would mean adding a periodic refresh to `chwriter.Registry`
-too; not done in this pass. See `/docs/security/threat-model.md`'s "Read
-this first".
+**The ClickHouse/Tantivy asymmetry this section used to disclose is now
+closed too.** `chwriter.Registry.StartRefreshing` (new) spawns a
+goroutine that re-lists active tenants every minute (matching
+`ActiveTenantTracker`'s interval -- see
+`enterprise-ingest/main.go`'s `dataSourceRefreshInterval`) and
+reconciles the writer map: opens a connection for a newly-active tenant,
+closes and removes one no longer active. A tenant deprovisioned after
+`enterprise-ingest` startup now loses ClickHouse write access within a
+minute, not "until the next restart." A refresh failure (rbacstore
+unreachable, or one tenant's new connection failing to open) logs and
+leaves the existing map untouched for that tick -- the same
+last-known-good posture `ActiveTenantTracker` uses, so a transient
+Postgres blip doesn't evict every other tenant's already-working writer.
+Neither engine does a live per-write check (a database/HTTP round trip
+per record would be a real throughput cost neither implementation
+accepts), so a roughly one-minute staleness window remains on both
+sides by design, not a gap unique to either anymore.
+
+```sh
+cd enterprise
+go test ./internal/chwriter/... -run TestRefreshListerErrorLeavesRegistryUnchanged -v
+# Docker-free -- refresh's early-return on a lister error, proven the
+# same way the existing fail-closed tests are: a Registry constructed
+# directly (bypassing New, so nothing dials ClickHouse), asserting
+# WriteBatch still refuses afterward.
+
+go test ./internal/chwriter/... -run 'TestRefreshAddsNewlyActiveTenant|TestRefreshRemovesNoLongerActiveTenant' -v
+# skip-gated (CHWRITER_TEST_CLICKHOUSE_ADDR) -- the actual add/remove
+# reconciliation against real connections: a tenant absent at New() time
+# gains a working writer after refresh() sees it in a later lister call;
+# a tenant present at New() time loses its writer (WriteBatch starts
+# refusing it) after refresh() stops seeing it.
+```
+
+**Not run in this environment**: same live-ClickHouse caveat as
+everything else here -- the two new skip-gated tests are correct Go
+that's never executed against a real database. See
+`/docs/security/threat-model.md`'s "Read this first".
 
 **Also not built**: Helm/`docker-compose.yml` do gate *whether*
 `enterprise-ingest` runs at all (`ingest.requireTenantCredential`, same
@@ -849,13 +874,12 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   each record into its own tenant's Tantivy index -- genuinely verified
   in this environment, unlike the ClickHouse side, since Tantivy needs
   no Docker to exercise real logic. Both engines now also gate writes on
-  an active-tenant check: ClickHouse's is a startup-time snapshot with
-  no refresh (stale until the next `enterprise-ingest` restart), while
-  Tantivy's `ActiveTenantTracker` polls `enterprise-auth` every 60
-  seconds, a tighter staleness bound the ClickHouse side wasn't updated
-  to match -- a real, disclosed asymmetry between the two, not a gap in
-  either alone; see §14 and `/docs/security/threat-model.md`'s "Read
-  this first". A
+  an active-tenant check that refreshes every minute -- `chwriter.
+  Registry.StartRefreshing` on the ClickHouse side (new, closing what
+  was originally a startup-only snapshot with no refresh at all) and
+  Tantivy's `ActiveTenantTracker` on the other, the same interval on
+  both, no asymmetry left between them; see §14 and
+  `/docs/security/threat-model.md`'s "Read this first". A
   newly-provisioned tenant's ClickHouse database and Tantivy index are
   both now real, isolated, and actually populated by write-routed
   traffic (the ClickHouse claim pending live confirmation, the Tantivy

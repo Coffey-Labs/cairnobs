@@ -45,6 +45,12 @@ import (
 	"github.com/sentry/sentry/ingest/consumer"
 )
 
+// dataSourceRefreshInterval matches search/src/tenants.rs's
+// REFRESH_INTERVAL -- both close the same disclosed asymmetry
+// (/docs/security/threat-model.md's "Read this first") on their
+// respective storage engines, so they use the same staleness bound.
+const dataSourceRefreshInterval = time.Minute
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
@@ -80,21 +86,13 @@ func main() {
 	// that's mid-provisioning simply has no writer in the registry
 	// below, so chwriter.Registry.WriteBatch refuses it the same way
 	// chrunner.Registry.RunSQL already refuses an unprovisioned tenant
-	// on the read side.
-	sources, err := rbac.ListProvisionedDataSources(ctx)
+	// on the read side. lister is reused below for periodic refresh,
+	// not just this one startup call.
+	lister := tenantDataSourceLister(rbac)
+	chwSources, err := lister(ctx)
 	if err != nil {
 		logger.Error("listing provisioned data sources", "error", err)
 		os.Exit(1)
-	}
-	chwSources := make([]chwriter.DataSource, 0, len(sources))
-	for _, s := range sources {
-		if s.ClickHouseUsername == nil || s.ClickHousePassword == nil {
-			continue // ListProvisionedDataSources already filters these out; defensive only.
-		}
-		chwSources = append(chwSources, chwriter.DataSource{
-			TenantID: s.TenantID, Database: s.ClickHouseDatabaseName,
-			Username: *s.ClickHouseUsername, Password: *s.ClickHousePassword,
-		})
 	}
 	logger.Info("loaded tenant data sources", "count", len(chwSources))
 
@@ -115,6 +113,13 @@ func main() {
 	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: mux}
 
 	g, ctx := errgroup.WithContext(ctx)
+	// Closes the staleness gap disclosed in
+	// /docs/security/threat-model.md as an asymmetry with search's
+	// tenants.ActiveTenantTracker: the writer map built above was a
+	// startup-only snapshot until this call -- now it re-lists and
+	// reconciles every dataSourceRefreshInterval, stopping when ctx is
+	// cancelled (same shutdown path c.Run below uses).
+	registry.StartRefreshing(ctx, lister, dataSourceRefreshInterval, logger)
 	g.Go(func() error { return c.Run(ctx) })
 	g.Go(func() error {
 		logger.Info("enterprise-ingest healthz listening", "addr", cfg.HTTPListenAddr)
@@ -134,6 +139,31 @@ func main() {
 	if err := g.Wait(); err != nil {
 		logger.Error("enterprise-ingest exited with error", "error", err)
 		os.Exit(1)
+	}
+}
+
+// tenantDataSourceLister adapts rbacstore's row shape into
+// []chwriter.DataSource -- shared between the initial synchronous load
+// above (must succeed before this binary does anything) and
+// chwriter.Registry.StartRefreshing's periodic re-list, so the two
+// never drift into checking different things.
+func tenantDataSourceLister(rbac *rbacstore.Store) chwriter.SourceLister {
+	return func(ctx context.Context) ([]chwriter.DataSource, error) {
+		sources, err := rbac.ListProvisionedDataSources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		chwSources := make([]chwriter.DataSource, 0, len(sources))
+		for _, s := range sources {
+			if s.ClickHouseUsername == nil || s.ClickHousePassword == nil {
+				continue // ListProvisionedDataSources already filters these out; defensive only.
+			}
+			chwSources = append(chwSources, chwriter.DataSource{
+				TenantID: s.TenantID, Database: s.ClickHouseDatabaseName,
+				Username: *s.ClickHouseUsername, Password: *s.ClickHousePassword,
+			})
+		}
+		return chwSources, nil
 	}
 }
 

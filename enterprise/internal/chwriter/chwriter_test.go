@@ -14,7 +14,10 @@ package chwriter
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"testing"
 
@@ -26,6 +29,10 @@ import (
 	"github.com/sentry/sentry/ingest/consumer"
 	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // TestWriteBatchRefusesEmptyTenantID and
 // TestWriteBatchRefusesUnknownTenantWithEmptyRegistry construct a
@@ -49,6 +56,31 @@ func TestWriteBatchRefusesUnknownTenantWithEmptyRegistry(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected WriteBatch to refuse a tenant with no entry in the registry")
+	}
+}
+
+// TestRefreshListerErrorLeavesRegistryUnchanged is Docker-free the same
+// way the two tests above are: refresh's early-return on a lister error
+// happens before anything touches ClickHouse, so this genuinely
+// exercises the "keep last-known-good" path -- see refresh's doc
+// comment on StartRefreshing.
+func TestRefreshListerErrorLeavesRegistryUnchanged(t *testing.T) {
+	reg := &Registry{writers: map[string]*clickhousewriter.Writer{}}
+	lister := func(context.Context) ([]DataSource, error) {
+		return nil, errors.New("rbacstore unreachable")
+	}
+
+	reg.refresh(context.Background(), lister, discardLogger())
+
+	// Still refuses -- refresh must not have added a writer for "acme"
+	// (there's nothing a failed lister call could have legitimately
+	// learned), and must not have panicked reaching into a nil/partial
+	// state either.
+	err := reg.WriteBatch(context.Background(), []consumer.Record{
+		{TenantID: "acme", Record: &logsv1.LogRecord{Message: "m"}},
+	})
+	if err == nil {
+		t.Fatal("expected WriteBatch to still refuse tenant acme after a failed refresh")
 	}
 }
 
@@ -153,5 +185,76 @@ func TestRegistryRefusesUnprovisionedTenant(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected WriteBatch to refuse a tenant with no provisioned connection, not silently drop or misroute it")
+	}
+}
+
+// TestRefreshAddsNewlyActiveTenant is the live counterpart to
+// TestRefreshListerErrorLeavesRegistryUnchanged: proves refresh actually
+// opens a real, usable connection for a tenant that appears in a later
+// lister call but wasn't present at New() time -- the scenario
+// StartRefreshing exists to handle (a tenant provisioned after
+// enterprise-ingest already started).
+func TestRefreshAddsNewlyActiveTenant(t *testing.T) {
+	addr := testAddr(t)
+	ctx := context.Background()
+	tenantA, credsA := provisionTestTenant(t, addr)
+
+	reg, err := New(ctx, addr, nil) // starts with zero tenants, same as a cold start before any tenant exists
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer reg.Close()
+
+	if err := reg.WriteBatch(ctx, []consumer.Record{
+		{TenantID: tenantA, Record: &logsv1.LogRecord{Message: "m", RecordId: uuid.NewString()}},
+	}); err == nil {
+		t.Fatal("expected WriteBatch to refuse tenantA before the first refresh has run")
+	}
+
+	lister := func(context.Context) ([]DataSource, error) {
+		return []DataSource{{TenantID: tenantA, Database: tenantA, Username: credsA.Username, Password: credsA.Password}}, nil
+	}
+	reg.refresh(ctx, lister, discardLogger())
+
+	if err := reg.WriteBatch(ctx, []consumer.Record{
+		{TenantID: tenantA, Record: &logsv1.LogRecord{Host: "h1", Message: "after-refresh", RecordId: uuid.NewString()}},
+	}); err != nil {
+		t.Fatalf("expected WriteBatch to succeed for tenantA after refresh added it, got: %v", err)
+	}
+}
+
+// TestRefreshRemovesNoLongerActiveTenant is TestRefreshAddsNewlyActiveTenant's
+// mirror image: a tenant present at New() time that a later lister call
+// no longer returns (deprovisioned or suspended) must lose its writer,
+// not keep writing indefinitely until process restart -- the exact
+// staleness gap this whole mechanism exists to close.
+func TestRefreshRemovesNoLongerActiveTenant(t *testing.T) {
+	addr := testAddr(t)
+	ctx := context.Background()
+	tenantA, credsA := provisionTestTenant(t, addr)
+
+	reg, err := New(ctx, addr, []DataSource{
+		{TenantID: tenantA, Database: tenantA, Username: credsA.Username, Password: credsA.Password},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer reg.Close()
+
+	if err := reg.WriteBatch(ctx, []consumer.Record{
+		{TenantID: tenantA, Record: &logsv1.LogRecord{Host: "h1", Message: "before-removal", RecordId: uuid.NewString()}},
+	}); err != nil {
+		t.Fatalf("expected WriteBatch to succeed for tenantA before refresh removes it, got: %v", err)
+	}
+
+	lister := func(context.Context) ([]DataSource, error) {
+		return nil, nil // tenantA no longer active/provisioned as of this refresh
+	}
+	reg.refresh(ctx, lister, discardLogger())
+
+	if err := reg.WriteBatch(ctx, []consumer.Record{
+		{TenantID: tenantA, Record: &logsv1.LogRecord{Message: "after-removal", RecordId: uuid.NewString()}},
+	}); err == nil {
+		t.Fatal("expected WriteBatch to refuse tenantA after refresh removed it, not keep writing with a stale connection")
 	}
 }
