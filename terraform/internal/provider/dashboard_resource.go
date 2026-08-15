@@ -111,15 +111,15 @@ func (r *dashboardResource) Configure(_ context.Context, req resource.ConfigureR
 	if req.ProviderData == nil {
 		return
 	}
-	c, ok := req.ProviderData.(*client)
+	data, ok := req.ProviderData.(*providerData)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *provider.client, got: %T. This is a provider bug -- please report it.", req.ProviderData),
+			fmt.Sprintf("Expected *provider.providerData, got: %T. This is a provider bug -- please report it.", req.ProviderData),
 		)
 		return
 	}
-	r.client = c
+	r.client = data.api
 }
 
 func dashboardModelFromAPI(d *dashboard) dashboardResourceModel {
