@@ -284,7 +284,7 @@ this environment.
 ## Package layout
 
 ```
-cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features/authorize-ingest endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant, -create-ingest-credential-tenant, -list-ingest-credentials-tenant, -revoke-ingest-credential
+cmd/enterprise-auth/   config loading, OIDC discovery at startup, health/authorize/features/authorize-ingest endpoints, -mint-service-token, -create-tenant, -grant-membership-*, -revoke-membership-*, -list-memberships-tenant, -transfer-owner-*, -create-ingest-credential-tenant, -list-ingest-credentials-tenant, -revoke-ingest-credential
 cmd/enterprise-api/     multi-tenant-aware alternative to api/cmd/api -- see its own doc comment
 cmd/enterprise-ingest/   multi-tenant-aware alternative to ingest -mode=consumer -- see its own doc comment
 internal/tenant/        the ID type -- see its package doc comment before touching it
@@ -417,21 +417,37 @@ docker compose run --rm enterprise-auth \
 docker compose run --rm enterprise-auth -list-memberships-tenant=acme
 docker compose run --rm enterprise-auth \
   -revoke-membership-tenant=acme -revoke-membership-user-email=someone-else@example.com
+
+# Hand ownership to someone else -- the previous owner is downgraded to
+# admin, not removed, so this doesn't need a -revoke-membership-* first:
+docker compose run --rm enterprise-auth \
+  -transfer-owner-tenant=acme -transfer-owner-user-email=new-owner@example.com
 ```
 
 `-create-tenant` only touches `rbacstore` -- pair with `enterprise-api
 -provision-tenant` (below) for a tenant to actually be able to run
 queries, not just log in. `role=owner` also calls `SetOwner`, since a
 tenant's Owner is a dedicated `tenants.owner_user_id` column, not just
-the highest `tenant_memberships` role -- `-revoke-membership-*` refuses
-to revoke a tenant's current Owner for the same reason (transferring
-ownership first has no flag yet, only `rbacstore.SetOwner` at the
-storage layer). Changing a role is just re-running
-`-grant-membership-*` with a different `-grant-membership-role`
-(`SetMembership`'s upsert already supports it). Not yet built: a flag
-for `dashboard_permissions` grants (those go through the HTTP endpoints
-`api/dashboards`' handler now exposes -- `PUT`/`DELETE
-/dashboards/{id}/permissions/{userId}`, `GET .../permissions`).
+the highest `tenant_memberships` role -- but only for a tenant's *first*
+owner assignment (it refuses if a *different* owner already exists, per
+`rbacstore.TransferOwner`'s doc comment). `-revoke-membership-*` refuses
+to revoke a tenant's current Owner for the same reason `tenants.
+owner_user_id` can only ever name one user --
+`-transfer-owner-tenant`/`-transfer-owner-user-email` is the real
+handoff: `rbacstore.TransferOwner` atomically downgrades the current
+owner to `admin`, promotes the new owner, and updates
+`tenants.owner_user_id`, all in one transaction (the first this package
+uses -- every other mutation here is a single independent statement,
+but leaving `owner_user_id` and `tenant_memberships` disagreeing mid-
+operation is exactly the inconsistent state `RevokeMembership`'s doc
+comment already worries about). Changing a non-Owner role is just
+re-running `-grant-membership-*` with a different
+`-grant-membership-role` (`SetMembership`'s upsert already supports
+it). `dashboard_permissions` grants have no `enterprise-auth` flag and
+don't need one -- `sentryctl dashboards permissions list|grant|revoke`
+covers them over the HTTP endpoints `api/dashboards`' handler already
+exposes (`PUT`/`DELETE /dashboards/{id}/permissions/{userId}`,
+`GET .../permissions`), see `/cli/README.md`.
 
 ## Provisioning a tenant and running `enterprise-api`
 

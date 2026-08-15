@@ -836,14 +836,27 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   `enterprise-auth` container instead of a stand-in.
 - No admin UI to create a `tenant_memberships` row, but §3a/§3b's manual
   SQL bootstrap is gone -- `enterprise-auth -create-tenant`/
-  `-grant-membership-*`/`-revoke-membership-*`/`-list-memberships-tenant`
-  (offline operator flags, same shape as `-mint-service-token`) cover
-  create/grant/revoke/list. Changing a role after the fact is just
-  re-running `-grant-membership-*` with a different `-grant-membership-
-  role` (`SetMembership`'s upsert already supports it). `RevokeMembership`
-  refuses a tenant's current Owner (would leave `tenants.owner_user_id`
-  dangling) -- transferring ownership first has no flag yet, only
-  `rbacstore.SetOwner` at the storage layer.
+  `-grant-membership-*`/`-revoke-membership-*`/`-list-memberships-tenant`/
+  `-transfer-owner-*` (offline operator flags, same shape as
+  `-mint-service-token`) cover create/grant/revoke/list/transfer-owner.
+  Changing a non-Owner role after the fact is just re-running
+  `-grant-membership-*` with a different `-grant-membership-role`
+  (`SetMembership`'s upsert already supports it). `RevokeMembership`
+  still refuses a tenant's current Owner (would leave
+  `tenants.owner_user_id` dangling), but that's no longer a dead end --
+  `-transfer-owner-tenant`/`-transfer-owner-user-email`
+  (`rbacstore.TransferOwner`, this package's first use of a real
+  transaction: downgrades the current owner to admin, promotes the new
+  owner, and updates `tenants.owner_user_id` atomically) hands ownership
+  off first, and the now-downgraded former owner can be revoked
+  normally after that. `-grant-membership-role=owner` itself now refuses
+  when a *different* owner already exists, pointing at
+  `-transfer-owner-*` instead of silently leaving a stale
+  `tenant_memberships` row. Skip-gated live-Postgres tests
+  (`TestTransferOwnerMovesOwnershipAndDowngradesPreviousOwner` and two
+  refusal-path tests in `enterprise/internal/rbacstore/rbacstore_test.go`)
+  haven't run against a live database in this environment, same gap as
+  the rest of this phase's Postgres-backed pieces.
 - **Per-resource dashboard grants are now enforced** (`api/dashboards`'
   handler reads `dashboard_permissions` via
   `enterprise/internal/rbacstore.DashboardPermissions`, only when

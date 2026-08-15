@@ -80,6 +80,8 @@ func main() {
 	revokeTenant := flag.String("revoke-membership-tenant", "", "tenant id to revoke a membership from -- both -revoke-membership-* flags are required together")
 	revokeUserEmail := flag.String("revoke-membership-user-email", "", "email of the user whose tenant_memberships row to delete")
 	listMembershipsTenant := flag.String("list-memberships-tenant", "", "print every user with a membership in this tenant (id, email, display name, role) and exit")
+	transferOwnerTenant := flag.String("transfer-owner-tenant", "", "tenant id to transfer ownership in -- both -transfer-owner-* flags are required together")
+	transferOwnerUserEmail := flag.String("transfer-owner-user-email", "", "email of the existing member to make the new Owner -- the current owner is downgraded to admin, not removed; see rbacstore.TransferOwner")
 	createIngestCredentialTenant := flag.String("create-ingest-credential-tenant", "", "mint a new ingest bearer token for this tenant, print it once, and exit -- see ingest/internal/grpcserver.TenantResolver")
 	listIngestCredentialsTenant := flag.String("list-ingest-credentials-tenant", "", "print every ingest credential's id/created_at for this tenant (never the token itself -- only its hash is stored) and exit")
 	revokeIngestCredential := flag.String("revoke-ingest-credential", "", "delete an ingest credential by id (see -list-ingest-credentials-tenant) and exit")
@@ -135,6 +137,9 @@ func main() {
 	}
 	if *listMembershipsTenant != "" {
 		os.Exit(runListMemberships(ctx, logger, rbac, *listMembershipsTenant))
+	}
+	if *transferOwnerTenant != "" || *transferOwnerUserEmail != "" {
+		os.Exit(runTransferOwner(ctx, logger, rbac, *transferOwnerTenant, *transferOwnerUserEmail))
 	}
 	if *createIngestCredentialTenant != "" {
 		os.Exit(runCreateIngestCredential(ctx, logger, rbac, *createIngestCredentialTenant))
@@ -290,7 +295,8 @@ func runGrantMembership(ctx context.Context, logger *slog.Logger, rbac *rbacstor
 		return 1
 	}
 
-	if _, err := rbac.GetTenant(ctx, tenantID); err != nil {
+	tenant, err := rbac.GetTenant(ctx, tenantID)
+	if err != nil {
 		logger.Error("looking up tenant", "tenant_id", tenantID, "error", err)
 		return 1
 	}
@@ -301,6 +307,18 @@ func runGrantMembership(ctx context.Context, logger *slog.Logger, rbac *rbacstor
 		} else {
 			logger.Error("looking up user by email", "email", userEmail, "error", err)
 		}
+		return 1
+	}
+	// role="owner" is only correct for a tenant's *first* owner
+	// assignment (SetMembership+SetOwner below, mirroring
+	// TransferOwner's doc comment on when each is appropriate) -- a
+	// second use of this flag while a *different* owner already exists
+	// would leave that owner's membership row stale at "owner" while
+	// tenants.owner_user_id points elsewhere, exactly the inconsistency
+	// TransferOwner exists to avoid. Refuse and point at the right flag
+	// instead of silently producing that state.
+	if rbacRole == rbacstore.RoleOwner && tenant.OwnerUserID != "" && tenant.OwnerUserID != user.ID {
+		logger.Error("tenant already has a different owner -- use -transfer-owner-tenant/-transfer-owner-user-email instead, which also downgrades the current owner", "tenant_id", tenantID, "current_owner_user_id", tenant.OwnerUserID)
 		return 1
 	}
 
@@ -372,6 +390,33 @@ func runListMemberships(ctx context.Context, logger *slog.Logger, rbac *rbacstor
 	for _, m := range members {
 		fmt.Printf("%s\t%s\t%s\t%s\n", m.UserID, m.Email, m.DisplayName, m.Role)
 	}
+	return 0
+}
+
+// runTransferOwner is the operator-facing side of the RBAC matrix's
+// "Transfer tenant Owner -- Owner only" row -- rbacstore.TransferOwner
+// does the actual atomic work (downgrade current owner, promote new
+// owner, update tenants.owner_user_id); this just resolves the email to
+// a user the same way runGrantMembership/runRevokeMembership do.
+func runTransferOwner(ctx context.Context, logger *slog.Logger, rbac *rbacstore.Store, tenantID, userEmail string) int {
+	if tenantID == "" || userEmail == "" {
+		logger.Error("-transfer-owner-tenant and -transfer-owner-user-email are both required together")
+		return 1
+	}
+	user, err := rbac.GetUserByEmail(ctx, userEmail)
+	if err != nil {
+		if err == rbacstore.ErrNotFound {
+			logger.Error("no user with this email exists -- they must attempt an SSO login at least once first", "email", userEmail)
+		} else {
+			logger.Error("looking up user by email", "email", userEmail, "error", err)
+		}
+		return 1
+	}
+	if err := rbac.TransferOwner(ctx, tenantID, user.ID, rbacstore.RoleAdmin); err != nil {
+		logger.Error("transferring tenant ownership", "error", err)
+		return 1
+	}
+	logger.Info("transferred tenant ownership", "tenant_id", tenantID, "new_owner_user_id", user.ID, "email", userEmail, "previous_owner_downgraded_to", rbacstore.RoleAdmin)
 	return 0
 }
 

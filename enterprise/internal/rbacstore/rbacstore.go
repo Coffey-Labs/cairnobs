@@ -233,6 +233,63 @@ func (s *Store) SetOwner(ctx context.Context, tenantID, userID string) error {
 	return nil
 }
 
+// TransferOwner atomically moves a tenant's Owner from whoever currently
+// holds tenants.owner_user_id to newOwnerUserID: downgrades the
+// current owner's tenant_memberships row to downgradeRole (the RBAC
+// matrix's "Transfer tenant Owner -- Owner only" -- the previous owner
+// keeps a real role, typically RoleAdmin, rather than being silently
+// ejected from the tenant), upserts the new owner's membership to
+// RoleOwner, and updates tenants.owner_user_id -- all in one
+// transaction, the first in this package. Every other mutation here is
+// a single independent statement because nothing else needs more than
+// one row to agree; this genuinely does, for the exact reason
+// RevokeMembership's doc comment already gives: owner_user_id pointing
+// at a user whose tenant_memberships row doesn't say 'owner' (or vice
+// versa) is an inconsistent state, and calling SetOwner/SetMembership
+// separately outside a transaction risks landing in it on any failure
+// between the two calls, not just caller error.
+func (s *Store) TransferOwner(ctx context.Context, tenantID, newOwnerUserID string, downgradeRole Role) error {
+	tenant, err := s.GetTenant(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("rbacstore: getting tenant to transfer ownership: %w", err)
+	}
+	if tenant.OwnerUserID == "" {
+		return fmt.Errorf("rbacstore: tenant %q has no current owner -- use SetMembership+SetOwner directly for a first assignment, TransferOwner is for an existing owner handing off", tenantID)
+	}
+	if tenant.OwnerUserID == newOwnerUserID {
+		return fmt.Errorf("rbacstore: %q is already tenant %q's owner", newOwnerUserID, tenantID)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("rbacstore: beginning ownership transfer: %w", err)
+	}
+	defer tx.Rollback(ctx) // no-op once Commit succeeds
+
+	upsertMembership := `
+		INSERT INTO tenant_memberships (id, tenant_id, user_id, role)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (tenant_id, user_id) DO UPDATE
+			SET role = EXCLUDED.role, updated_at = now()`
+	if _, err := tx.Exec(ctx, upsertMembership, uuid.NewString(), tenantID, tenant.OwnerUserID, string(downgradeRole)); err != nil {
+		return fmt.Errorf("rbacstore: downgrading previous owner's membership: %w", err)
+	}
+	if _, err := tx.Exec(ctx, upsertMembership, uuid.NewString(), tenantID, newOwnerUserID, string(RoleOwner)); err != nil {
+		return fmt.Errorf("rbacstore: setting new owner's membership: %w", err)
+	}
+	tag, err := tx.Exec(ctx, `UPDATE tenants SET owner_user_id = $2, updated_at = now() WHERE id = $1`, tenantID, newOwnerUserID)
+	if err != nil {
+		return fmt.Errorf("rbacstore: setting tenant owner: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("rbacstore: committing ownership transfer: %w", err)
+	}
+	return nil
+}
+
 // SetMembership upserts a user's role for a tenant -- the sole mutation
 // path for tenant_memberships, so every role change naturally funnels
 // through one method a future audit-log hook (EventRoleChange, see
