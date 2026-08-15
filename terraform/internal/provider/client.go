@@ -200,3 +200,58 @@ func (c *client) getRule(ctx context.Context, id string) (*rule, error) {
 func (c *client) deleteRule(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/rules/"+id, nil, nil)
 }
+
+// notificationTarget mirrors alerting/internal/notifystore.Target's
+// JSON shape -- deliberately a local type, same "talk HTTP, not Go
+// imports" posture as dashboard/rule above. Headers is left as raw
+// JSON bytes (not decoded into a Go map) since this client has no
+// opinion about its shape -- alerting's own Target type doesn't either
+// (json.RawMessage), and the resource layer round-trips it as a plain
+// JSON-text string a caller provides via Terraform's jsonencode().
+//
+// Secret genuinely comes back from GET/List unredacted -- confirmed in
+// notifystore/store.go's Get/List queries, which select the secret
+// column with no redaction at either the store or handler layer. This
+// is alerting's own existing behavior, not something this provider
+// introduces or could fix from the client side; notificationTargetResource
+// marks the corresponding attribute Sensitive so Terraform at least
+// doesn't print it in plan/apply console output (it is still stored in
+// Terraform state in plaintext -- a standard, disclosed Terraform
+// limitation for any sensitive attribute, not specific to this one).
+type notificationTarget struct {
+	ID              string          `json:"id,omitempty"`
+	TenantID        string          `json:"tenant_id,omitempty"`
+	Name            string          `json:"name"`
+	Kind            string          `json:"kind"`
+	WebhookURL      string          `json:"webhook_url"`
+	PayloadTemplate *string         `json:"payload_template,omitempty"`
+	Headers         json.RawMessage `json:"headers,omitempty"`
+	Secret          *string         `json:"secret,omitempty"`
+	CreatedBy       string          `json:"created_by,omitempty"`
+}
+
+// createNotificationTarget and getNotificationTarget are the only
+// mutating/reading calls this client makes against /targets -- same
+// "no updateX method, alerting has no PUT /targets/{id} either" shape
+// as rules above (rulestore.Store/notifystore.Store both only have
+// Create/List/Get/Delete). notificationTargetResource is create/destroy
+// only for the same reason alertRuleResource is.
+func (c *client) createNotificationTarget(ctx context.Context, t *notificationTarget) (*notificationTarget, error) {
+	var out notificationTarget
+	if err := c.do(ctx, http.MethodPost, "/targets", t, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *client) getNotificationTarget(ctx context.Context, id string) (*notificationTarget, error) {
+	var out notificationTarget
+	if err := c.do(ctx, http.MethodGet, "/targets/"+id, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *client) deleteNotificationTarget(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/targets/"+id, nil, nil)
+}

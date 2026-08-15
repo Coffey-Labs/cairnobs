@@ -241,3 +241,78 @@ func TestDeleteRuleSendsToCorrectPath(t *testing.T) {
 		t.Fatal("expected the server to receive a DELETE request")
 	}
 }
+
+func TestCreateNotificationTargetSendsExpectedRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/targets" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body notificationTarget
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		if body.Name != "Ops Webhook" || body.Kind != "webhook" {
+			t.Errorf("unexpected request body: %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(notificationTarget{
+			ID: "target-1", TenantID: "acme", Name: body.Name, Kind: body.Kind, WebhookURL: body.WebhookURL,
+		})
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	out, err := c.createNotificationTarget(context.Background(), &notificationTarget{
+		Name: "Ops Webhook", Kind: "webhook", WebhookURL: "https://example.com/hook",
+	})
+	if err != nil {
+		t.Fatalf("createNotificationTarget: %v", err)
+	}
+	if out.ID != "target-1" {
+		t.Fatalf("unexpected response: %+v", out)
+	}
+}
+
+func TestGetNotificationTargetReturnsSecretUnredacted(t *testing.T) {
+	// Documents real, existing alerting behavior (notifystore's Get
+	// query selects the secret column with no redaction) -- this test
+	// exists so a future change to alerting's redaction posture would
+	// be caught here too, not just discovered by surprise.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(notificationTarget{ID: "target-1", Name: "Ops Webhook", Kind: "webhook", Secret: strPtr("shh")})
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	out, err := c.getNotificationTarget(context.Background(), "target-1")
+	if err != nil {
+		t.Fatalf("getNotificationTarget: %v", err)
+	}
+	if out.Secret == nil || *out.Secret != "shh" {
+		t.Fatalf("Secret = %v, want it echoed back unredacted", out.Secret)
+	}
+}
+
+func TestDeleteNotificationTargetSendsToCorrectPath(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != http.MethodDelete || r.URL.Path != "/targets/target-1" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "")
+	if err := c.deleteNotificationTarget(context.Background(), "target-1"); err != nil {
+		t.Fatalf("deleteNotificationTarget: %v", err)
+	}
+	if !called {
+		t.Fatal("expected the server to receive a DELETE request")
+	}
+}
+
+func strPtr(s string) *string { return &s }
