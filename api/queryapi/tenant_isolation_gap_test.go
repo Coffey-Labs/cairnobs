@@ -58,8 +58,9 @@
 //     (live-Postgres, skip-gated).
 //
 // Scope boundary all four items share: they prove *read* isolation
-// given tenant-scoped data exists -- they do not prove ingest/write-path
-// tenancy, which doesn't exist yet (every record ingest produces lands
-// in the single shared ClickHouse database and Tantivy index regardless
-// of tenant) -- see /docs/security/threat-model.md.
+// given tenant-scoped data exists -- they say nothing about ingest's
+// write path, which is now a separately-built and separately-verified
+// concern (enterprise/cmd/enterprise-ingest + enterprise/internal/
+// chwriter for ClickHouse, search/src/consumer.rs for Tantivy) -- see
+// /docs/security/threat-model.md and /docs/phase-4-runbook.md §14.
 package queryapi

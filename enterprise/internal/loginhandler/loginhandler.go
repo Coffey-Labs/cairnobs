@@ -17,10 +17,10 @@
 // who they are, commits to no tenant yet) and redirects to
 // selectTenantRedirectURL instead of issuing a session outright.
 // GET /auth/memberships and POST /auth/select-tenant complete the round
-// trip. The backend protocol is complete and independently testable via
-// HTTP; the frontend page that would actually call it doesn't exist yet
-// (a real tenant-picker UI is undesigned, separately-scoped frontend
-// work -- see config.SelectTenantRedirectURL's doc comment).
+// trip. web/src/routes/select-tenant is the frontend page that calls
+// them, over credentialed cross-origin fetch (see
+// httpserver.WithCredentialedCORS and config.CORSAllowedOrigin) -- see
+// that route's own comments for the page itself.
 package loginhandler
 
 import (

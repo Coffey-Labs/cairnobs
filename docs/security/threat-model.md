@@ -245,20 +245,29 @@ short-lived `session.Manager` "pending login" token (a distinct Go/JWT
 type from a real session, with its own disjoint claim name so a real
 session token can't double as one — a real bug this design's own test
 suite caught before it shipped, see `session.PendingLoginClaims`'s doc
-comment) and redirects to a not-yet-served URL instead, backed by two
-new endpoints (`GET /auth/memberships`, `POST /auth/select-tenant`) that
+comment) and redirects to `web/src/routes/select-tenant`, backed by two
+endpoints (`GET /auth/memberships`, `POST /auth/select-tenant`) that
 list the identity's real tenant options and, on selection, re-derive the
 role for the chosen tenant server-side (never trusting a client-supplied
-role) before issuing the real session. This is the *backend protocol*
-for tenant selection, verified with the same real-fake-IdP tests as the
-rest of `internal/loginhandler` — the frontend page that would call it
-doesn't exist (`web` has no session/cookie-handling code at all today,
-and `enterprise-auth` has no CORS middleware for a cross-origin `fetch`
-with credentials to work), both real, separately-scoped gaps, not
-silently approximated. `GET /auth/features` (`enterprise/internal/authhandler`) reports whether
+role) before issuing the real session. Both the *backend protocol* and
+the *frontend page* that calls it are now built. The backend is verified
+with the same real-fake-IdP tests as the rest of `internal/loginhandler`.
+The frontend needed a second CORS posture — `httpserver.
+WithCredentialedCORS`, a literal origin plus
+`Access-Control-Allow-Credentials: true`, since a credentialed `fetch`
+and a wildcard `Access-Control-Allow-Origin` can never be combined, so
+this couldn't reuse `enterprise-api`'s wildcard-friendly `WithCORS` — and
+is genuinely verified in a real browser in this environment (not just
+type-checked): the full cross-origin pending-login-cookie round trip, a
+real click choosing a tenant, the post-selection redirect, and the
+missing/expired-cookie error path, all driven against a throwaway server
+standing in for `enterprise-auth`'s exact wire contract. `GET
+/auth/features` (`enterprise/internal/authhandler`) reports whether
 OIDC/SAML are *configured*, for `/web`'s settings page to conditionally
 render — independent of whether a login button actually exists yet in
-the UI (it doesn't; only the HTTP endpoints do).
+the UI (it doesn't yet; a user still has to be sent to
+`/auth/oidc/login`/`/auth/saml/login` by some means other than clicking
+something in `web`, since no page links there).
 
 **Implemented for the one machine caller.** `/alerting`'s evaluator is
 the sole service-to-service caller (`POST /query`, to evaluate rule
@@ -490,7 +499,7 @@ terms:
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; verified via `docker compose config`, not an actual `docker compose up` in this environment |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
-| Multi-tenant-membership login (tenant picker) | **Backend protocol built and verified** (`GET /auth/memberships`, `POST /auth/select-tenant`, a pending-login token distinct from a real session) — no frontend page calls it yet |
+| Multi-tenant-membership login (tenant picker) | **Backend and frontend built and verified** (`GET /auth/memberships`, `POST /auth/select-tenant`, a pending-login token distinct from a real session; `web/src/routes/select-tenant` calls it via credentialed cross-origin fetch, genuinely exercised in a real browser) — not yet tried against a real running `enterprise-auth` container |
 | Per-resource dashboard grants (`own/granted`) | **Built, unit-tested against a fake store; live-Postgres integration tests written, not run in this environment** (only when `enterprise-api` serves traffic — plain `api` falls back to own/Admin only) |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |

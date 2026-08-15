@@ -202,11 +202,16 @@ mutually-exclusive choice via `COMPOSE_PROFILES` (`.env` defaults to
 plain `api`), sharing a host-port/network-alias trick so `alerting`/
 `web` need no conditional config either way. With both storage engines'
 connection/index-layer mechanisms built, deployment topology enforced at
-both the Helm and docker-compose layers, and the two provisioning
-mechanisms unified, and both storage engines' write paths now
-per-tenant-routed too (see above), the largest remaining gap in this
-phase is the tenant-picker *frontend* page — the backend protocol is
-built, but `web` has no session/cookie-handling code yet to call it.
+both the Helm and docker-compose layers, the two provisioning
+mechanisms unified, both storage engines' write paths per-tenant-routed,
+and the tenant-picker frontend page now built and browser-verified
+(`web/src/routes/select-tenant`, `api/httpserver.WithCredentialedCORS`
+— see `/CLAUDE.md`'s Phase 4 section and `/web/README.md`'s "Tenant
+picker" section), the remaining gaps in this phase are entirely the
+already-disclosed live-verification caveats: the ClickHouse/Postgres-
+backed pieces have never run against a real database in this
+environment, and nothing here has been tried against a real external
+IdP or a real running multi-container deployment.
 
 ## Licensing boundary
 

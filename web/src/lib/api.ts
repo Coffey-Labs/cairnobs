@@ -149,6 +149,60 @@ export async function getAuthFeatures(): Promise<AuthFeatures> {
 	}
 }
 
+// --- tenant picker (Phase 4) -------------------------------------------
+//
+// The two calls below are the reason getAuthFeatures above doesn't send
+// credentials but these do: they carry the short-lived
+// sentry_pending_login cookie enterprise-auth's finishLogin sets when an
+// identity resolves to more than one tenant_memberships row (see
+// enterprise/internal/loginhandler's package doc comment), and
+// selectTenant's response sets the real session cookie. Both require
+// `credentials: 'include'`, which is exactly why enterprise-auth's CORS
+// (httpserver.WithCredentialedCORS) can't use getAuthFeatures'/api.ts's
+// other requests' wildcard-friendly posture -- browsers refuse to honor
+// Access-Control-Allow-Origin: "*" on a credentialed request at all, so
+// CORS_ALLOWED_ORIGIN has to name this page's real origin.
+
+export type Membership = { tenant_id: string; tenant_display_name: string; role: string };
+
+class TenantPickerError extends Error {}
+
+// enterprise-auth's loginhandler responds to an error with plain
+// http.Error text (e.g. "no membership in the requested tenant"), not a
+// JSON {"error": "..."} body the way /api's queryapi/dashboards handlers
+// do -- requestFrom's JSON-body error parsing wouldn't surface that
+// message, so this reads the body as plain text instead.
+async function enterpriseAuthRequest<T>(path: string, init?: RequestInit): Promise<T> {
+	if (!enterpriseAuthBase) {
+		throw new TenantPickerError('enterprise-auth is not configured (VITE_ENTERPRISE_AUTH_BASE_URL unset)');
+	}
+	const res = await fetch(`${enterpriseAuthBase}${path}`, {
+		credentials: 'include',
+		headers: { 'Content-Type': 'application/json' },
+		...init
+	});
+	if (!res.ok) {
+		const body = await res.text();
+		throw new TenantPickerError(body || `request failed with status ${res.status}`);
+	}
+	return res.json();
+}
+
+// listMemberships backs the tenant-picker page's initial load -- see
+// web/src/routes/select-tenant. A 400/401 (missing or expired pending
+// login) surfaces as a thrown TenantPickerError; the page's own error
+// state is what tells the user to start over at login.
+export function listMemberships(): Promise<Membership[]> {
+	return enterpriseAuthRequest('/auth/memberships');
+}
+
+export function selectTenant(tenantId: string): Promise<{ redirect_url: string }> {
+	return enterpriseAuthRequest('/auth/select-tenant', {
+		method: 'POST',
+		body: JSON.stringify({ tenant_id: tenantId })
+	});
+}
+
 export function exportDashboard(id: string): Promise<Dashboard> {
 	return request(`/dashboards/${id}/export`);
 }
