@@ -9,15 +9,21 @@ for the full design rationale behind the controls described here.
 
 ## Read this first: the single most important open finding
 
-**Updated a third time.** This section originally read "log data
+**Updated a fourth time.** This section originally read "log data
 queried through `POST /query` is not tenant-isolated at all," then
 "ClickHouse is isolated but Tantivy isn't," then "ingest tags records
-with a tenant identity but nothing routes the write." Both ClickHouse
-*and* Tantivy connection/index-layer isolation are built on the *read*
-path, and ClickHouse write-routing is now built too. What's left is
-narrower but still real: **whether a given deployment actually runs the
-isolated binaries**, and **Tantivy's write path**, which still has no
-per-tenant routing at all.
+with a tenant identity but nothing routes the write," then "ClickHouse
+write-routing is built but Tantivy's isn't." Both storage engines are
+now isolated on both the read and write paths. What's left is narrower:
+**whether a given deployment actually runs the isolated binaries**
+(deployment-time, not code-level), and two disclosed write-side gaps,
+different in kind: ClickHouse's write registry is a startup-time
+snapshot of active tenants with no live recheck (a *deprovisioned*
+tenant can keep writing successfully until the next `enterprise-ingest`
+restart), while Tantivy's write path has no active-tenant allowlist at
+all — it opens an index for *any* syntactically-valid `tenant_id` a
+record carries, active, deprovisioned, or never real. See below for
+both, in full.
 
 **ClickHouse (the SQL path) is built.** `enterprise/internal/
 tenantprovision` (real `CREATE DATABASE`/`CREATE USER`/`GRANT`) and
@@ -70,43 +76,66 @@ provisioned, pointing at the same ClickHouse/Postgres. The Helm chart
 makes the *default*, chart-managed path correct; it isn't a runtime
 guard against misconfiguration.
 
-**Ingest now has a real tenant identity, and ClickHouse write-routing is
-built — Tantivy write-routing is the one gap left.** `chrunner`/
-`searchclient` prove *read* isolation given tenant-scoped data exists; an
-optional `ingest/internal/grpcserver.TenantResolver` closes the "does a
-record know which tenant it belongs to" half by validating a per-tenant
-bearer credential an agent presents
+**Ingest now has a real tenant identity, and both storage engines'
+write-routing is built.** `chrunner`/`searchclient` prove *read*
+isolation given tenant-scoped data exists; an optional
+`ingest/internal/grpcserver.TenantResolver` closes the "does a record
+know which tenant it belongs to" half by validating a per-tenant bearer
+credential an agent presents
 (`enterprise-auth -create-ingest-credential-tenant=<id>` mints one; only
 its SHA-256 hash is ever stored) against a `POST
 /internal/authorize-ingest` endpoint, and attaching the resolved tenant
 ID to every record as a `tenant_id` Kafka message header before
 producing it — fail-closed: once a resolver is configured, a missing or
 invalid credential refuses the whole batch, never falls back to "no
-tenant." `enterprise/cmd/enterprise-ingest` (a second binary, mirroring
-`enterprise-api`) now consumes that header: it reuses `ingest/consumer`'s
-own flush loop with `enterprise/internal/chwriter.Registry` — a
-per-tenant `*clickhousewriter.Writer` registry, built the same way
-`chrunner`'s per-tenant connections are — swapped in as the writer, so a
-tagged batch's records are grouped by tenant and each group INSERTed
-through that tenant's own ClickHouse connection, fail-closed on an
-untagged or unprovisioned tenant. Building it surfaced a real gap in an
-already-shipped control: `tenantprovision.ProvisionClickHouse`'s grant
-was `SELECT`-only (correct for the read-side credential `chrunner` uses,
-but `chwriter` reuses the same credential for writes) — every real
-per-tenant write would have failed with a permission error until this
-was widened to `SELECT, INSERT`. **Not yet confirmed against a real
-ClickHouse**, same caveat as the read-side chrunner claim above — the
-Docker-free fail-closed tests pass, the live-database tests are written
-but skip-gated, see `/docs/phase-4-runbook.md`. What's still missing:
-`search`'s independent Redpanda consumer does not read the `tenant_id`
-header at all — every ingested record still lands in the one shared
-(default) Tantivy index regardless of tenant. A newly-provisioned
-tenant's ClickHouse database is now real, isolated, and actually
-populated by write-routed agent traffic (once confirmed against a real
-cluster); its Tantivy index remains real, isolated, and queryable
-through `enterprise-api` — and permanently empty, until Tantivy's own
-write-routing split is built, which is now scoped, disclosed remaining
-work, not an undesigned gap.
+tenant."
+
+**ClickHouse**: `enterprise/cmd/enterprise-ingest` (a second binary,
+mirroring `enterprise-api`) consumes that header: it reuses
+`ingest/consumer`'s own flush loop with `enterprise/internal/
+chwriter.Registry` — a per-tenant `*clickhousewriter.Writer` registry,
+built the same way `chrunner`'s per-tenant connections are — swapped in
+as the writer, so a tagged batch's records are grouped by tenant and
+each group INSERTed through that tenant's own ClickHouse connection,
+fail-closed on an untagged or unprovisioned tenant. Building it surfaced
+a real gap in an already-shipped control: `tenantprovision.
+ProvisionClickHouse`'s grant was `SELECT`-only (correct for the
+read-side credential `chrunner` uses, but `chwriter` reuses the same
+credential for writes) — every real per-tenant write would have failed
+with a permission error until this was widened to `SELECT, INSERT`.
+**Not yet confirmed against a real ClickHouse**, same caveat as the
+read-side chrunner claim above — the Docker-free fail-closed tests pass,
+the live-database tests are written but skip-gated, see
+`/docs/phase-4-runbook.md`.
+
+**Tantivy**: `search/src/consumer.rs` now resolves each record's
+`tenant_id` header through the *same* `IndexRegistry` the read side
+already used (`search/src/registry.rs`), and writes there instead of
+always into the default index — genuinely verified in this environment,
+same as the read-side Tantivy claim above, since Tantivy is an embedded
+library with no Docker dependency. No "second binary" was needed here,
+unlike ClickHouse: Tantivy has no grant system to gate a
+commercially-licensed credential behind, so `IndexRegistry` already
+lived directly in this AGPL-core `search` binary, and read/write simply
+share it.
+
+**Both engines share one open question** — deployment topology, covered
+above — and Tantivy specifically has one gap ClickHouse's design doesn't:
+`chwriter.Registry`'s map is built once at startup from an
+active-tenants-only query, so an unrecognized `tenant_id` is refused
+outright; `IndexRegistry.resolve()` (used for both read and write) has
+no equivalent allowlist at all, because `search` has no Postgres access
+to check tenant status against — a syntactically-valid `tenant_id` on a
+still-valid-but-should-be-revoked ingest credential can cause an orphan
+index directory to be created for a tenant that's no longer active.
+Narrow blast radius (isolated, empty except for that traffic, not
+cross-tenant leakage, and reachable only with a real signed credential),
+but real, and not closed by this change; see
+`search/src/registry.rs`'s doc comment on `resolve`. A newly-provisioned
+tenant's ClickHouse database and Tantivy index are both now real,
+isolated, and actually populated by write-routed agent traffic (the
+ClickHouse claim pending live confirmation, the Tantivy claim already
+verified).
 
 ## System overview
 
@@ -146,13 +175,14 @@ sentryctl ──▶ api, alerting (Bearer token when SENTRYCTL_TOKEN is set)
 Ingest path (agent → Redpanda → ingest → ClickHouse, and Redpanda →
 search → Tantivy): `ingest` resolves and tags each record with a real
 tenant ID (see "Read this first" above). `enterprise/cmd/enterprise-ingest`
-now consumes that tag and routes ClickHouse writes to each tenant's own
-database. Tantivy's independent Redpanda consumer (`search/src/
-consumer.rs`) still does not consume the tag at all — every record still
-lands in the one shared Tantivy index regardless of tenant. That
-narrower gap is still out of scope for what's built so far and is not
-separately designed in `/docs/phase-4-isolation-design.md`; named here as
-a gap that design doc doesn't yet cover, not just an implementation gap.
+consumes that tag and routes ClickHouse writes to each tenant's own
+database. `search/src/consumer.rs` (Tantivy's independent Redpanda
+consumer) consumes the same tag and routes each record into its own
+tenant's index. Both write paths' one remaining gap — no live
+active-tenant recheck (ClickHouse: a startup-time snapshot; Tantivy: no
+allowlist at all) — is named in "Read this first" above, not separately
+designed in `/docs/phase-4-isolation-design.md`; named here as a gap that
+design doc doesn't yet cover, not just an implementation gap.
 
 ## Module boundary (trust boundary #1)
 
@@ -454,8 +484,8 @@ terms:
 | Tantivy per-tenant index routing (`search/src/registry.rs`) | **Enforced, verified live** — real Tantivy indices, real cross-tenant probe, all passing |
 | Tantivy tenant_id resolution (`enterprise/internal/searchclient`) | **Enforced, verified live** — real gRPC wire-level test |
 | Ingest tenant *identity* (credential validation, tagging) | **Built and tested** — fail-closed `TenantResolver`, `tenant_id` Kafka header attached per record |
-| Ingest tenant *write-routing*, ClickHouse | **Built, not yet confirmed against a real ClickHouse** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; Docker-free tests pass, live-database tests are skip-gated |
-| Ingest tenant *write-routing*, Tantivy | **Not implemented, now scoped** — every record still lands in the single shared Tantivy index regardless of tenant; `search/src/consumer.rs` consuming the tenant_id header to route the write is real, disclosed remaining work |
+| Ingest tenant *write-routing*, ClickHouse | **Built, not yet confirmed against a real ClickHouse** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; Docker-free tests pass, live-database tests are skip-gated. Startup-time active-tenant snapshot, no live recheck — a deprovisioned tenant can keep writing until the next restart |
+| Ingest tenant *write-routing*, Tantivy | **Built and genuinely verified** — `search/src/consumer.rs` routes each record into its own tenant's index via `IndexRegistry`, same registry the (already-verified) read side uses; no Docker needed, real tests pass. No active-tenant allowlist at all on write (`search` has no Postgres access) — a syntactically-valid `tenant_id` on a still-valid credential can create an orphan index for a no-longer-active tenant; narrow, disclosed, not cross-tenant leakage |
 | Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; verified via `docker compose config`, not an actual `docker compose up` in this environment |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |

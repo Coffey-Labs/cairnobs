@@ -38,7 +38,7 @@ ClickHouse's `logs.record_id` column (see
 only ever returns IDs, never row data — it stays a pure text index, not
 a second copy of the row.
 
-## Per-tenant indices (Phase 4) — read-side only
+## Per-tenant indices (Phase 4) — read and write
 
 `SearchRequest.tenant_id` (empty by default) selects which index
 `src/registry.rs`'s `IndexRegistry` searches: empty resolves to the
@@ -50,13 +50,31 @@ convention). `tenant_id` is set only by a trusted server-side caller
 (`enterprise/internal/searchclient`, from the authenticated request
 identity) — never a value a browser/client controls.
 
-**This is read-side isolation only.** `consumer.rs`'s Redpanda consumer
-— the only thing that ever *writes* into an index — still only ever
-writes into the single default index, because `ingest`/the log-record
-schema itself carries no tenant concept yet. A newly-opened tenant index
-starts, and stays, empty until something upstream of this service
-becomes tenant-aware on the write side too — a real, disclosed gap, not
-an oversight; see `/docs/security/threat-model.md`.
+`consumer.rs`'s Redpanda consumer resolves the *same* registry now,
+keyed by each Kafka message's `tenant_id` header — attached server-side
+by `ingest/internal/grpcserver` after validating an agent's per-tenant
+credential, mirroring exactly how `enterprise/cmd/enterprise-ingest`
+routes the ClickHouse write side (see `/enterprise/README.md`'s "Ingest
+write-routing" section). No import boundary to work around here, unlike
+Go: `IndexRegistry` already lives in this AGPL-core binary, so both the
+read and write paths share one registry directly, with no "second
+binary" needed. The periodic Tantivy commit (`COMMIT_INTERVAL_MS`) now
+commits every tenant index that's actually seen a write, plus the
+default index, via `IndexRegistry::commit_all`, not just one index.
+
+**One residual gap, disclosed rather than fixed here**: unlike the read
+side (gated by `enterprise/internal/searchclient`'s `TenantChecker`,
+which refuses to search a tenant that isn't `active` in `rbacstore`) and
+unlike ClickHouse's write side (`chwriter.Registry`, built from an
+active-tenants-only snapshot at startup, so an unrecognized tenant has
+no writer at all), this consumer's `registry.resolve()` call has no
+active-tenant gate — this process has no Postgres access to check
+against, the same reason `IndexRegistry` couldn't do the mid-provisioning
+check itself before `TenantChecker` was added for the read side. A
+still-valid (not yet revoked) ingest credential for a tenant that's no
+longer active can cause an index directory to be created for it here.
+See `src/registry.rs`'s doc comment on `resolve` for the full writeup,
+including why closing it fully isn't scoped yet.
 
 ## Offset tracking: why this isn't a Kafka consumer group
 
@@ -116,12 +134,20 @@ before-commit/after-commit visibility boundary. `registry.rs`'s tests
 are the same shape and cover the actual adversarial claim: real per-
 tenant indices, real documents, and a search scoped to one tenant
 returning zero results for another tenant's matching document
-(`tenant_index_is_isolated_from_default_and_other_tenants`) — all of
-this, unlike almost everything else in Phase 4, was genuinely run in
-the environment this was built in, not just written. `consumer.rs` (the
-rskafka wiring) is not unit-tested — that needs a real Redpanda, same
+(`tenant_index_is_isolated_from_default_and_other_tenants`), plus
+`commit_all_commits_default_and_every_opened_tenant_index` proving the
+write-routing commit path actually makes every tenant's buffered writes
+searchable, not just the default index's — all of this, unlike almost
+everything else in Phase 4, was genuinely run in the environment this
+was built in, not just written. `consumer.rs`'s Kafka/rskafka wiring
+itself is still not unit-tested — that needs a real Redpanda, same
 category of gap as `/ingest`'s `kafka.Reader`/`kafka.Writer` wiring, and
-is exercised by the docker-compose end-to-end flow instead.
+is exercised by the docker-compose end-to-end flow instead — but the
+pure `tenant_id_from_headers` header-extraction helper it uses is
+factored out and unit-tested the same way `ingest/consumer`'s Go
+equivalent is, including a guard test
+(`test_tenant_id_header_key_matches_go`) against the header-key literal
+drifting from the Go side's.
 
 ```sh
 # from the repo root, not search/

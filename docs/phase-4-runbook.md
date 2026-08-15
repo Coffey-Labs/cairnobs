@@ -38,6 +38,15 @@ of what was already run and passed. Two genuine exceptions:
   "email" -- crewjam's own fake IdP hit this path. Same remaining gap as
   OIDC: not yet tried against a real external IdP or a running
   `enterprise-auth` container.
+- Tantivy tenant isolation, both directions -- `search/src/registry.rs`'s
+  cross-tenant read isolation (§9) and, since this pass,
+  `search/src/consumer.rs`'s per-tenant write-routing (§14) -- verified
+  live, no disclaimer needed, because Tantivy is an embedded library with
+  no Docker/broker dependency: real indices, real documents, real
+  commits, run in this environment. The one thing about it that's still
+  unverified is not Tantivy itself but the upstream credential/header
+  plumbing feeding it (ingest's `TenantResolver`, `enterprise-auth`'s
+  `/internal/authorize-ingest`) against a real running stack.
 
 Everything else — `internal/rbacstore`'s CRUD, the auth-enforcement
 walkthrough, the dashboards tenant-scoping fix, the Helm chart, the
@@ -604,7 +613,7 @@ yet would refuse all ingest traffic outright rather than degrading
 gracefully. See §14 below for what the identity is actually used for on
 the write path.
 
-## 14. Ingest write-routing (ClickHouse built, Tantivy not yet)
+## 14. Ingest write-routing (both storage engines)
 
 `enterprise/cmd/enterprise-ingest` (mirrors `enterprise-api`'s "second
 binary" shape) consumes the `tenant_id` Kafka header §13 attaches and
@@ -643,12 +652,50 @@ never actually executed -- "the test exists" is not the same claim as
 "write-routing is confirmed," same caveat §8 already states for the
 read-side `chrunner` tests.
 
-**Not built**: Tantivy's side of this. `search/src/consumer.rs` is a
-completely independent Redpanda consumer, not called through `ingest` or
-`enterprise-ingest` at all, and does not read the `tenant_id` header --
-every record still lands in the one shared (default) Tantivy index
-regardless of tenant. See CLAUDE.md and `/docs/security/threat-model.md`'s
-"Read this first" for the full disclosure.
+**Tantivy's side is built too, and genuinely verified.**
+`search/src/consumer.rs` reads the same `tenant_id` Kafka header and
+resolves it through `search/src/registry.rs`'s `IndexRegistry` -- the
+same registry the read side (§9) already uses -- routing each record's
+write into its own tenant's Tantivy index instead of the single default
+one. No "second binary" was needed here the way ClickHouse needed
+`enterprise-ingest`: Tantivy has no grant system to gate a
+commercially-licensed credential behind, so `IndexRegistry` already
+lives directly in AGPL-core `search`, and read/write just share it.
+Because Tantivy is an embedded library (no Docker/broker needed to
+exercise real logic), this actually ran in this environment:
+
+```sh
+cd search
+cargo test --quiet
+# registry.rs: commit_all_commits_default_and_every_opened_tenant_index
+# writes into the default index plus two tenant indices, confirms
+# nothing is searchable before commit_all(), then confirms all three ARE
+# searchable after -- the write-routing + periodic-commit path
+# end-to-end, for real, using the same real-Tantivy-index discipline as
+# every other registry.rs/index.rs test. consumer.rs:
+# tenant_id_from_headers_* cover the header-extraction helper
+# (missing/present/unrelated-header cases) and
+# test_tenant_id_header_key_matches_go guards the "tenant_id" literal
+# against drifting from ingest/consumer.TenantIDHeaderKey /
+# ingest/internal/grpcserver.TenantIDHeaderKey the same way
+# ingest/cmd/ingest's own guard test does on the Go side.
+```
+
+**What's still not built, for either engine**: a live active-tenant
+recheck at write time. `chwriter.Registry`'s per-tenant writer map is a
+snapshot built once at `enterprise-ingest` startup from
+`rbacstore.ListProvisionedDataSources` (active tenants only) -- an
+unrecognized `tenant_id` is refused outright, but a tenant deprovisioned
+*after* startup keeps writing successfully until the next restart.
+`IndexRegistry.resolve()` has no allowlist at all on either the read or
+write side -- `search` has no Postgres access to check tenant status
+against -- so a still-valid-but-should-be-revoked ingest credential can
+cause an orphan Tantivy index directory to be created for a tenant
+that's no longer active. Narrow blast radius either way (isolated, not
+cross-tenant leakage, reachable only with a real signed credential), but
+real and disclosed, not silently accepted -- see
+`search/src/registry.rs`'s doc comment on `resolve` and
+`/docs/security/threat-model.md`'s "Read this first".
 
 **Also not built**: Helm/`docker-compose.yml` do gate *whether*
 `enterprise-ingest` runs at all (`ingest.requireTenantCredential`, same
@@ -688,22 +735,28 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   that split (declarative request vs. imperative provisioning action)
   is intentional, not the "two disconnected sources of truth" gap this
   bullet used to describe.
-- **Ingest now has a real tenant identity (§13), and ClickHouse
-  write-routing is built (§14) -- Tantivy write-routing is the one gap
-  left.** An agent presents a bearer credential (`enterprise-auth
-  -create-ingest-credential-tenant=<id>`), `ingest/internal/grpcserver.
-  TenantResolver` validates it (fail-closed) and attaches the resolved
-  tenant ID to every record as a `tenant_id` Kafka message header.
-  `enterprise-ingest` reads that header back and routes each record's
-  ClickHouse write into its own tenant's database (not yet confirmed
-  against a real ClickHouse in this environment -- see §14). Nothing
-  reads that header on the Tantivy side yet -- every record still lands
-  in the one shared Tantivy index no matter what. A newly-provisioned
-  tenant's ClickHouse database is real, isolated, and actually
-  populated by write-routed traffic (once confirmed live); its Tantivy
-  index remains real, isolated at query time, and permanently empty
-  until Tantivy's write-routing split is built (a real, scoped
-  follow-up, no longer an undesigned one).
+- **Ingest now has a real tenant identity (§13), and both storage
+  engines' write-routing is built (§14).** An agent presents a bearer
+  credential (`enterprise-auth -create-ingest-credential-tenant=<id>`),
+  `ingest/internal/grpcserver.TenantResolver` validates it (fail-closed)
+  and attaches the resolved tenant ID to every record as a `tenant_id`
+  Kafka message header. `enterprise-ingest` reads that header back and
+  routes each record's ClickHouse write into its own tenant's database
+  (not yet confirmed against a real ClickHouse in this environment --
+  see §14). `search/src/consumer.rs` reads the same header and routes
+  each record into its own tenant's Tantivy index -- genuinely verified
+  in this environment, unlike the ClickHouse side, since Tantivy needs
+  no Docker to exercise real logic. Both engines share one remaining,
+  disclosed gap: neither write path rechecks tenant-active status live
+  (ClickHouse: a startup-time snapshot, stale until restart; Tantivy: no
+  allowlist at all, since `search` has no Postgres access) -- narrow
+  blast radius, not cross-tenant leakage, but real; see §14 and
+  `/docs/security/threat-model.md`'s "Read this first". A
+  newly-provisioned tenant's ClickHouse database and Tantivy index are
+  both now real, isolated, and actually populated by write-routed
+  traffic (the ClickHouse claim pending live confirmation, the Tantivy
+  claim already verified) -- what used to be "permanently empty" for
+  both is no longer true for either.
 - **Human SSO login now works for both OIDC (§3a) and SAML (§3b)** --
   each verified with a real fake IdP (genuine cryptographic signing and
   verification), not yet a real external IdP or a running

@@ -182,14 +182,13 @@ silently left out:
   a cross-origin `fetch` with credentials from `web`'s origin needs
   it), neither of which is verifiable in this environment without a
   live backend and a browser session to exercise.
-- **Ingest write-routing, for Tantivy** -- `search/src/consumer.rs` (a
-  completely independent Redpanda consumer, not called through `ingest`
-  or `enterprise-ingest` at all) still writes every record into the one
-  shared (default) Tantivy index, regardless of tenant. The ClickHouse
-  half is now built (see "Ingest write-routing" below); Tantivy's is
-  real, disclosed, separate follow-up work -- a different codebase
-  (Rust) and a different consumer process, not just "the same fix
-  applied twice."
+
+Ingest write-routing (both ClickHouse and Tantivy) is no longer on this
+list -- see "Ingest write-routing (ClickHouse)" below and
+`/search/README.md`'s "Per-tenant indices" section for Tantivy, which
+needed no code in this module at all: `search`'s `IndexRegistry` already
+lived in AGPL core, so its write side didn't need an `enterprise/`
+counterpart the way ClickHouse's did.
 
 Deployment-topology routing (does traffic actually reach `enterprise-api`
 instead of `api`) is no longer deferred -- both `deploy/helm/sentry` and
@@ -307,8 +306,13 @@ ingest must never import enterprise/) is the client side of `internal/
 authhandler`'s new `POST /internal/authorize-ingest` -- see "Ingest
 tenant identity" above.
 
-Future additions: per-tenant write-routing for ingest (ClickHouse and
-Tantivy both) -- see "Ingest tenant identity" above.
+Per-tenant write-routing for ingest is built for both ClickHouse (this
+module's `cmd/enterprise-ingest` + `internal/chwriter`, see "Ingest
+write-routing (ClickHouse)" above) and Tantivy (`search/src/consumer.rs`
++ `search/src/registry.rs`, entirely in AGPL core -- see
+`/search/README.md`'s "Per-tenant indices" section, since Tantivy's lack
+of a grant system meant there was never an import-boundary reason to put
+any of it here).
 
 ## Why OIDC and SAML aren't hand-rolled
 

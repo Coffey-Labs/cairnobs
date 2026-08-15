@@ -139,8 +139,8 @@ escape hatch is opaque to any compiler-injected filter.
   ran in the environment it was built in — Tantivy is an embedded
   library, so the cross-tenant isolation probe needed no live database
   or Docker to execute for real, and it passed.
-- **Ingest identity and ClickHouse write-routing are now built; Tantivy's
-  isn't.** `ingest` (AGPL core) gained an optional `TenantResolver`
+- **Ingest identity, ClickHouse write-routing, and Tantivy write-routing
+  are all now built.** `ingest` (AGPL core) gained an optional `TenantResolver`
   (`ingest/internal/grpcserver`): an agent presents a per-tenant bearer
   credential (`enterprise-auth -create-ingest-credential-tenant=<id>`
   mints one, only its hash stored), validated over the network via a new
@@ -160,13 +160,28 @@ escape hatch is opaque to any compiler-injected filter.
   `SELECT` only, which would have made every real per-tenant write fail
   with a permission error — fixed by granting `SELECT, INSERT` (one
   credential, both directions; no cross-tenant boundary is crossed by
-  also allowing INSERT within a tenant's own database). What isn't built
-  yet: `search`'s independent Redpanda consumer (a different codebase —
-  Rust — and a different process, not reachable through either `ingest`
-  or `enterprise-ingest`) still writes every record into the one shared
-  Tantivy index regardless of tenant. That's real, disclosed, separately
-  scoped remaining work, not something this change claims to have
-  closed.
+  also allowing INSERT within a tenant's own database). `search`'s
+  independent Redpanda consumer (a different codebase — Rust — and a
+  different process, not reachable through either `ingest` or
+  `enterprise-ingest`) is now write-routed too:
+  `search/src/consumer.rs` resolves each record's `tenant_id` header
+  through the *same* `IndexRegistry` the read side
+  (`search/src/registry.rs` + `enterprise/internal/searchclient`)
+  already used, and writes there instead of always into the default
+  index. No "second binary" needed here, unlike ClickHouse — Tantivy has
+  no grant system to gate a commercially-licensed credential behind, so
+  `IndexRegistry` already lived directly in this AGPL-core binary, and
+  read/write just share it. One gap is disclosed rather than closed by
+  this change: unlike `chwriter.Registry` (an active-tenants-only
+  snapshot built at startup) and unlike the read side (gated by
+  `searchclient.TenantChecker`), this consumer's `resolve()` call has no
+  active-tenant check — the process has no Postgres access to check
+  against — so a still-valid-but-should-be-revoked ingest credential can
+  cause an index directory to be created for a tenant that's no longer
+  active. Narrow blast radius (an orphan, isolated, empty index, not
+  cross-tenant leakage, and only reachable with a real signed
+  credential), but real; see `search/src/registry.rs`'s doc comment on
+  `resolve`.
 - `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
   are now unified, deliberately lightweight: `-provision-tenant` stays
   the sole real actor (ClickHouse + `rbacstore`), and now also syncs its
@@ -188,9 +203,10 @@ plain `api`), sharing a host-port/network-alias trick so `alerting`/
 `web` need no conditional config either way. With both storage engines'
 connection/index-layer mechanisms built, deployment topology enforced at
 both the Helm and docker-compose layers, and the two provisioning
-mechanisms unified, the largest remaining gap is ingest's per-tenant
-*write-routing* (identity is now attached at ingest time; nothing
-downstream of Redpanda consumes it yet to isolate the write, see above).
+mechanisms unified, and both storage engines' write paths now
+per-tenant-routed too (see above), the largest remaining gap in this
+phase is the tenant-picker *frontend* page — the backend protocol is
+built, but `web` has no session/cookie-handling code yet to call it.
 
 ## Licensing boundary
 
