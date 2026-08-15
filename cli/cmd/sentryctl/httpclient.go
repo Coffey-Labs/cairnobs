@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -66,6 +67,47 @@ func httpPostFileJSON(baseURL, path, token, file string, stdout, stderr io.Write
 	}
 	defer resp.Body.Close()
 	return printJSONResponse(resp, stdout, stderr)
+}
+
+// httpMutateNoBody sends method to path with an optional JSON body
+// ("" for none, e.g. DELETE) and expects a 2xx with no meaningful
+// response body -- PUT/DELETE /dashboards/{id}/permissions/{userId}
+// both respond 204 No Content, so there's nothing for printJSONResponse
+// to pretty-print here. Prints successMsg to stdout on success, the
+// same {"error": "..."} parsing every other helper in this file uses
+// otherwise.
+func httpMutateNoBody(method, baseURL, path, token, body, successMsg string, stdout, stderr io.Writer) int {
+	var reqBody io.Reader
+	if body != "" {
+		reqBody = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, baseURL+path, reqBody)
+	if err != nil {
+		fmt.Fprintf(stderr, "building request: %v\n", err)
+		return 1
+	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	setAuth(req, token)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(stderr, "request failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		var errResp errorResponseBody
+		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
+			fmt.Fprintf(stderr, "request failed: %s\n", errResp.Error)
+		} else {
+			fmt.Fprintf(stderr, "request failed: status %d\n", resp.StatusCode)
+		}
+		return 1
+	}
+	fmt.Fprintln(stdout, successMsg)
+	return 0
 }
 
 func printJSONResponse(resp *http.Response, stdout, stderr io.Writer) int {

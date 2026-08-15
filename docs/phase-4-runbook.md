@@ -847,13 +847,28 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
 - **Per-resource dashboard grants are now enforced** (`api/dashboards`'
   handler reads `dashboard_permissions` via
   `enterprise/internal/rbacstore.DashboardPermissions`, only when
-  `enterprise-api` -- not plain `api` -- serves traffic), but there's
-  still no UI or `sentryctl` command to create a grant -- `PUT
-  /dashboards/{id}/permissions/{userId}` has to be called directly.
-  Verified against a fake store; the real-Postgres integration tests
-  (`enterprise/internal/rbacstore/rbacstore_test.go`) haven't run
-  against a live database in this environment, same gap as the rest of
-  this phase's Postgres-backed pieces.
+  `enterprise-api` -- not plain `api` -- serves traffic), **and now has a
+  CLI surface**: `sentryctl dashboards permissions list|grant|revoke`
+  (`cli/cmd/sentryctl/cmd_dashboards.go`) against
+  `GET`/`PUT`/`DELETE /dashboards/{id}/permissions/{userId}` -- still no
+  `web` UI for it, just the CLI. Verified against a real `httptest.
+  Server` (not a fake store this time -- the CLI has no store of its
+  own, just an HTTP client, so this is exercising real request
+  construction/method/path/body/error-parsing, the same pattern every
+  other `sentryctl` subcommand's tests use):
+
+  ```sh
+  cd cli
+  go test ./... -run TestCmdDashboardsPermissions -v
+  ```
+
+  `api/dashboards`' own handler tests (fake `PermissionStore`) and the
+  real-Postgres `enterprise/internal/rbacstore/rbacstore_test.go`
+  integration tests are unchanged by this -- the CLI is a new caller of
+  an existing, already-tested endpoint, not new server-side logic. Those
+  Postgres-backed tests still haven't run against a live database in
+  this environment, same gap as the rest of this phase's Postgres-backed
+  pieces.
 - All four adversarial ClickHouse/Tantivy probes named in
   `/docs/phase-4-isolation-design.md`'s verification plan are now closed
   -- see `api/queryapi/tenant_isolation_gap_test.go` for the full

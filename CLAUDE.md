@@ -213,6 +213,9 @@ stricter still (creator/Admin/Owner only, closing a self-escalation
 path). Verified against a fake store (`api/dashboards/handler_test.go`);
 real integration tests exist but haven't run against a live Postgres,
 same disclosed gap as the rest of this phase's Postgres-backed pieces.
+`sentryctl dashboards permissions list|grant|revoke` is now the CLI
+surface for this — `PUT`/`DELETE /dashboards/{id}/permissions/{userId}`
+previously had no caller but Go tests and curl.
 `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
 are now unified too, deliberately lightweight rather than making the
 K8s controller a second real actor: `-provision-tenant` stays the sole
