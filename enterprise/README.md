@@ -139,10 +139,10 @@ Postgres-backed pieces.
 
 ## Tenant selection (multi-membership identities)
 
-The backend protocol for choosing a tenant is built and tested; the
-frontend page that would actually call it is deliberately not (see
-"Deliberately deferred" below). When `resolveIdentity` finds more than
-one `tenant_memberships` row for a logged-in identity, `finishLogin`
+Both the backend protocol for choosing a tenant and the frontend page
+that calls it (`web/src/routes/select-tenant`) are now built. When
+`resolveIdentity` finds more than one `tenant_memberships` row for a
+logged-in identity, `finishLogin`
 issues a `session.Manager.IssuePendingLogin` token (a distinct Go/JWT
 type from a real session -- see that type's doc comment for a real bug
 this design caught in its own tests: a shared JSON key would have let a
@@ -171,29 +171,34 @@ pending cookie, a `tenant_id` outside the identity's actual
 memberships, a real session token rejected when presented as a pending
 login).
 
-**Deliberately deferred, not half-built** -- named explicitly rather than
-silently left out:
-- **The actual tenant-picker page** -- nothing in `web/` calls the
-  endpoints above yet. Building it is genuinely different, larger scope
-  than the backend protocol: `web` has zero session/cookie-handling
-  code today (confirmed by reading it end to end while designing this),
-  so a real picker page means adding that from scratch, plus CORS
-  wiring (`enterprise-auth` has no CORS middleware at all right now --
-  a cross-origin `fetch` with credentials from `web`'s origin needs
-  it), neither of which is verifiable in this environment without a
-  live backend and a browser session to exercise.
+The frontend side needed two things `web` didn't have: session/cookie-
+aware requests (`$lib/api.ts`'s `listMemberships`/`selectTenant`, both
+`fetch(..., {credentials: 'include'})`) and CORS that actually allows a
+credentialed cross-origin request -- `httpserver.WithCredentialedCORS`
+(new, in `api/httpserver`, next to the plain `WithCORS` every other
+service in this repo uses), wired in by this binary's `main.go` and
+configured via the new `CORSAllowedOrigin` field
+(`CORS_ALLOWED_ORIGIN`, defaulting to `PostLoginRedirectURL` --
+`web`'s own origin is exactly what needs credentialed access here).
+Browsers categorically refuse to honor `Access-Control-Allow-Origin: "*"`
+on a credentialed request, which is why this couldn't reuse plain
+`WithCORS`'s wildcard-friendly default the way `enterprise-api` does.
+Genuinely verified in a real browser in this environment (see
+`/web/README.md`'s "Tenant picker" section for exactly how, since no
+live Postgres/IdP was needed to exercise `web`'s own fetch/CORS/cookie
+wiring): the full cross-origin cookie round trip, a real click choosing
+a tenant, and the post-selection redirect, plus the missing/expired
+pending-login error path.
 
-Ingest write-routing (both ClickHouse and Tantivy) is no longer on this
-list -- see "Ingest write-routing (ClickHouse)" below and
-`/search/README.md`'s "Per-tenant indices" section for Tantivy, which
-needed no code in this module at all: `search`'s `IndexRegistry` already
-lived in AGPL core, so its write side didn't need an `enterprise/`
-counterpart the way ClickHouse's did.
-
-Deployment-topology routing (does traffic actually reach `enterprise-api`
-instead of `api`) is no longer deferred -- both `deploy/helm/sentry` and
-`docker-compose.yml` make it a single-flag choice now (`enterprise.
-enabled` / `COMPOSE_PROFILES`), see CLAUDE.md.
+Two other things once named as deferred here are built too: ingest
+write-routing, both ClickHouse (see "Ingest write-routing (ClickHouse)"
+below) and Tantivy (`/search/README.md`'s "Per-tenant indices" section
+-- needed no code in this module at all, since `search`'s
+`IndexRegistry` already lived in AGPL core); and deployment-topology
+routing (does traffic actually reach `enterprise-api` instead of
+`api`), now a single-flag choice in both `deploy/helm/sentry` and
+`docker-compose.yml` (`enterprise.enabled` / `COMPOSE_PROFILES`), see
+CLAUDE.md.
 
 ## Ingest tenant identity
 
@@ -480,7 +485,8 @@ to, see `tenantprovision.ProvisionClickHouse`'s doc comment).
 | `SAML_IDP_METADATA_URL` | (empty — SAML disabled if unset; if set, fetched and parsed at startup via `samlsp.FetchMetadata`, same trust level as `OIDC_ISSUER_URL`'s discovery fetch) |
 | `ENTERPRISE_SESSION_SIGNING_KEY` | **required**, min 32 bytes |
 | `POST_LOGIN_REDIRECT_URL` | `http://localhost:3000` — where the browser lands after `internal/loginhandler` sets a session cookie |
-| `SELECT_TENANT_REDIRECT_URL` | `{POST_LOGIN_REDIRECT_URL}/select-tenant` — where the browser lands for a multi-membership identity instead; nothing serves this route yet, see "Tenant selection" above |
+| `SELECT_TENANT_REDIRECT_URL` | `{POST_LOGIN_REDIRECT_URL}/select-tenant` — where the browser lands for a multi-membership identity instead; `web/src/routes/select-tenant` serves it, see "Tenant selection" above |
+| `CORS_ALLOWED_ORIGIN` | `{POST_LOGIN_REDIRECT_URL}` — must be a literal origin, not `*` (unlike `enterprise-api`'s var of the same name below): `GET /auth/memberships`/`POST /auth/select-tenant` are credentialed requests, and browsers refuse to honor a wildcard `Access-Control-Allow-Origin` on those |
 
 ## Environment variables (`enterprise-api`)
 

@@ -47,6 +47,14 @@ of what was already run and passed. Two genuine exceptions:
   unverified is not Tantivy itself but the upstream credential/header
   plumbing feeding it (ingest's `TenantResolver`, `enterprise-auth`'s
   `/internal/authorize-ingest`) against a real running stack.
+- The tenant-picker frontend page (§12) -- the first frontend-only piece
+  in this phase exercised in a real browser rather than only
+  type-checked: `web/src/routes/select-tenant`'s cross-origin
+  credentialed fetch/CORS/cookie handling, driven end-to-end via
+  `mcp__claude-in-chrome` against a throwaway server standing in for
+  `enterprise-auth`'s exact wire contract. What's unverified is the same
+  shape as OIDC/SAML above: this round trip against a real running
+  `enterprise-auth` container, not a stand-in.
 
 Everything else — `internal/rbacstore`'s CRUD, the auth-enforcement
 walkthrough, the dashboards tenant-scoping fix, the Helm chart, the
@@ -530,12 +538,12 @@ the full loop (does the operator's watch actually re-trigger a reconcile
 after `-provision-tenant`'s external status write the way controller-
 runtime's default predicate is expected to).
 
-## 12. Tenant-picker backend protocol (no frontend yet, no Docker needed)
+## 12. Tenant-picker, backend and frontend
 
-Like §9, this needs nothing but a local Go toolchain -- the real
-fake-IdP tests already exercise the full login → pending-login cookie →
-`GET /auth/memberships` → `POST /auth/select-tenant` → real session
-round trip:
+**Backend** -- like §9, this needs nothing but a local Go toolchain --
+the real fake-IdP tests already exercise the full login → pending-login
+cookie → `GET /auth/memberships` → `POST /auth/select-tenant` → real
+session round trip:
 
 ```sh
 cd enterprise
@@ -555,13 +563,70 @@ go test ./internal/loginhandler/... -run 'Memberships|SelectTenant|MultipleMembe
 # tenant_id outside the identity's actual memberships.
 ```
 
-**Not built, and explicitly not attempted here**: the frontend page.
-`web` has no session/cookie-handling code anywhere in it today (checked
-while designing this), and `enterprise-auth` has no CORS middleware at
-all -- a cross-origin `fetch` with credentials from `web`'s origin to
-`enterprise-auth`'s would need it, and doesn't work today. Building the
-actual picker UI is real, separately-scoped frontend work; this section
-only closes the backend half.
+**Frontend** -- `web/src/routes/select-tenant` (new), calling the
+endpoints above via `fetch(..., {credentials: 'include'})`
+(`$lib/api.ts`'s `listMemberships`/`selectTenant`), needed a CORS
+posture `enterprise-auth` didn't have: `api/httpserver.WithCORS`'s
+wildcard-friendly default can't be combined with a credentialed
+request at all (browsers refuse it outright), so this needed a new
+`WithCredentialedCORS` (same package, literal-origin-only) wired in via
+a new `CORS_ALLOWED_ORIGIN` env var, defaulting to
+`POST_LOGIN_REDIRECT_URL` (`web`'s own origin). Type-checked and built
+for real:
+
+```sh
+cd web
+npm run check   # svelte-check -- 0 errors
+npm run build    # adapter-static -- confirms select-tenant.html is
+                  # actually produced (it wasn't, at first: adapter-
+                  # static only crawls routes reachable from a link or an
+                  # explicit prerender entry, and nothing in the app
+                  # links to this route since it's only ever reached via
+                  # enterprise-auth's redirect -- fixed by adding
+                  # select-tenant/+page.ts's `export const prerender =
+                  # true`, the same declaration every other route here
+                  # already has)
+```
+
+**Genuinely verified in a real browser in this environment** -- not just
+type-checked, the actual cross-origin fetch/CORS/cookie behavior, driven
+through `mcp__claude-in-chrome`:
+
+1. A throwaway Node HTTP server (no dependencies) stood in for
+   `enterprise-auth`, implementing the exact wire contract this section's
+   Go tests already prove server-side: `GET /auth/memberships` and
+   `POST /auth/select-tenant`, the `sentry_pending_login` cookie
+   (`Path=/auth`), the credentialed CORS headers, and critically the
+   *plain-text* `http.Error` response bodies the real handler sends on
+   failure (not JSON -- `enterpriseAuthRequest` in `$lib/api.ts` reads
+   `res.text()` specifically because of this, unlike every other request
+   helper in that file).
+2. `npm run dev` (SvelteKit dev server) pointed at that fake server via
+   `VITE_ENTERPRISE_AUTH_BASE_URL`, both on `localhost` but different
+   ports -- different origins, the same cross-origin shape a real
+   deployment has.
+3. The browser navigated to the fake server's `/debug/start-pending-
+   login` (mimics `loginhandler.startTenantSelection`: sets the pending
+   cookie, redirects to `/select-tenant`) -- confirmed the redirect
+   landed on the real page, which then genuinely fetched
+   `GET /auth/memberships` cross-origin *with the cookie attached* and
+   rendered both fake tenants with their display names and roles.
+4. Clicked a tenant in the real UI -- confirmed the real
+   `POST /auth/select-tenant` fired (with preflight), succeeded, and the
+   page navigated to the response's `redirect_url` via a real full page
+   load.
+5. Reloaded `/select-tenant` directly (no pending cookie present anymore
+   -- the fake server clears it exactly like the real handler does) --
+   confirmed the page's error state renders the backend's actual
+   plain-text message ("missing or expired pending login...") rather
+   than a generic fetch-failure string.
+
+No console errors at any point. This is the first frontend-only piece
+in this entire phase that's been exercised in a real browser rather than
+only type-checked or unit-tested against fakes -- everything else
+frontend-adjacent (`getAuthFeatures` on the settings page, existing
+Phase 0-3 routes) predates this runbook and was never re-verified here
+either.
 
 ## 13. Ingest tenant identity
 
@@ -760,13 +825,15 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
 - **Human SSO login now works for both OIDC (§3a) and SAML (§3b)** --
   each verified with a real fake IdP (genuine cryptographic signing and
   verification), not yet a real external IdP or a running
-  `enterprise-auth` container. **The tenant-picker backend protocol is
-  now built too** (§12) -- `GET /auth/memberships`/
+  `enterprise-auth` container. **The tenant-picker, backend and
+  frontend, is now fully built too** (§12) -- `GET /auth/memberships`/
   `POST /auth/select-tenant`, backed by a short-lived pending-login
-  token distinct from a real session -- but nothing in `web` calls it
-  yet, so a multi-membership identity still can't actually finish
-  logging in through a browser today, just through direct HTTP calls
-  (which is what §12's verification does).
+  token distinct from a real session, and `web/src/routes/select-tenant`
+  actually calls it via credentialed cross-origin `fetch`, genuinely
+  exercised in a real browser against a contract-accurate fake backend
+  (§12). What's still not tried is the same caveat as OIDC/SAML above:
+  this whole round trip end-to-end against a real running
+  `enterprise-auth` container instead of a stand-in.
 - No admin UI to create a `tenant_memberships` row, but §3a/§3b's manual
   SQL bootstrap is gone -- `enterprise-auth -create-tenant`/
   `-grant-membership-*`/`-revoke-membership-*`/`-list-memberships-tenant`

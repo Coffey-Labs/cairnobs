@@ -222,13 +222,16 @@ its real result into the CRD — a real credential Secret, not the
 previous placeholder that authenticated against nothing, and status
 fields the reconciler derives `Phase`/`Ready` from instead of
 independently guessing "Active" the moment a Tenant object exists. The
-tenant-picker's backend protocol is built too: an identity with more
-than one `tenant_memberships` row now gets a real `GET
+tenant-picker is now fully built, backend and frontend: an identity with
+more than one `tenant_memberships` row gets a real `GET
 /auth/memberships`/`POST /auth/select-tenant` round trip (a short-lived
 pending-login token, distinct from a real session by both Go type and
 JWT claim name — a real token-confusion bug this design's own tests
 caught before it shipped) instead of the flat refusal Phase 4 shipped
-with earlier. Ingest tenant-awareness — the gap this section used to
+with earlier, and `web/src/routes/select-tenant` is the page that
+actually calls it — see the Phase 4 exit-criteria paragraph below for
+what changed to make that verifiable in this environment. Ingest
+tenant-awareness — the gap this section used to
 call "undesigned" — now has a real, if intentionally partial, design:
 `ingest` (AGPL core) gained an optional `TenantResolver`
 (`ingest/internal/grpcserver`), a per-tenant bearer credential an agent
@@ -271,11 +274,29 @@ cause an index directory to be created for a tenant that's no longer
 active. Narrow blast radius (an orphan, isolated, empty index — not
 cross-tenant leakage — and only reachable with a real signed
 credential), but real; see `search/src/registry.rs`'s doc comment on
-`resolve`. What still keeps this phase from being done: only the
-tenant-picker *page* now — `web` has no session/cookie-handling code at
-all yet, and `enterprise-auth` has no CORS middleware for a cross-origin
-`fetch` with credentials, both real, separately-scoped frontend gaps.
-Full accounting:
+`resolve`. **The tenant-picker page is now built too**:
+`web/src/routes/select-tenant` calls `GET /auth/memberships`/
+`POST /auth/select-tenant` via `fetch(..., {credentials: 'include'})`
+(new `$lib/api.ts` functions), which needed a second CORS posture
+alongside the wildcard-friendly one `enterprise-api` already had —
+`api/httpserver.WithCredentialedCORS`, set to a literal origin via a new
+`CORS_ALLOWED_ORIGIN` on `enterprise-auth` — since browsers refuse to
+honor a wildcard `Access-Control-Allow-Origin` on a credentialed
+request. **Genuinely verified in a real browser in this environment**:
+a throwaway Node server standing in for `enterprise-auth`'s exact wire
+contract (including its plain-text `http.Error` bodies, not JSON) on a
+different origin than `web`'s dev server, driven through the full
+cross-origin pending-login-cookie round trip, a real click choosing a
+tenant, and the post-selection redirect — plus the missing/expired-
+pending-login error path — with no Docker or live Postgres/IdP needed,
+since the point was exercising `web`'s own fetch/CORS/cookie wiring, not
+`enterprise-auth`'s internals (already covered by that package's own
+tests). See `/web/README.md`'s "Tenant picker" section for the exact
+setup. What's left in this phase now is entirely the caveats already
+disclosed above, not an unbuilt feature: the ClickHouse/Postgres-backed
+pieces have never run against a real database in this environment, and
+nothing here has been tried against a real external IdP or a real
+running multi-container deployment. Full accounting:
 `/docs/security/threat-model.md`; step-by-step verification procedure
 (not yet run against a live cluster in this environment):
 `/docs/phase-4-runbook.md`. The rest of this section describes the exit

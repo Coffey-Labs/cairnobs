@@ -37,6 +37,7 @@ import (
 	"github.com/crewjam/saml/samlsp"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/httpserver"
 	"github.com/sentry/sentry/enterprise/internal/authhandler"
 	"github.com/sentry/sentry/enterprise/internal/config"
 	"github.com/sentry/sentry/enterprise/internal/loginhandler"
@@ -202,7 +203,14 @@ func main() {
 	authhandler.New(logger, sessionManager, features, rbac).RegisterRoutes(mux)
 	loginhandler.New(logger, oidcProvider, samlProvider, sessionManager, rbac, cfg.PostLoginRedirectURL, cfg.SelectTenantRedirectURL).RegisterRoutes(mux)
 
-	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: mux}
+	// Credentialed, not plain, CORS: GET /auth/memberships and POST
+	// /auth/select-tenant are called from web's tenant-picker page via
+	// `fetch(..., {credentials: 'include'})` so the pending-login/session
+	// cookies actually go along -- see httpserver.WithCredentialedCORS's
+	// doc comment for why that rules out the wildcard origin every other
+	// service's WithCORS defaults to.
+	handler := httpserver.WithCredentialedCORS(mux, cfg.CORSAllowedOrigin)
+	srv := &http.Server{Addr: cfg.HTTPListenAddr, Handler: handler}
 
 	errCh := make(chan error, 1)
 	go func() {

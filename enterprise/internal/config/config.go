@@ -20,13 +20,21 @@ type Config struct {
 	// SelectTenantRedirectURL is where the browser lands after a login
 	// resolves to more than one tenant_memberships row --
 	// internal/loginhandler issues a pending-login cookie and sends the
-	// browser here instead of straight to PostLoginRedirectURL. Nothing
-	// serves this route yet (a real tenant-picker page is undesigned
-	// frontend work -- see internal/loginhandler's package doc comment);
-	// the backend protocol (GET /auth/memberships, POST
-	// /auth/select-tenant) is complete and independently testable via
-	// HTTP regardless of what, if anything, is listening here today.
+	// browser here. web/src/routes/select-tenant is the page that serves
+	// it (see that route's own comments) -- it calls GET
+	// /auth/memberships and POST /auth/select-tenant with
+	// `credentials: 'include'`, which is why CORSAllowedOrigin below has
+	// to be a literal origin, not WithCORS's zero-config "*" default.
 	SelectTenantRedirectURL string
+	// CORSAllowedOrigin is passed to httpserver.WithCredentialedCORS, not
+	// the plain httpserver.WithCORS every other service in this repo
+	// uses -- GET /auth/memberships / POST /auth/select-tenant are
+	// cookie-carrying requests (the pending-login cookie, then the real
+	// session cookie), and browsers categorically refuse to combine a
+	// credentialed fetch with an Access-Control-Allow-Origin: "*"
+	// response, so this can't default to the wildcard the way
+	// api/internal/config.CORSAllowedOrigin does.
+	CORSAllowedOrigin string
 }
 
 type PostgresConfig struct {
@@ -84,8 +92,11 @@ func Load() (Config, error) {
 	// computed after cfg.PostLoginRedirectURL above so a caller
 	// overriding just POST_LOGIN_REDIRECT_URL still gets a sensible
 	// SelectTenantRedirectURL without also having to set the new
-	// variable.
+	// variable. CORSAllowedOrigin defaults the same way: web's own
+	// origin is exactly what needs credentialed cross-origin access to
+	// this service.
 	cfg.SelectTenantRedirectURL = getenv("SELECT_TENANT_REDIRECT_URL", cfg.PostLoginRedirectURL+"/select-tenant")
+	cfg.CORSAllowedOrigin = getenv("CORS_ALLOWED_ORIGIN", cfg.PostLoginRedirectURL)
 
 	// Required, unlike OIDC/SAML above: every enterprise-auth deployment
 	// issues and validates session/service tokens (internal/session),
