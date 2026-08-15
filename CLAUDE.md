@@ -23,12 +23,13 @@ described there without flagging it to me first.
   as of this note -- three resources (`sentry_dashboard`, full CRUD;
   `sentry_alert_rule` and `sentry_notification_target`, both create/
   destroy only -- `alerting` has no `PUT /rules/{id}` or
-  `PUT /targets/{id}` to update against), built on HashiCorp's
-  `terraform-plugin-framework`, reusing the exact same REST contracts
-  `sentryctl dashboards apply`/web's dashboard export and
-  `sentryctl alerts apply` already use. Tenant/RBAC resources are real,
-  disclosed future work -- see `/terraform/README.md` for the full
-  accounting of what is and isn't built, and the same
+  `PUT /targets/{id}` to update against), each paired with a read-only
+  data source, built on HashiCorp's `terraform-plugin-framework`,
+  reusing the exact same REST contracts `sentryctl dashboards apply`/
+  web's dashboard export and `sentryctl alerts apply` already use.
+  Tenant/RBAC resources are real, disclosed future work -- see
+  `/terraform/README.md` for the full accounting of what is and isn't
+  built, and the same
   "written but not run against a live stack" verification caveat as
   everything else Docker-gated in this repo.
 

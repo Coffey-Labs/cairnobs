@@ -135,5 +135,9 @@ func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource
 }
 
 func (p *sentryProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		newDashboardDataSource,
+		newAlertRuleDataSource,
+		newNotificationTargetDataSource,
+	}
 }

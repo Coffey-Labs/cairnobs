@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
@@ -131,5 +132,77 @@ func TestNotificationTargetResourceMetadataSetsTypeName(t *testing.T) {
 	newNotificationTargetResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
 	if resp.TypeName != "sentry_notification_target" {
 		t.Fatalf("TypeName = %q, want sentry_notification_target", resp.TypeName)
+	}
+}
+
+func TestDashboardDataSourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := datasource.SchemaRequest{}
+	resp := &datasource.SchemaResponse{}
+
+	newDashboardDataSource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_dashboard data source schema has errors: %v", resp.Diagnostics)
+	}
+	if !resp.Schema.Attributes["id"].IsRequired() {
+		t.Error(`"id" must be Required -- a data source needs it to know what to look up`)
+	}
+	if !resp.Schema.Attributes["name"].IsComputed() {
+		t.Error(`"name" must be Computed`)
+	}
+}
+
+func TestAlertRuleDataSourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := datasource.SchemaRequest{}
+	resp := &datasource.SchemaResponse{}
+
+	newAlertRuleDataSource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_alert_rule data source schema has errors: %v", resp.Diagnostics)
+	}
+	if !resp.Schema.Attributes["id"].IsRequired() {
+		t.Error(`"id" must be Required`)
+	}
+	if !resp.Schema.Attributes["query"].IsComputed() {
+		t.Error(`"query" must be Computed`)
+	}
+}
+
+func TestNotificationTargetDataSourceSchemaValid(t *testing.T) {
+	ctx := context.Background()
+	req := datasource.SchemaRequest{}
+	resp := &datasource.SchemaResponse{}
+
+	newNotificationTargetDataSource().Schema(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("sentry_notification_target data source schema has errors: %v", resp.Diagnostics)
+	}
+	if !resp.Schema.Attributes["id"].IsRequired() {
+		t.Error(`"id" must be Required`)
+	}
+	if !resp.Schema.Attributes["secret"].IsSensitive() {
+		t.Error(`"secret" must be Sensitive`)
+	}
+}
+
+func TestDataSourcesMetadataSetTypeNames(t *testing.T) {
+	cases := []struct {
+		newDS    func() datasource.DataSource
+		wantType string
+	}{
+		{newDashboardDataSource, "sentry_dashboard"},
+		{newAlertRuleDataSource, "sentry_alert_rule"},
+		{newNotificationTargetDataSource, "sentry_notification_target"},
+	}
+	for _, c := range cases {
+		resp := &datasource.MetadataResponse{}
+		c.newDS().Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
+		if resp.TypeName != c.wantType {
+			t.Errorf("TypeName = %q, want %q", resp.TypeName, c.wantType)
+		}
 	}
 }
