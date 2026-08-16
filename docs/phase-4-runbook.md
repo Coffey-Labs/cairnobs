@@ -91,17 +91,40 @@ memberships and getting back the right tenant/role each time (see §3a,
    not just SAML's, so this would have hit any real reverse-proxied
    deployment, not just this test.
 
-§7 and §11's live-cluster steps still need `kind`/`kubectl`, which
-aren't installed in this environment -- their offline-only checks
-(`go build`/`go vet`/`go test`, `helm lint`, `helm template` + parsing
-the rendered YAML) all pass and are documented as such below. That's the
-only remaining gap in this entire runbook that isn't already closed.
+§7 and §11's live-cluster steps are now closed too. `kind`/`kubectl`/
+`helm` were installed without root (`kind`/`kubectl` as static binaries,
+`helm` the same, all into `~/.local/bin`), a real local cluster was
+created, and the full "Trying the two-tenant example" walkthrough from
+`deploy/helm/sentry/README.md` was run end to end against it -- both
+`acme` and `globex` reached `Tenant.status.phase: Active` with real
+generated ClickHouse credentials in their Secrets. That run found and
+fixed two more real bugs, neither ever caught before because this chart
+had never been installed against a real cluster:
+
+3. `templates/enterprise-auth.yaml` never set `POSTGRES_ADDR`/
+   `POSTGRES_DATABASE`/`POSTGRES_USERNAME`/`POSTGRES_PASSWORD` at all --
+   `enterprise-auth` silently fell back to its `localhost:5432` default
+   and crash-looped forever, never actually reaching Postgres. Fixed to
+   match `api.yaml`'s existing pattern.
+4. `templates/clickhouse.yaml` was missing
+   `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT` -- the same real bug
+   `docker-compose.yml` had (see §1 above), independently present here
+   too since the two files don't share config. `-provision-tenant` could
+   never actually provision a tenant through this chart until this was
+   fixed.
+
+That's every gap in this entire runbook closed except one that's
+genuinely outside this environment's reach: §3a/§3b's flows have only
+been tried against Auth0, not a second, independent real IdP, and no
+real production-grade cluster (only a local `kind` one) has run this.
 
 If you're reading this to decide whether Phase 4 is production-ready:
-closer than before, but not yet -- see
-`/docs/security/threat-model.md`'s "Read this first" section for the
-current, precise state of every control, including the ones still
-gated on a real IdP or a real cluster.
+much closer now -- every documented control has been verified against
+real infrastructure at least once. See `/docs/security/threat-model.md`'s
+"Read this first" section for the current, precise state of every
+control and what's still explicitly out of scope (a privileged DB
+administrator, external audit-log anchoring, and similar named
+non-goals) rather than merely unverified.
 
 ## 1. Bring up the stack
 
@@ -388,10 +411,9 @@ even running the whole package's tests, not just the `DashboardPermission`
 subset, needs `api/` present. `internal/audit` has the same shape via
 `queryapi_adapter.go`.)
 
-## 7. `deploy`: Helm chart and Operator (offline-only so far — see `/deploy/README.md`)
+## 7. `deploy`: Helm chart and Operator (now verified against a real `kind` cluster)
 
-No live cluster was available to `kubectl apply` any of this. What can
-be checked without one:
+Offline checks (no cluster needed):
 
 ```sh
 cd deploy/operator && go build ./... && go vet ./... && go test ./...
@@ -406,24 +428,77 @@ helm template sentry . --include-crds \
   > /tmp/multitenant.yaml
 ```
 
-With a real cluster reachable (`kind create cluster`, or similar):
+**With a real cluster** -- `kind`/`kubectl`/`helm` can all be installed
+without root (`kind`/`kubectl`/`helm` as static binaries into e.g.
+`~/.local/bin`; no package manager or sudo needed):
 
 ```sh
+kind create cluster --name sentry-phase4
+kubectl wait --for=condition=Ready node --all --timeout=120s
+
+# Build and load every image the chart references -- kind's nodes can't
+# pull unpublished local-only images from a registry, only from images
+# already loaded into the node directly.
 docker build -f deploy/operator/Dockerfile -t sentry-tenant-operator deploy/operator/
-kind load docker-image sentry-tenant-operator   # or push to a registry the cluster can pull from
-helm install sentry deploy/helm/sentry --include-crds \
-  --set tenantOperator.enabled=true --set enterprise.enabled=true \
-  --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp'
-kubectl get tenants
-kubectl get secret sentry-tenant-acme-clickhouse -o yaml
+for img in sentry-redpanda-provision sentry-clickhouse-migrate sentry-metadata-migrate \
+           sentry-ingest sentry-search sentry-api sentry-alerting sentry-web \
+           sentry-enterprise-auth sentry-enterprise-api sentry-enterprise-ingest \
+           sentry-tenant-operator; do
+  kind load docker-image "${img}:latest" --name sentry-phase4
+done
+
+# NOTE: helm install has no --include-crds flag (that's a helm template-only
+# flag -- install always installs crds/ by default). The command in
+# deploy/helm/sentry/README.md's "Trying the two-tenant example" had this
+# wrong; fixed there too.
+helm install sentry deploy/helm/sentry \
+  --set enterprise.enabled=true --set tenantOperator.enabled=true \
+  --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
+  --set 'tenants[1].name=globex' --set 'tenants[1].displayName=Globex Corporation'
 ```
 
-Expect `kubectl get tenants` to show `acme` reach `status.phase: Active`
-and the Secret to contain a generated `username`/`password`/`database`.
-This proves the K8s-side half of a real two-tenant deployment — it does
-**not** provision a working ClickHouse database itself (the Operator
-manages the K8s Secret only); §8 below is the piece that actually
-provisions ClickHouse.
+`ingest` genuinely, unconditionally requires real mTLS server
+certs (`ingest/internal/config`'s `TLS.CertFile`/`KeyFile` have no
+disable switch, by design -- see that package's doc comment) --
+`values.yaml`'s `ingest.tlsSecretName` is empty by default and
+deliberately leaves cert issuance to the operator (`cert-manager` or
+equivalent) rather than hand-rolling it in the chart, so a Secret needs
+supplying before `ingest` can start:
+
+```sh
+kubectl create secret generic sentry-ingest-tls \
+  --from-file=server.pem=hack/dev-certs/out/server.pem \
+  --from-file=server-key.pem=hack/dev-certs/out/server-key.pem \
+  --from-file=ca.pem=hack/dev-certs/out/ca.pem
+helm upgrade sentry deploy/helm/sentry --reuse-values \
+  --set ingest.tlsSecretName=sentry-ingest-tls
+```
+
+Confirm every pod actually reaches `Running`/`1/1` (`kubectl get pods`)
+before provisioning -- this run found two real chart bugs neither
+`helm lint`/`helm template` nor any prior Docker-free check could catch,
+since both only manifest once real pods actually try to start (see this
+doc's top "Verification status" section for the full account):
+`enterprise-auth` crash-looping from missing `POSTGRES_ADDR` and friends,
+and ClickHouse's `default` user lacking `CREATE USER` privilege from a
+missing `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT` env var (same bug
+§1's `docker-compose.yml` had). Both fixed in the chart itself.
+
+```sh
+kubectl exec -it deploy/sentry-api -- /enterprise-api -provision-tenant=acme -display-name="Acme Corp"
+kubectl exec -it deploy/sentry-api -- /enterprise-api -provision-tenant=globex -display-name="Globex Corporation"
+kubectl get tenants
+kubectl get secret sentry-tenant-acme-clickhouse sentry-tenant-globex-clickhouse -o yaml
+```
+
+**Confirmed live**: `kubectl get tenants` shows both `acme` and `globex`
+reach `status.phase: Active`, and both Secrets contain a real generated
+`username`/`password`/`database` -- not just the K8s-side half in
+isolation (a Secret existing with a password that authenticates against
+nothing, the old pre-unification gap `/deploy/README.md`'s "lightweight
+unification" section describes), but the actual, complete loop: real
+`-provision-tenant` output synced into the real `Tenant` CRD by the real
+tenant-operator, on a real cluster.
 
 ## 8. `enterprise-api`: real per-tenant ClickHouse isolation
 

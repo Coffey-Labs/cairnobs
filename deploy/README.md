@@ -61,15 +61,22 @@ gap, which was two *disconnected* sources of truth, not two actors).
 
 ## Verification status -- read before trusting this against a real cluster
 
-**Not verified against a live Kubernetes cluster.** This environment has
-no `kubectl`/`kind`/`minikube`/`kubebuilder`/cluster reachable, so
-nothing here has been `kubectl apply`'d or `helm install`'d for real.
-Same disclosed-limitation shape as `/agent/README.md`'s "Windows-specific
-agent code remains unverified on real Windows" from Phase 1 -- a real gap
-to close before shipping, not swept under the rug.
+**Now verified against a real live Kubernetes cluster.** `kind`/
+`kubectl`/`helm` were installed without root (static binaries into
+`~/.local/bin`), a real local cluster was created, every image this
+chart references was built and loaded into it, and the full two-tenant
+walkthrough (`helm/sentry/README.md`) was run end to end -- both tenants
+reached `Tenant.status.phase: Active` with real generated ClickHouse
+credentials in their Secrets. See `/docs/phase-4-runbook.md` §7 for the
+exact commands and the two real chart bugs this run found and fixed
+(`enterprise-auth` missing its Postgres connection env vars entirely,
+ClickHouse missing the env var that grants `CREATE USER` privilege) --
+neither `helm lint`, `helm template`, nor the `kubeconform` schema check
+below could have caught either, since both only manifest once real pods
+actually try to start and connect to each other.
 
-What **was** actually verified, offline, in this environment (network
-access was available to fetch these tools, but no cluster):
+What was verified offline, before real cluster access existed (still
+true, kept as additional evidence, not superseded by the above):
 
 - `deploy/operator`: `go build`/`go vet`/`go test ./...` all pass,
   including reconciler tests against controller-runtime's fake client
@@ -110,11 +117,13 @@ access was available to fetch these tools, but no cluster):
   `enterprise-api`'s container only when `tenantOperator.enabled` is
   true.
 - Docker image builds (`operator/Dockerfile` and every other
-  `Dockerfile` this chart references) were **not** verified in this
-  session -- Docker's daemon wasn't reachable here either (see the
-  Phase 4 task 5 conversation for why). Build and push every image this
-  chart's `values.yaml` references before installing it.
+  `Dockerfile` this chart references) are now confirmed working too --
+  all twelve images this chart needs were built and loaded into the test
+  `kind` cluster above.
 
-Before relying on this in production: `kind create cluster`, `helm
-install` with `--include-crds`, and walk through
-`helm/sentry/README.md`'s two-tenant example end to end.
+Before relying on this in production: `ingest` needs a real cert-manager
+(or equivalent) issued Secret, not `hack/dev-certs`'s throwaway dev
+certs; ClickHouse/Postgres data isn't backed by anything durable beyond
+the cluster's own PVC provisioner in this chart; and only Auth0 has been
+tried as a real external IdP so far (see
+`/docs/phase-4-runbook.md` §3a/§3b).
