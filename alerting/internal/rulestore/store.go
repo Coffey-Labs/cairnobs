@@ -137,8 +137,8 @@ func (s *Store) Create(ctx context.Context, r *Rule) error {
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO alert_state (rule_id, state, last_eval_status, next_eval_at)
-		VALUES ($1, 'ok', 'ok', now())`, r.ID)
+		INSERT INTO alert_state (rule_id, tenant_id, state, last_eval_status, next_eval_at)
+		VALUES ($1, $2, 'ok', 'ok', now())`, r.ID, r.TenantID)
 	if err != nil {
 		return fmt.Errorf("inserting initial alert_state: %w", err)
 	}
@@ -293,8 +293,8 @@ func (s *Store) ApplyTransition(ctx context.Context, ruleID string, next AlertSt
 
 	if notify != nil {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO delivery_log (rule_id, notification_target_id, event_type, status, next_attempt_at, payload)
-			VALUES ($1, $2, $3, 'pending', now(), $4)`,
+			INSERT INTO delivery_log (rule_id, tenant_id, notification_target_id, event_type, status, next_attempt_at, payload)
+			VALUES ($1, (SELECT tenant_id FROM alert_rules WHERE id = $1), $2, $3, 'pending', now(), $4)`,
 			ruleID, notify.NotificationTargetID, notify.EventType, notify.Payload)
 		if err != nil {
 			return fmt.Errorf("inserting delivery_log outbox row: %w", err)
