@@ -21,11 +21,15 @@ const (
 	VizBar        VizType = "bar"
 	VizSingleStat VizType = "single_stat"
 	VizTopN       VizType = "top_n"
+	// VizHeatmap is Phase 5's addition (log-volume-over-time patterns) --
+	// same "query already produced the right rows, only UI framing
+	// differs" shape as VizTopN, no new execution path.
+	VizHeatmap VizType = "heatmap"
 )
 
 func validVizType(v VizType) bool {
 	switch v {
-	case VizTable, VizLine, VizBar, VizSingleStat, VizTopN:
+	case VizTable, VizLine, VizBar, VizSingleStat, VizTopN, VizHeatmap:
 		return true
 	default:
 		return false
@@ -77,7 +81,7 @@ func validatePanel(p *Panel) error {
 		return fmt.Errorf("raw-SQL panels are not supported -- dashboards only support pipe-syntax queries, since the dashboard time-range picker is injected as leading query terms")
 	}
 	if !validVizType(p.VizType) {
-		return fmt.Errorf("viz_type must be one of table, line, bar, single_stat, top_n, got %q", p.VizType)
+		return fmt.Errorf("viz_type must be one of table, line, bar, single_stat, top_n, heatmap, got %q", p.VizType)
 	}
 	if len(p.VizConfig) == 0 {
 		p.VizConfig = json.RawMessage(`{}`)
