@@ -60,29 +60,42 @@ Docker-free testing could have caught:
    `/docs/security/threat-model.md`'s "Read this first" section for the
    full account.
 
-**What's still not verified, and why**: §3a (OIDC) and §12 (tenant
-picker, both single- and multi-membership paths) are now closed --
-verified against a real Auth0 developer tenant, full browser round
-trips, real session cookies authorizing correctly, including selecting
-between two real tenant memberships and getting back the right
-tenant/role each time (see §3a and §12 below). That pass also found and
-fixed a real bug: `web/Dockerfile` only declared `ARG`/`ENV` for
-`VITE_API_BASE_URL`, so `docker-compose.yml`'s build args for
-`VITE_ALERTING_API_BASE_URL`/`VITE_ENTERPRISE_AUTH_BASE_URL` were
-silently dropped by Docker (an undeclared `--build-arg` is dropped, not
-an error) -- `enterpriseAuthBase` came out `undefined` in the built
-bundle, so the tenant-picker page threw "enterprise-auth is not
-configured" against a real running container even though
-`docker-compose.yml` looked correct. Fixed by declaring all three.
+**What's still not verified, and why**: §3a (OIDC), §3b (SAML), and §12
+(tenant picker, both single- and multi-membership paths) are now all
+closed -- verified against a real Auth0 developer tenant acting as both
+an OIDC and a SAML IdP, full browser round trips, real session cookies
+authorizing correctly, including selecting between two real tenant
+memberships and getting back the right tenant/role each time (see §3a,
+§3b, and §12 below). That pass found and fixed two real bugs:
 
-§3b (SAML) still needs a real external IdP with SAML app support, which
-this environment doesn't have credentials for -- the fake-IdP test (real
-XML signing/verification, no stand-in shortcuts) is the strongest
-evidence available without one. §7 and §11's live-cluster steps need
-`kind`/`kubectl`, which aren't installed in this environment -- their
-offline-only checks (`go build`/`go vet`/`go test`, `helm lint`, `helm
-template` + parsing the rendered YAML) all pass and are documented as
-such below.
+1. `web/Dockerfile` only declared `ARG`/`ENV` for `VITE_API_BASE_URL`,
+   so `docker-compose.yml`'s build args for
+   `VITE_ALERTING_API_BASE_URL`/`VITE_ENTERPRISE_AUTH_BASE_URL` were
+   silently dropped by Docker (an undeclared `--build-arg` is dropped,
+   not an error) -- `enterpriseAuthBase` came out `undefined` in the
+   built bundle, so the tenant-picker page threw "enterprise-auth is not
+   configured" against a real running container even though
+   `docker-compose.yml` looked correct.
+2. `enterprise/internal/loginhandler.go` decided every cookie's `Secure`
+   attribute from `r.TLS != nil` alone -- wrong for the deployment shape
+   this handler actually runs in, since `enterprise-auth` never
+   terminates TLS itself. Closing SAML's real-IdP gap required a genuine
+   TLS-terminating proxy in front of it (SAML's request cookie is
+   `SameSite=None`, which the cookie spec requires to be paired with
+   `Secure`, and Chrome silently drops it otherwise), which is exactly
+   what surfaced this: `r.TLS` was nil at the Go process even over a
+   real HTTPS client connection, so the cookie came back non-`Secure`
+   and Chrome dropped it, breaking the flow. Fixed with an
+   `isSecureRequest(r)` helper that also honors
+   `X-Forwarded-Proto: https` -- affects every cookie this handler sets,
+   not just SAML's, so this would have hit any real reverse-proxied
+   deployment, not just this test.
+
+§7 and §11's live-cluster steps still need `kind`/`kubectl`, which
+aren't installed in this environment -- their offline-only checks
+(`go build`/`go vet`/`go test`, `helm lint`, `helm template` + parsing
+the rendered YAML) all pass and are documented as such below. That's the
+only remaining gap in this entire runbook that isn't already closed.
 
 If you're reading this to decide whether Phase 4 is production-ready:
 closer than before, but not yet -- see
@@ -210,44 +223,71 @@ the one thing here still only reachable via the HTTP endpoints
 directly, no operator flag, since `sentryctl dashboards permissions
 list|grant|revoke` already exists as that surface instead (§5a).
 
-## 3b. `enterprise-auth`: human login via SAML (new -- same "verified
-live in this session, not against a real running container or a real
-external IdP" caveat as §3a)
+## 3b. `enterprise-auth`: human login via SAML (now genuinely verified
+against a real external IdP, over real HTTPS)
 
 `enterprise/internal/loginhandler`'s SAML tests already prove the
 mechanism works end to end against a real fake SAML IdP (`go test
 ./internal/loginhandler/... -run SAML -v` from `enterprise/`, no Docker
-needed). What's still unverified is wiring it into this actual running
-stack. To try that for real, point `docker-compose.yml`'s
-`enterprise-auth` service at a real SAML IdP (many identity providers
+needed). **Closed for real in this pass**, using the same Auth0
+developer tenant §3a used, via that app's **SAML2 Web App addon**
+(Auth0 acting as a real SAML IdP, not just OIDC). This is where SAML's
+`SameSite=None` request cookie (which the cookie spec requires to be
+paired with `Secure`) made the plain-HTTP setup this environment
+otherwise defaults to a hard blocker -- getting a real assertion back
+required standing up a genuine (self-signed, dev-only) TLS-terminating
+nginx proxy in front of `enterprise-auth`. Doing that surfaced a real,
+previously-undiscovered bug: every cookie `loginhandler.go` sets decided
+`Secure` from `r.TLS != nil` alone, which is wrong for the deployment
+shape this handler actually runs in -- `enterprise-auth` never
+terminates TLS itself, so in any real deployment (behind an ingress/load
+balancer, exactly what the proxy here stands in for) `r.TLS` is nil even
+over a genuinely HTTPS client connection. The `Secure` attribute was
+silently missing behind the proxy, and Chrome dropped the cookie outright
+-- fixed with a new `isSecureRequest(r)` helper that also honors
+`X-Forwarded-Proto: https`, with its own regression test
+(`TestHandleSAMLLoginSetsSecureCookieBehindATLSProxy`). This bug affects
+every cookie this handler sets, not just SAML's, and would have hit
+production the same way, so this generalizes well beyond closing this
+one section.
+
+With that fixed, the full flow completed for real: login redirected to
+Auth0's real SAML SSO endpoint, Auth0 posted back a real signed
+assertion, `enterprise/internal/saml` validated it (audience, destination,
+signature) and extracted the email attribute, and the identity landed on
+the real `/select-tenant` page with both real tenant memberships,
+exactly like §12's OIDC walkthrough -- confirmed via
+`POST /internal/authorize` returning the selected tenant/role.
+
+To try this yourself, point `docker-compose.yml`'s `enterprise-auth`
+service at a real SAML IdP (many identity providers, including Auth0,
 offer a free developer/trial tenant with SAML app support):
 
 ```sh
 # Add to enterprise-auth's environment in docker-compose.yml (or a
 # docker-compose.override.yml):
-#   SAML_ENTITY_ID: "http://localhost:8082/saml/metadata"
-#   SAML_ACS_URL: "http://localhost:8082/auth/saml/acs"
+#   SAML_ENTITY_ID: "https://<your-https-host>/saml/metadata"
+#   SAML_ACS_URL: "https://<your-https-host>/auth/saml/acs"
 #   SAML_IDP_METADATA_URL: "https://your-idp.example.com/metadata"
-# Register SAML_ENTITY_ID/SAML_ACS_URL with the IdP's application config
-# -- the IdP needs Sentry's ACS URL to know where to POST the assertion.
+# Register SAML_ENTITY_ID (as "audience")/SAML_ACS_URL (as the
+# "Application Callback URL") with the IdP's application config -- the
+# IdP needs Sentry's ACS URL to know where to POST the assertion, and
+# the two must actually agree or the SP-side validation fails with a
+# generic "Authentication failed" (found the hard way -- crewjam/saml's
+# error here doesn't distinguish audience mismatch from other causes).
+# <your-https-host> must be real HTTPS, not plain HTTP -- see above.
 
 docker compose up -d --build enterprise-auth
-curl -s http://localhost:8082/auth/features
+curl -s https://<your-https-host>/auth/features
 # expect: {"sso_configured":true,"oidc_enabled":false,"saml_enabled":true}
 ```
 
 Bootstrapping the first `tenant_memberships` row uses the same
 `-create-tenant`/`-grant-membership-*` flags as §3a (log in once, it
 fails with 403, grant the membership using the email you logged in
-with, log in again). Then visit
-`http://localhost:8082/auth/saml/login` in a real browser, complete the
-IdP's login, and confirm a `sentry_session` cookie lands after redirect
-to `POST_LOGIN_REDIRECT_URL`. Note SAML's `sentry_saml_request` cookie
-is `SameSite=None`, which requires `Secure` -- i.e. this only works over
-HTTPS in a real deployment, unlike OIDC's redirect-based callback which
-tolerates plain HTTP for local dev (see
-`enterprise/internal/loginhandler/loginhandler.go`'s `handleSAMLLogin`
-doc comment for why).
+with, log in again). Then visit `/auth/saml/login` on your HTTPS host in
+a real browser, complete the IdP's login, and confirm a `sentry_session`
+cookie lands after redirect to `POST_LOGIN_REDIRECT_URL`.
 
 ## 4. Turn on RBAC enforcement and prove it actually blocks/allows
 

@@ -52,20 +52,20 @@ per record would be a real throughput cost neither implementation
 accepts), so a minute-wide staleness window remains on both sides by
 design, not by oversight. What's left: two tenants (`acme`, `globex`)
 have been provisioned and exercised end-to-end in this environment.
-Human login itself is now verified for real — a real Auth0 identity
-logged in via OIDC, selected between both tenants, and
+Human login itself is now verified for real, via both protocols — a
+real Auth0 identity logged in via OIDC and (separately) via Auth0's
+SAML2 Web App addon, selected between both tenants each way, and
 `POST /internal/authorize` confirmed each selection issued the right
-tenant/role (see §3a/§12 below) — but that walkthrough ran against plain
-`api` serving `web`'s traffic, not `enterprise-api`, so the specific
-combination of "real human OIDC session" and "real per-tenant ClickHouse
-routing via `chrunner`" in the same request hasn't been driven end to
-end yet; each half is independently confirmed (real ClickHouse
-connections and Go integration tests for the routing half, real Auth0
-sessions for the human-login half), just not together in one request.
-SAML's human-login half still needs a real external IdP with SAML app
-support (see §3b below). And **whether a given deployment actually runs
-the isolated binaries** remains a deployment-time decision, not a
-code-level guarantee — see below.
+tenant/role (see §3a/§3b/§12 below) — but that walkthrough ran against
+plain `api` serving `web`'s traffic, not `enterprise-api`, so the
+specific combination of "real human SSO session" and "real per-tenant
+ClickHouse routing via `chrunner`" in the same request hasn't been
+driven end to end yet; each half is independently confirmed (real
+ClickHouse connections and Go integration tests for the routing half,
+real Auth0 sessions for the human-login half), just not together in one
+request. And **whether a given deployment actually runs the isolated
+binaries** remains a deployment-time decision, not a code-level
+guarantee — see below.
 
 **ClickHouse (the SQL path) is built and now genuinely verified live.**
 `enterprise/internal/tenantprovision` (real `CREATE DATABASE`/`CREATE
@@ -563,7 +563,7 @@ terms:
 | Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; a real `docker compose up` of `enterprise-api` was run in this environment (and caught/fixed a startup-crashing duplicate `GET /healthz` route registration bug in the process), not just `docker compose config` |
 | Human SSO login — OIDC | **Enforced, verified live** — real login against a real Auth0 developer tenant, full browser round trip; correctly failed closed on an identity with no `tenant_memberships` row, then succeeded and issued a real session after `-grant-membership-*`, with `POST /internal/authorize` returning exactly the granted tenant/role |
-| Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
+| Human SSO login — SAML | **Enforced, verified live** — real login against Auth0's SAML2 Web App addon acting as a real SAML IdP, over real (self-signed, dev-only) TLS; a real signed assertion validated (audience, destination, signature), landed on `/select-tenant` with real memberships, and `POST /internal/authorize` confirmed the selected tenant/role. Found and fixed a real bug in the process: `loginhandler.go`'s cookies decided `Secure` from `r.TLS != nil` alone, which is wrong behind any TLS-terminating reverse proxy (the deployment shape this handler actually runs in) — `enterprise-auth` never terminates TLS itself, so `r.TLS` was nil even over a genuinely HTTPS connection, silently dropping `Secure` and breaking SAML's `SameSite=None` cookie |
 | Multi-tenant-membership login (tenant picker) | **Enforced, verified live** — a real Auth0 identity with two real tenant memberships (`acme` Admin, `globex` Viewer) landed on the real `/select-tenant` page against the real `enterprise-auth` container, rendered both with correct display names/roles via a real credentialed cross-origin `GET /auth/memberships`, and selecting either one issued a session that `POST /internal/authorize` confirmed matched — the selection genuinely determines the issued session's tenant, not just renders correctly. This pass also found and fixed a real bug: `web/Dockerfile` never declared `ARG`/`ENV` for `VITE_ALERTING_API_BASE_URL`/`VITE_ENTERPRISE_AUTH_BASE_URL`, so `docker-compose.yml`'s build args for them were silently dropped, leaving `enterpriseAuthBase` `undefined` in the built bundle |
 | Per-resource dashboard grants (`own/granted`) | **Enforced, verified live** — real Postgres integration tests for `dashboard_permissions` CRUD and the `PermissionStore` adapter all pass (only when `enterprise-api` serves traffic — plain `api` falls back to own/Admin only) |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
