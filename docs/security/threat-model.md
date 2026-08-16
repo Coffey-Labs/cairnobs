@@ -524,9 +524,10 @@ terms:
   an unanswered compliance question, not a designed-and-deferred one.
 - **No general multi-cluster orchestration** — `/deploy`'s Helm
   chart/Operator (`/deploy/README.md`) proves the K8s-side per-tenant
-  secret-management model, not a fully general multi-cluster system, and
-  was never applied to a live cluster in this environment (see that
-  README's verification section).
+  secret-management model, not a fully general multi-cluster system.
+  Now applied to a real (local `kind`) live cluster in this environment
+  — see that README's verification section — but only a single-cluster,
+  single-node test, not a real multi-cluster topology.
 
 ## Deployment/network assumptions
 
@@ -560,7 +561,7 @@ terms:
 | Ingest tenant *identity* (credential validation, tagging) | **Built and tested** — fail-closed `TenantResolver`, `tenant_id` Kafka header attached per record |
 | Ingest tenant *write-routing*, ClickHouse | **Enforced, verified live** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; both Docker-free and live-ClickHouse tests pass. Active-tenant snapshot refreshes every minute (`Registry.StartRefreshing`) — a deprovisioned tenant loses write access within a minute, not "until the next restart" |
 | Ingest tenant *write-routing*, Tantivy | **Built and genuinely verified** — `search/src/consumer.rs` routes each record into its own tenant's index via `IndexRegistry`, same registry the (already-verified) read side uses; no Docker needed, real tests pass. Active-tenant-gated too: `tenants::ActiveTenantTracker` polls `enterprise-auth` every 60s (off unless configured), refusing any tenant not in the polled allowlist — same one-minute staleness bound as ClickHouse's now-refreshing snapshot, no more asymmetry between the two |
-| Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
+| Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO; a real `helm install` against a real `kind` cluster confirmed the `sentry-api` Deployment runs `sentry-enterprise-api:latest` with `enterprise.enabled=true`, real endpoints behind the `sentry-api` Service, not just `helm template`'s rendered YAML |
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; a real `docker compose up` of `enterprise-api` was run in this environment (and caught/fixed a startup-crashing duplicate `GET /healthz` route registration bug in the process), not just `docker compose config` |
 | Human SSO login — OIDC | **Enforced, verified live** — real login against a real Auth0 developer tenant, full browser round trip; correctly failed closed on an identity with no `tenant_memberships` row, then succeeded and issued a real session after `-grant-membership-*`, with `POST /internal/authorize` returning exactly the granted tenant/role |
 | Human SSO login — SAML | **Enforced, verified live** — real login against Auth0's SAML2 Web App addon acting as a real SAML IdP, over real (self-signed, dev-only) TLS; a real signed assertion validated (audience, destination, signature), landed on `/select-tenant` with real memberships, and `POST /internal/authorize` confirmed the selected tenant/role. Found and fixed a real bug in the process: `loginhandler.go`'s cookies decided `Secure` from `r.TLS != nil` alone, which is wrong behind any TLS-terminating reverse proxy (the deployment shape this handler actually runs in) — `enterprise-auth` never terminates TLS itself, so `r.TLS` was nil even over a genuinely HTTPS connection, silently dropping `Secure` and breaking SAML's `SameSite=None` cookie |

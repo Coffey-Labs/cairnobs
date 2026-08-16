@@ -64,8 +64,11 @@ be reachable). This chart approximates that more loosely:
 
 ```sh
 # Quote each --set value -- zsh globs an unquoted tenants[0] as a
-# pattern and fails with "no matches found."
-helm install sentry . --include-crds \
+# pattern and fails with "no matches found." Also note: no --include-crds
+# here -- that's a helm template-only flag (install always installs
+# crds/ by default); confirmed the hard way running this against a real
+# kind cluster, see /docs/phase-4-runbook.md §7.
+helm install sentry . \
   --set enterprise.enabled=true \
   --set tenantOperator.enabled=true \
   --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
@@ -83,6 +86,17 @@ kubectl get tenants
 # expect: both Active now.
 kubectl get secret sentry-tenant-acme-clickhouse sentry-tenant-globex-clickhouse
 ```
+
+Before any of this: `ingest` needs a real mTLS cert Secret
+(`--set ingest.tlsSecretName=...`, see `values.yaml`'s comment on it and
+`/docs/phase-4-runbook.md` §7 for the exact `kubectl create secret`
+invocation using `hack/dev-certs`) or it crash-loops on startup --
+unconditional by design, no disable switch.
+
+**Genuinely run against a real `kind` cluster, not just described**: see
+`/docs/phase-4-runbook.md` §7 for the exact steps (image loading into
+`kind`, the two chart bugs it found and fixed) and confirmation that
+both tenants reached `status.phase: Active` with real credentials.
 
 This proves Phase 4's "two tenants... with their own users, roles,
 dashboards" exit criteria (`/CLAUDE.md`) end to end at the deployment-
@@ -124,5 +138,5 @@ helm lint .
 helm template sentry . --include-crds > /tmp/rendered.yaml
 ```
 
-See `/deploy/README.md`'s verification section for what was actually
-checked this way (and what wasn't -- no live cluster was available).
+See `/deploy/README.md`'s verification section for what was checked
+this way versus against a real cluster (now done -- see above).
