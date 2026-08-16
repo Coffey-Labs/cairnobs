@@ -16,7 +16,7 @@ export type Language = '' | 'sql' | 'spl';
 
 export type QueryResult = { columns: string[]; rows: unknown[][] };
 
-export type VizType = 'table' | 'line' | 'bar' | 'single_stat' | 'top_n';
+export type VizType = 'table' | 'line' | 'bar' | 'single_stat' | 'top_n' | 'heatmap';
 
 export type Panel = {
 	id: string;
@@ -201,6 +201,34 @@ export function selectTenant(tenantId: string): Promise<{ redirect_url: string }
 		method: 'POST',
 		body: JSON.stringify({ tenant_id: tenantId })
 	});
+}
+
+export type CurrentSession = { tenant_id: string; user_id: string; role: string };
+
+// getCurrentSession backs the sidebar's tenant indicator (Phase 5).
+// POST /internal/authorize already exists (api/authz.HTTPAuthorizer and
+// alerting's queryclient call it the same way) and is already reachable
+// from the browser -- enterprise-auth's whole mux is wrapped in
+// WithCredentialedCORS, not just the tenant-picker routes -- so this is
+// a client for an existing endpoint, not a new one. Returns null for
+// every "no tenant to show" case alike (no enterprise-auth configured,
+// not logged in, or a plain single-tenant deployment) rather than
+// throwing -- same "absence is a normal deployment shape" posture
+// getAuthFeatures already uses, so the sidebar can just render nothing
+// instead of branching on error types.
+export async function getCurrentSession(): Promise<CurrentSession | null> {
+	if (!enterpriseAuthBase) return null;
+	try {
+		const res = await fetch(`${enterpriseAuthBase}/internal/authorize`, {
+			method: 'POST',
+			credentials: 'include'
+		});
+		if (!res.ok) return null;
+		const session = (await res.json()) as CurrentSession;
+		return session.tenant_id ? session : null;
+	} catch {
+		return null;
+	}
 }
 
 export function exportDashboard(id: string): Promise<Dashboard> {

@@ -83,10 +83,8 @@
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 480px;
-		margin: 3rem auto;
-		padding: 0 1rem;
+		max-width: 30rem;
+		margin: var(--space-8) auto;
 	}
 	ul {
 		list-style: none;
@@ -94,23 +92,25 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 	button {
 		width: 100%;
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		font-size: 1rem;
+		gap: var(--space-3);
+		padding: var(--space-3) var(--space-4);
+		font-size: var(--text-md);
+		font-family: var(--font-ui);
 		text-align: left;
-		background: #fff;
-		border: 1px solid #ccc;
-		border-radius: 6px;
+		background: var(--color-surface);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
 		cursor: pointer;
 	}
 	button:hover:not(:disabled) {
-		border-color: #06c;
+		border-color: var(--color-accent);
 	}
 	button:disabled {
 		cursor: default;
@@ -118,18 +118,18 @@
 	}
 	.name {
 		flex: 1;
-		font-weight: 600;
+		font-weight: var(--font-weight-medium);
 	}
 	.role {
-		color: #666;
-		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		font-size: var(--text-sm);
 		text-transform: capitalize;
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
 	}
 	.note {
-		color: #666;
-		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		font-size: var(--text-sm);
 	}
 </style>
