@@ -27,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -534,6 +535,13 @@ func (s *Store) SetDataSourceClickHouseCredentials(ctx context.Context, id, user
 		`UPDATE data_sources SET clickhouse_username = $2, clickhouse_password = $3 WHERE id = $1`,
 		id, username, password)
 	if err != nil {
+		// A malformed id (not valid UUID syntax) can never match a row
+		// either way -- treat it the same as "no such row" rather than
+		// leaking Postgres's raw 22P02 error past this store's boundary.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
+			return ErrNotFound
+		}
 		return fmt.Errorf("rbacstore: setting data source credentials: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
