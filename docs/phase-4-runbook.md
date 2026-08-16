@@ -60,18 +60,29 @@ Docker-free testing could have caught:
    `/docs/security/threat-model.md`'s "Read this first" section for the
    full account.
 
-**What's still not verified, and why**: §3a (OIDC) and §3b (SAML) both
-need a real external IdP (Auth0/Okta developer tenant, or similar) that
-this environment doesn't have credentials for -- the fake-IdP tests
-(real RS256/XML crypto, no stand-in shortcuts) are the strongest
-evidence available without one. §12's frontend-against-a-real-
-`enterprise-auth`-container check is blocked by the same root cause:
-there's no way to land on `/select-tenant` with a genuine pending-login
-cookie from the real binary without a real IdP redirecting through it
-first. §7 and §11's live-cluster steps need `kind`/`kubectl`, which
-aren't installed in this environment -- their offline-only checks
-(`go build`/`go vet`/`go test`, `helm lint`, `helm template` + parsing
-the rendered YAML) all pass and are documented as such below.
+**What's still not verified, and why**: §3a (OIDC) and §12 (tenant
+picker, both single- and multi-membership paths) are now closed --
+verified against a real Auth0 developer tenant, full browser round
+trips, real session cookies authorizing correctly, including selecting
+between two real tenant memberships and getting back the right
+tenant/role each time (see §3a and §12 below). That pass also found and
+fixed a real bug: `web/Dockerfile` only declared `ARG`/`ENV` for
+`VITE_API_BASE_URL`, so `docker-compose.yml`'s build args for
+`VITE_ALERTING_API_BASE_URL`/`VITE_ENTERPRISE_AUTH_BASE_URL` were
+silently dropped by Docker (an undeclared `--build-arg` is dropped, not
+an error) -- `enterpriseAuthBase` came out `undefined` in the built
+bundle, so the tenant-picker page threw "enterprise-auth is not
+configured" against a real running container even though
+`docker-compose.yml` looked correct. Fixed by declaring all three.
+
+§3b (SAML) still needs a real external IdP with SAML app support, which
+this environment doesn't have credentials for -- the fake-IdP test (real
+XML signing/verification, no stand-in shortcuts) is the strongest
+evidence available without one. §7 and §11's live-cluster steps need
+`kind`/`kubectl`, which aren't installed in this environment -- their
+offline-only checks (`go build`/`go vet`/`go test`, `helm lint`, `helm
+template` + parsing the rendered YAML) all pass and are documented as
+such below.
 
 If you're reading this to decide whether Phase 4 is production-ready:
 closer than before, but not yet -- see
@@ -128,18 +139,30 @@ curl -s http://localhost:8082/auth/features
 # (no OIDC_ISSUER_URL/SAML_IDP_METADATA_URL set in this compose file)
 ```
 
-## 3a. `enterprise-auth`: human login via OIDC (new -- unlike everything
-else in this runbook, the underlying flow *was* verified live in this
-session, just not against a real running `enterprise-auth` container or
-a real external IdP)
+## 3a. `enterprise-auth`: human login via OIDC (now genuinely verified
+against a real external IdP, not just a real fake one)
 
 `enterprise/internal/loginhandler`'s tests already prove the mechanism
 works end to end against a real fake IdP (`go test
 ./internal/loginhandler/... -v` from `enterprise/`, no Docker needed --
-see `enterprise/README.md`). What's still unverified is wiring it into
-this actual running stack. To try that for real, point
-`docker-compose.yml`'s `enterprise-auth` service at a real OIDC IdP
-(a free Auth0/Okta developer tenant, or any IdP you control):
+see `enterprise/README.md`). **Closed for real in this pass**: a free
+Auth0 developer tenant was created, wired into a local-only
+`docker-compose.override.yml` (never committed -- see `.gitignore`), and
+the full human login flow was driven through a real browser end to end:
+`GET /auth/oidc/login` redirected to Auth0's real hosted login page; the
+first attempt (before any `tenant_memberships` row existed) correctly
+failed closed with "this identity has no tenant membership" while still
+creating the `users` row via `UpsertUserBySSO`, exactly as designed;
+after `-grant-membership-*` granted that real Auth0 identity
+(`john@linuxexperts.net`) an `admin` role on `acme`, a second login
+completed the full OAuth code exchange, consent screen, and redirect to
+`web`, landing a real `sentry_session` cookie; `POST
+/internal/authorize` with that cookie returned
+`{"tenant_id":"acme","user_id":"...","role":"admin"}` -- the exact
+membership granted, round-tripped through a real external IdP, not a
+stand-in. To reproduce, point `docker-compose.yml`'s `enterprise-auth`
+service at a real OIDC IdP (a free Auth0/Okta developer tenant, or any
+IdP you control):
 
 ```sh
 # Add to enterprise-auth's environment in docker-compose.yml (or a
@@ -655,6 +678,26 @@ only type-checked or unit-tested against fakes -- everything else
 frontend-adjacent (`getAuthFeatures` on the settings page, existing
 Phase 0-3 routes) predates this runbook and was never re-verified here
 either.
+
+**Since closed for real against the actual running containers**, not a
+stand-in: `docker-compose.override.yml` (local-only, gitignored) pointed
+`enterprise-auth` at the same real Auth0 developer tenant §3a used. Two
+real tenants (`acme`, `globex`) each got a real `tenant_memberships` row
+for the same Auth0 identity (`admin` and `viewer` respectively, via
+`-grant-membership-*`). Logging in through `/auth/oidc/login` against
+the real IdP landed on the real `/select-tenant` page, which rendered
+both real memberships with their real display names and roles ("Acme
+Corp -- Admin", "Globex Corporation -- Viewer") -- fetched via a real
+credentialed cross-origin request to the real `enterprise-auth`
+container, not the fake Node stand-in. Selecting "Globex Corporation"
+fired a real `POST /auth/select-tenant`, redirected to `web`, and
+`POST /internal/authorize` with the resulting cookie returned
+`{"tenant_id":"globex","user_id":"...","role":"viewer"}` -- proving the
+picker's selection genuinely determines the issued session's tenant, not
+just that the UI renders correctly. This run is also what found and
+fixed the `web/Dockerfile` build-arg bug described in this doc's top
+"Verification status" section -- the picker was unreachable against the
+real container until that fix landed.
 
 ## 13. Ingest tenant identity
 
