@@ -8,7 +8,10 @@
 
 	import ResultsTable from '$lib/ResultsTable.svelte';
 	import QueryBar from '$lib/QueryBar.svelte';
-	import { runQuery as apiRunQuery, type Language } from '$lib/api';
+	import AddToDashboardModal from '$lib/components/AddToDashboardModal.svelte';
+	import { Button } from '$lib/components/ui';
+	import { runQuery as apiRunQuery, injectTimeRange, type Language } from '$lib/api';
+	import { page } from '$app/state';
 
 	type HistoryEntry = { query: string; language: Language; at: number };
 
@@ -66,6 +69,25 @@
 			hasRun = true;
 		}
 	}
+
+	// Drill-down landing: a chart's "click to drill into query"
+	// (see $lib/charts/drilldown.ts) navigates here with ?q=&earliest=&latest=.
+	// Runs once per navigation, not on every reactive change, so editing
+	// the query bar afterwards doesn't keep re-injecting the original
+	// drill-down range.
+	let consumedDrillDownParams = false;
+	$effect(() => {
+		const params = page.url.searchParams;
+		const q = params.get('q');
+		if (!q || consumedDrillDownParams) return;
+		consumedDrillDownParams = true;
+		const earliest = params.get('earliest');
+		const latest = params.get('latest');
+		query = earliest ? injectTimeRange(q, earliest, latest ?? 'now') : q;
+		runQuery();
+	});
+
+	let addToDashboardOpen = $state(false);
 </script>
 
 <main>
@@ -82,7 +104,17 @@
 		<p class="error">Error: {error}</p>
 	{/if}
 
+	{#if hasRun && !error && columns.length > 0}
+		<div class="results-actions">
+			<Button size="sm" variant="secondary" onclick={() => (addToDashboardOpen = true)}>
+				+ Add as panel to dashboard
+			</Button>
+		</div>
+	{/if}
+
 	<ResultsTable {columns} {rows} {hasRun} />
+
+	<AddToDashboardModal bind:open={addToDashboardOpen} {query} {language} />
 
 	{#if history.length > 0}
 		<details class="history">
@@ -120,40 +152,50 @@
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 960px;
-		margin: 2rem auto;
-		padding: 0 1rem;
+		max-width: 64rem;
+	}
+	h1 {
+		font-size: var(--text-xl);
+		margin-bottom: var(--space-2);
+	}
+	p {
+		color: var(--color-text-muted);
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
+	}
+	.results-actions {
+		margin: var(--space-3) 0;
 	}
 	.history ul {
 		list-style: none;
 		padding: 0;
-		margin: 0.5rem 0 0;
+		margin: var(--space-2) 0 0;
 	}
 	.history-item {
 		background: none;
 		border: none;
 		text-align: left;
-		padding: 0.25rem 0;
+		padding: var(--space-1) 0;
 		cursor: pointer;
-		color: #06c;
+		color: var(--color-accent);
+		font-family: var(--font-mono);
 	}
 	.history-item:hover {
 		text-decoration: underline;
 	}
 	.cheatsheet {
-		margin-top: 1.5rem;
-		font-size: 0.85rem;
+		margin-top: var(--space-5);
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 	.cheatsheet table {
 		border-collapse: collapse;
-		margin-top: 0.5rem;
+		margin-top: var(--space-2);
+		font-family: var(--font-mono);
 	}
 	.cheatsheet td {
-		padding: 0.2rem 0.75rem 0.2rem 0;
+		padding: var(--space-1) var(--space-4) var(--space-1) 0;
 		vertical-align: top;
 	}
 </style>

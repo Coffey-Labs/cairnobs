@@ -4,6 +4,8 @@
 	// deliberately just the input+run affordance, not results/history,
 	// which differ per consumer.
 	import type { Language } from '$lib/api';
+	import { Button } from '$lib/components/ui';
+	import QueryEditor from '$lib/query-editor/QueryEditor.svelte';
 
 	let {
 		query = $bindable(''),
@@ -28,20 +30,10 @@
 	}
 	let detected = $derived(detectedLanguage(query));
 	let effectiveLanguage = $derived(language === '' ? detected : language);
-
-	function onKeydown(e: KeyboardEvent) {
-		// Cmd/Ctrl+Enter runs the query -- textarea's own Enter key needs
-		// to stay newline-for-pipe-stage-formatting, so this isn't a bare
-		// Enter binding.
-		if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-			e.preventDefault();
-			onRun();
-		}
-	}
 </script>
 
 <div class="query-bar">
-	<textarea bind:value={query} onkeydown={onKeydown} rows="4" spellcheck="false" {placeholder}></textarea>
+	<QueryEditor bind:value={query} {onRun} {placeholder} />
 	<div class="controls">
 		<label>
 			Language:
@@ -54,40 +46,42 @@
 		<span class="detected-badge" class:sql={effectiveLanguage === 'sql'}>
 			{effectiveLanguage === 'sql' ? 'SQL' : 'pipe syntax'}
 		</span>
-		<button onclick={onRun} disabled={loading || query.trim() === ''}>
+		<Button variant="primary" onclick={onRun} disabled={loading || query.trim() === ''}>
 			{loading ? 'Running…' : 'Run query'}
-		</button>
+		</Button>
 		<span class="hint">⌘/Ctrl+Enter to run</span>
 	</div>
 </div>
 
 <style>
-	.query-bar textarea {
-		width: 100%;
-		font-family: monospace;
-		font-size: 0.9rem;
-		box-sizing: border-box;
-	}
 	.controls {
-		margin-top: 0.5rem;
+		margin-top: var(--space-3);
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: var(--space-3);
 		flex-wrap: wrap;
 	}
+	.controls select {
+		background: var(--color-surface);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		height: var(--control-height);
+		font-family: var(--font-ui);
+	}
 	.detected-badge {
-		font-size: 0.75rem;
-		padding: 0.15rem 0.5rem;
-		border-radius: 1rem;
-		background: #eef;
-		color: #224;
+		font-size: var(--text-xs);
+		padding: 0.15rem var(--space-2);
+		border-radius: var(--radius-full);
+		background: var(--color-sev-info-bg);
+		color: var(--color-sev-info);
 	}
 	.detected-badge.sql {
-		background: #fee;
-		color: #422;
+		background: var(--color-sev-warn-bg);
+		color: var(--color-sev-warn);
 	}
 	.hint {
-		font-size: 0.8rem;
-		color: #777;
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 </style>
