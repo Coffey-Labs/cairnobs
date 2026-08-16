@@ -9,39 +9,68 @@ for the full design rationale behind the controls described here.
 
 ## Read this first: the single most important open finding
 
-**Updated a sixth time.** This section originally read "log data queried
-through `POST /query` is not tenant-isolated at all," then "ClickHouse
-is isolated but Tantivy isn't," then "ingest tags records with a tenant
-identity but nothing routes the write," then "ClickHouse write-routing
-is built but Tantivy's isn't," then "both are write-routed but neither
-rechecks tenant-active status live," then "both recheck, but ClickHouse's
-snapshot never refreshes while Tantivy's does." Both storage engines are
-now isolated on both the read and write paths, **both gate writes on an
-active-tenant check, and both now refresh that check periodically** —
-`chwriter.Registry.StartRefreshing` (new) closes the asymmetry the
-previous version of this section named: ClickHouse's writer map now
-re-lists active tenants every minute, the same interval
-`tenants.ActiveTenantTracker` already used on the Tantivy side, opening
+**Updated a seventh time — and this time the headline actually changes.**
+This section originally read "log data queried through `POST /query` is
+not tenant-isolated at all," then "ClickHouse is isolated but Tantivy
+isn't," then "ingest tags records with a tenant identity but nothing
+routes the write," then "ClickHouse write-routing is built but Tantivy's
+isn't," then "both are write-routed but neither rechecks tenant-active
+status live," then "both recheck, but ClickHouse's snapshot never
+refreshes while Tantivy's does," then (sixth) "both engines are built
+and code-complete, but the ClickHouse half has never actually run
+against a real ClickHouse." That last gap is now closed: Docker access
+became available, and every ClickHouse-dependent piece named below —
+`tenantprovision`, `chrunner`, `chwriter`, the `system.*` metadata
+isolation check, and `enterprise-api` itself actually starting and
+serving traffic — has been run against a real
+`clickhouse/clickhouse-server:24.8` and a real Postgres, not just
+type-checked or run against fakes. Closing this loop caught and fixed
+six real bugs that no amount of Docker-free testing could have found:
+a Docker build-context bug that made `enterprise-auth` fail to build at
+all, a validation gap in `dashboards.Store.AddPanel`/`UpdatePanel`, a
+raw Postgres error leaking past `rbacstore`'s `ErrNotFound` boundary,
+`enterprise-api` panicking on startup from a duplicate `GET /healthz`
+route registration, ClickHouse's `default` user genuinely lacking
+`CREATE USER` privilege until `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1`
+was added to `docker-compose.yml`, and — most load-bearing — a freshly
+provisioned tenant user was **not** actually default-denied from
+`system.*` on this ClickHouse version, exactly the risk task 2's
+original design flagged as needing live verification rather than trust.
+See `/docs/phase-4-runbook.md` §§1–14 for the full list of what was run
+and what each finding was.
+
+Both storage engines are isolated on both the read and write paths,
+**both gate writes on an active-tenant check, and both refresh that
+check periodically** — `chwriter.Registry.StartRefreshing` re-lists
+active tenants every minute, the same interval
+`tenants.ActiveTenantTracker` uses on the Tantivy side, opening
 connections for newly-active tenants and closing/removing ones no
-longer active — a deprovisioned tenant now loses ClickHouse write access
+longer active — a deprovisioned tenant loses ClickHouse write access
 within a minute, not "until the next `enterprise-ingest` restart."
 Neither engine does a live per-write check (a database/HTTP round trip
 per record would be a real throughput cost neither implementation
 accepts), so a minute-wide staleness window remains on both sides by
-design, not by oversight. What's left is narrower still: **whether a
-given deployment actually runs the isolated binaries** (deployment-time,
-not code-level). See below for both engines' write-routing, in full.
+design, not by oversight. What's left: two tenants (`acme`, `globex`)
+have been provisioned and exercised end-to-end in this environment, but
+only via direct ClickHouse-user connections and Go integration tests —
+not yet via a real logged-in human session walking through `POST
+/query` in a browser, since that still needs OIDC/SAML wired to a real
+external IdP (see §3a/§3b below). And **whether a given deployment
+actually runs the isolated binaries** remains a deployment-time
+decision, not a code-level guarantee — see below.
 
-**ClickHouse (the SQL path) is built.** `enterprise/internal/
-tenantprovision` (real `CREATE DATABASE`/`CREATE USER`/`GRANT`) and
-`enterprise/internal/chrunner` (a per-tenant connection registry
-implementing `api/querylang/executor.SQLRunner`, resolving the tenant
-from request identity, never a parameter) are wired into
-`enterprise/cmd/enterprise-api`. **Not yet confirmed against a real
-ClickHouse** — this environment had no Docker/database access while
-these were written; the tests exist and are correct Go, but "the test
-exists" is not the same claim as "isolation is confirmed" (see
-`/docs/phase-4-runbook.md`).
+**ClickHouse (the SQL path) is built and now genuinely verified live.**
+`enterprise/internal/tenantprovision` (real `CREATE DATABASE`/`CREATE
+USER`/`GRANT`/`REVOKE`) and `enterprise/internal/chrunner` (a per-tenant
+connection registry implementing `api/querylang/executor.SQLRunner`,
+resolving the tenant from request identity, never a parameter) are wired
+into `enterprise/cmd/enterprise-api`, which has itself been built,
+started, and confirmed serving traffic on a real docker-compose stack.
+Every ClickHouse-dependent test in both packages passes against a real
+`clickhouse/clickhouse-server:24.8`, including the cross-tenant raw-SQL
+probe and the corrected `system.*` metadata-isolation check (see "Known
+residual risks" below for the real, version-specific wrinkle that check
+found).
 
 **Tantivy (the free-text path) is also built, and — unlike the
 ClickHouse pieces — genuinely verified in this environment.**
@@ -75,8 +104,11 @@ sharing the same host port/network-alias trick to stay transparent to
 `alerting`/`web` either way — verified via `docker compose config`
 (renders and validates the merged YAML without a daemon; confirms
 `api`/`enterprise-api` never both appear in `--services` output for the
-same profile selection) — see `/docs/phase-4-runbook.md` §10a. This
-still only constrains *deployment*, not *operation*: nothing stops an
+same profile selection) *and* via an actual `docker compose up` of
+`enterprise-api` in this environment, which is what caught the duplicate
+`GET /healthz` route panic mentioned above — see
+`/docs/phase-4-runbook.md` §10a. This still only constrains
+*deployment*, not *operation*: nothing stops an
 operator from manually running plain `api`'s image against a cluster
 (or compose project) that has tenants
 provisioned, pointing at the same ClickHouse/Postgres. The Helm chart
@@ -455,21 +487,27 @@ terms:
   credentials. That's an operational control (credential custody,
   infrastructure access review), out of scope for this system's own
   code.
-- **`system.query_log` metadata leakage — per-tenant users are now
-  real, but the check itself hasn't run yet.** Was an open verification
-  item because there were no per-tenant ClickHouse users to check
-  against; that blocker is gone (`enterprise/internal/tenantprovision`
-  exists), and `tenantprovision_test.go`'s
-  `TestProvisionedUserCannotReadSystemTables` asserts exactly what the
-  design calls for (`system.query_log`/`system.tables` inaccessible,
-  `SHOW DATABASES` not revealing other tenants) — but this environment
-  never had ClickHouse access to actually run it, so it remains
-  unconfirmed against the pinned version
-  (`clickhouse/clickhouse-server:24.8`) until someone with Docker access
-  runs it (`/docs/phase-4-runbook.md` §8). Also still contingent on the
-  deployment-shape caveat at the top of this document: even once
-  confirmed, this only holds when `enterprise-api` (not plain `api`) is
-  actually serving traffic.
+- **`system.query_log` metadata leakage — now closed and verified live**
+  against the pinned version (`clickhouse/clickhouse-server:24.8`), with
+  a real, non-obvious wrinkle: a freshly created tenant user was **not**
+  default-denied from `system.*` the way the original design assumed
+  (`ProvisionClickHouse` now issues an explicit `REVOKE SELECT ON
+  system.* FROM <user>` — see that function's doc comment). Confirming
+  this live also surfaced a genuine ClickHouse behavioral split the
+  design doc didn't anticipate: `system.query_log` is a real
+  access-checked table (the REVOKE makes it hard-deny,
+  `ACCESS_DENIED`), but `system.tables` is a filtered *catalog* view
+  that ClickHouse 24.8 never denies outright regardless of grants — it
+  just silently returns zero rows for a properly-revoked user. Both
+  outcomes close the actual leak (no other tenant's query text or
+  database/table names are visible either way);
+  `tenantprovision_test.go`'s `TestProvisionedUserCannotReadSystemTables`
+  was corrected to assert what each table actually does (hard error for
+  `query_log`, verified-empty-and-no-foreign-database-names for
+  `tables`) rather than demanding a hard error from both. Still
+  contingent on the deployment-shape caveat at the top of this document:
+  this only holds when `enterprise-api` (not plain `api`) is actually
+  serving traffic.
 - **No deny-override grants** — `dashboard_permissions` is additive-only
   by design; a full allow/deny ACL system is unbuilt, future work.
 - **No data retention/deletion policy** for a deprovisioned tenant —
@@ -506,20 +544,20 @@ terms:
 | Role-based access control on `/query`, `/dashboards` | **Enforced** |
 | `alerting`↔`api` service-identity credential | **Enforced** |
 | Tenant scoping on dashboards (control-plane data) | **Enforced** |
-| ClickHouse per-tenant provisioning (`tenantprovision`) | **Built, not live-verified** — real integration test exists, not yet run against ClickHouse |
-| ClickHouse query routing (`chrunner`) | **Built, not live-verified** — and only applies when `enterprise-api` serves traffic, not plain `api` |
-| `system.*` ClickHouse metadata isolation | **Built, not live-verified** — same caveat as above |
+| ClickHouse per-tenant provisioning (`tenantprovision`) | **Enforced, verified live** against `clickhouse/clickhouse-server:24.8` — real `CREATE DATABASE`/`CREATE USER`/`GRANT`/`REVOKE`, real two-tenant cross-read probe |
+| ClickHouse query routing (`chrunner`) | **Enforced, verified live** — real per-tenant connections, cross-tenant raw-SQL probe passes; only applies when `enterprise-api` serves traffic, not plain `api` |
+| `system.*` ClickHouse metadata isolation | **Enforced, verified live** — `system.query_log` hard-denies, `system.tables` returns zero foreign rows (see "Known residual risks" below for the ClickHouse-version-specific split between the two) |
 | Tantivy per-tenant index routing (`search/src/registry.rs`) | **Enforced, verified live** — real Tantivy indices, real cross-tenant probe, all passing |
 | Tantivy tenant_id resolution (`enterprise/internal/searchclient`) | **Enforced, verified live** — real gRPC wire-level test |
 | Ingest tenant *identity* (credential validation, tagging) | **Built and tested** — fail-closed `TenantResolver`, `tenant_id` Kafka header attached per record |
-| Ingest tenant *write-routing*, ClickHouse | **Built, not yet confirmed against a real ClickHouse** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; Docker-free tests pass, live-database tests are skip-gated. Active-tenant snapshot now refreshes every minute (`Registry.StartRefreshing`) — a deprovisioned tenant loses write access within a minute, not "until the next restart" |
+| Ingest tenant *write-routing*, ClickHouse | **Enforced, verified live** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; both Docker-free and live-ClickHouse tests pass. Active-tenant snapshot refreshes every minute (`Registry.StartRefreshing`) — a deprovisioned tenant loses write access within a minute, not "until the next restart" |
 | Ingest tenant *write-routing*, Tantivy | **Built and genuinely verified** — `search/src/consumer.rs` routes each record into its own tenant's index via `IndexRegistry`, same registry the (already-verified) read side uses; no Docker needed, real tests pass. Active-tenant-gated too: `tenants::ActiveTenantTracker` polls `enterprise-auth` every 60s (off unless configured), refusing any tenant not in the polled allowlist — same one-minute staleness bound as ClickHouse's now-refreshing snapshot, no more asymmetry between the two |
 | Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO |
-| Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; verified via `docker compose config`, not an actual `docker compose up` in this environment |
+| Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; a real `docker compose up` of `enterprise-api` was run in this environment (and caught/fixed a startup-crashing duplicate `GET /healthz` route registration bug in the process), not just `docker compose config` |
 | Human SSO login — OIDC | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
 | Human SSO login — SAML | **Built, verified with a real fake IdP** (not yet tried against a real external IdP) |
-| Multi-tenant-membership login (tenant picker) | **Backend and frontend built and verified** (`GET /auth/memberships`, `POST /auth/select-tenant`, a pending-login token distinct from a real session; `web/src/routes/select-tenant` calls it via credentialed cross-origin fetch, genuinely exercised in a real browser) — not yet tried against a real running `enterprise-auth` container |
-| Per-resource dashboard grants (`own/granted`) | **Built, unit-tested against a fake store; live-Postgres integration tests written, not run in this environment** (only when `enterprise-api` serves traffic — plain `api` falls back to own/Admin only) |
+| Multi-tenant-membership login (tenant picker) | **Backend and frontend built and verified** (`GET /auth/memberships`, `POST /auth/select-tenant`, a pending-login token distinct from a real session; `web/src/routes/select-tenant` calls it via credentialed cross-origin fetch, genuinely exercised in a real browser) — not yet tried against a real running `enterprise-auth` container, still blocked on the same "no real external IdP" gap as OIDC/SAML above (there's no way to reach `/select-tenant` with a genuine pending-login cookie from the real binary without one) |
+| Per-resource dashboard grants (`own/granted`) | **Enforced, verified live** — real Postgres integration tests for `dashboard_permissions` CRUD and the `PermissionStore` adapter all pass (only when `enterprise-api` serves traffic — plain `api` falls back to own/Admin only) |
 | Query audit logging (routine queries) | **Enforced**, fail-open, and now wired to a real writer via `enterprise-api` (`audit.QueryAPILogger`) |
 | Audit log tamper detection (hash chain) | **Enforced**, verified live |
 | Audit log tamper prevention (external anchoring) | **Design only** — `FileSink` is a dev stand-in |

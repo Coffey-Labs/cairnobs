@@ -6,75 +6,78 @@ logging, and a Kubernetes deployment path. Read those first.
 
 ## Verification status — read this before the rest of this doc
 
-Every prior phase's runbook documents claims **checked against the live
-stack**, not asserted. This one is different, and says so plainly rather
-than papering over it: for the great majority of this phase's work,
-**there was no working Docker daemon access and no reachable Kubernetes
-cluster**, so most of what follows is a *procedure to run*, not a report
-of what was already run and passed. Five genuine exceptions so far:
+**Docker daemon access became available partway through this phase's
+work, and the rest of this runbook (§§1–10, 10a, 13, 14, most of §8) has
+now genuinely been run against a real docker-compose stack** — real
+ClickHouse (`clickhouse/clickhouse-server:24.8`), real Postgres, real
+`enterprise-auth`/`enterprise-api`/`enterprise-ingest` containers, two
+real provisioned tenants (`acme`, `globex`). This closed every
+previously-disclosed "written but never run" gap for the ClickHouse
+side, and along the way found and fixed six real bugs no amount of
+Docker-free testing could have caught:
 
-- `enterprise/internal/audit`'s hash-chain, tamper-detection, and
-  concurrent-write guarantees (task 4) -- verified live against a real
-  Postgres earlier in this phase's work (see its own doc comments for
-  the exact `docker run` invocations), before the environment lost
-  Docker access.
-- `enterprise/internal/loginhandler`'s full OIDC login flow (§3a) --
-  verified with real cryptography (a fake IdP that signs and verifies
-  genuine RS256 tokens) *without* needing Docker or a live database at
-  all, so this one was actually run in this runbook's own session, not
-  just an earlier one. What's still unverified is wiring it into a real
-  running `enterprise-auth` container against a real external IdP.
-- `enterprise/internal/loginhandler`'s full SAML login flow (§3b) --
-  same bar as OIDC above, verified against a real fake SAML IdP
-  (`crewjam/saml/samlidp`: genuine XML signing and signature
-  verification, a real `AuthnRequest`/`Response` round trip), no Docker
-  needed. Writing this test caught two real bugs in
-  `enterprise/internal/saml`, now fixed: `ParseResponse` never called
-  `r.ParseForm()` before reading the POSTed `SAMLResponse` field (every
-  real ACS POST would have silently decoded to nothing), and the email-
-  attribute matching didn't recognize `urn:oid:0.9.2342.19200300.100.1.3`
-  (the standard LDAP "mail" OID), which is what an IdP sends by default
-  when the SP doesn't explicitly request an attribute literally named
-  "email" -- crewjam's own fake IdP hit this path. Same remaining gap as
-  OIDC: not yet tried against a real external IdP or a running
-  `enterprise-auth` container.
-- Tantivy tenant isolation, both directions -- `search/src/registry.rs`'s
-  cross-tenant read isolation (§9), `search/src/consumer.rs`'s per-tenant
-  write-routing (§14), and `search/src/tenants.rs`'s active-tenant gate
-  (§14) -- verified live, no disclaimer needed, because Tantivy is an
-  embedded library with no Docker/broker dependency, and the active-
-  tenant gate's only external dependency (`enterprise-auth`'s HTTP API)
-  was exercised against a real hand-rolled test server, not a live
-  container: real indices, real documents, real commits, real HTTP
-  requests, all run in this environment. The one thing about it that's
-  still unverified is not Tantivy itself but the upstream credential/
-  header plumbing feeding it (ingest's `TenantResolver`, `enterprise-auth`'s
-  `/internal/authorize-ingest` and `/internal/active-tenants`) against a
-  real running stack.
-- The tenant-picker frontend page (§12) -- the first frontend-only piece
-  in this phase exercised in a real browser rather than only
-  type-checked: `web/src/routes/select-tenant`'s cross-origin
-  credentialed fetch/CORS/cookie handling, driven end-to-end via
-  `mcp__claude-in-chrome` against a throwaway server standing in for
-  `enterprise-auth`'s exact wire contract. What's unverified is the same
-  shape as OIDC/SAML above: this round trip against a real running
-  `enterprise-auth` container, not a stand-in.
+1. `enterprise/Dockerfile` used a `context: enterprise` build context
+   too narrow for `enterprise/go.mod`'s `replace ../api` directive once
+   `enterprise-auth` started importing `api/httpserver` and (transitively)
+   `api/dashboards` -- fixed to build from the repo root, matching
+   `enterprise-api`/`enterprise-ingest`'s Dockerfiles.
+2. `api/dashboards.Store.AddPanel`/`UpdatePanel` didn't call
+   `validatePanel` the way `CreateDashboard`'s inline panel-creation path
+   already did, so a panel added via those two methods could hit a
+   `viz_config` NOT NULL constraint violation instead of getting the
+   same default-empty-JSON treatment every other panel-creation path
+   gets -- fixed by calling `validatePanel` in both.
+3. `enterprise/internal/rbacstore.SetDataSourceClickHouseCredentials`
+   let a malformed (non-UUID) id leak Postgres's raw `22P02` error past
+   the store's `ErrNotFound` boundary instead of treating "can't
+   possibly match a row" the same as "no such row" -- fixed by
+   translating that specific Postgres error code to `ErrNotFound`.
+4. `enterprise/cmd/enterprise-api/main.go` registered `GET /healthz`
+   twice -- once explicitly, once already covered by
+   `queryapi.Handler.RegisterRoutes` -- which panics `net/http`'s
+   `ServeMux` on startup. This meant `enterprise-api` could never
+   actually start; every previous "built" claim for this binary had only
+   ever been a successful `go build`, never a successful process start.
+   Fixed by deleting the redundant registration.
+5. ClickHouse's `default` admin user genuinely lacked `CREATE USER`
+   privilege in `docker-compose.yml` -- the official image needs
+   `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1` (not the more obvious-looking
+   `CLICKHOUSE_ACCESS_MANAGEMENT`, confirmed by reading the image's own
+   `/entrypoint.sh` after the wrong name silently did nothing), which
+   this compose file never set. Every tenant-provisioning code path was
+   correct Go that had simply never been able to authenticate its own
+   admin connection strongly enough to run.
+6. `enterprise/internal/tenantprovision.ProvisionClickHouse` relied on
+   ClickHouse RBAC's assumed "default-deny for a freshly created user"
+   for `system.*` access -- verified live to be false on ClickHouse
+   24.8: a fresh tenant user could read `system.tables` (though not, it
+   turns out, `system.query_log`, which is genuinely access-checked).
+   Fixed with an explicit `REVOKE SELECT ON system.* FROM <user>`, and
+   `TestProvisionedUserCannotReadSystemTables` was corrected to check
+   what each system table actually does under a proper revoke (hard
+   deny for `query_log`, verified-empty for `tables`) instead of
+   assuming both hard-deny identically. See
+   `/docs/security/threat-model.md`'s "Read this first" section for the
+   full account.
 
-Everything else — `internal/rbacstore`'s CRUD, the auth-enforcement
-walkthrough, the dashboards tenant-scoping fix, the Helm chart, the
-tenant-operator, and (newest) `internal/tenantprovision`/
-`internal/chrunner`'s live-ClickHouse tests — has unit/fake-client/
-`helm template` coverage (all passing, see each component's own `go
-test`/`helm lint` output, including every `Skip*`-gated integration test
-confirmed to skip cleanly offline) but has **not** been exercised
-against a real running stack. Be specific when citing this runbook: "the
-tests exist and pass structurally" is a true, verified claim; "isolation
-was confirmed against real ClickHouse" is not, yet. If you're reading
-this to decide whether Phase 4 is production-ready: it isn't yet,
-independent of this gap — see `/docs/security/threat-model.md`'s
-headline finding. This runbook exists so the first person with real
-Docker/K8s access can actually close the loop, not to claim that already
-happened.
+**What's still not verified, and why**: §3a (OIDC) and §3b (SAML) both
+need a real external IdP (Auth0/Okta developer tenant, or similar) that
+this environment doesn't have credentials for -- the fake-IdP tests
+(real RS256/XML crypto, no stand-in shortcuts) are the strongest
+evidence available without one. §12's frontend-against-a-real-
+`enterprise-auth`-container check is blocked by the same root cause:
+there's no way to land on `/select-tenant` with a genuine pending-login
+cookie from the real binary without a real IdP redirecting through it
+first. §7 and §11's live-cluster steps need `kind`/`kubectl`, which
+aren't installed in this environment -- their offline-only checks
+(`go build`/`go vet`/`go test`, `helm lint`, `helm template` + parsing
+the rendered YAML) all pass and are documented as such below.
+
+If you're reading this to decide whether Phase 4 is production-ready:
+closer than before, but not yet -- see
+`/docs/security/threat-model.md`'s "Read this first" section for the
+current, precise state of every control, including the ones still
+gated on a real IdP or a real cluster.
 
 ## 1. Bring up the stack
 
@@ -283,11 +286,17 @@ PermissionStore`) have real integration tests, same skip-gated shape as
 §6 below:
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e RBACSTORE_TEST_POSTGRES_PASSWORD=sentry-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -run DashboardPermission -v
 ```
+
+(Mount the repo root, not just `enterprise/`, with `-w /src/enterprise` as
+the workdir -- same reason as `enterprise/Dockerfile`'s doc comment:
+`dashboards_adapter.go` imports `api/dashboards`, and `enterprise/go.mod`'s
+`replace ../api` directive needs that sibling directory actually present
+in the build context, not just the package being tested.)
 
 Expect all `TestDashboardPermission*`/`TestSetDashboardPermission*`/
 `TestGetDashboardPermission*`/`TestRevokeDashboardPermission*`/
@@ -298,17 +307,23 @@ when `enterprise-api` (not plain `api`) is serving traffic -- see
 ## 6. `enterprise/internal/rbacstore` and `internal/audit` (already verified — reconfirm here)
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e RBACSTORE_TEST_POSTGRES_PASSWORD=sentry-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -v
 
-docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
   -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
   -e AUDIT_TEST_ADMIN_PASSWORD=sentry-dev-only \
   golang:1.25-alpine go test ./internal/audit/... -v
 ```
+
+(Same repo-root-mount reasoning as §5a above -- `internal/rbacstore`
+imports `api/dashboards` unconditionally via `dashboards_adapter.go`, so
+even running the whole package's tests, not just the `DashboardPermission`
+subset, needs `api/` present. `internal/audit` has the same shape via
+`queryapi_adapter.go`.)
 
 ## 7. `deploy`: Helm chart and Operator (offline-only so far — see `/deploy/README.md`)
 
@@ -723,17 +738,23 @@ go test ./internal/tenantprovision/... -run TestProvisionedUserCanInsertIntoOwnD
 # (tenantprovision.go). This test proves the fix, not just documents it,
 # whenever a real ClickHouse is available to run it against.
 
-go test ./internal/chwriter/... -run TestRegistryRoutesToCorrectTenant -v
+go test ./internal/chwriter/... -run TestRegistryWritesEachTenantToItsOwnDatabase -v
 # skip-gated (CHWRITER_TEST_CLICKHOUSE_ADDR) -- writes a mixed batch
 # spanning two tenants in one WriteBatch call and confirms each row
-# lands in its own tenant's database, none in the other's.
+# lands in its own tenant's database, none in the other's. (Fixed from a
+# stale `-run TestRegistryRoutesToCorrectTenant` -- that name never
+# existed in this package; caught by actually running this command while
+# closing out the live verification pass, same class of stale--run
+# mistake §6's `TestRegistry` note already flagged once in this doc.)
 ```
 
-**Not run in this environment**: no live ClickHouse was available while
-this was built, so the skip-gated tests above are correct Go that has
-never actually executed -- "the test exists" is not the same claim as
-"write-routing is confirmed," same caveat §8 already states for the
-read-side `chrunner` tests.
+**Now genuinely run against a live ClickHouse** (previously only
+skip-gated, correct Go that had never executed): all 7
+`internal/chwriter` tests pass, including
+`TestRegistryWritesEachTenantToItsOwnDatabase`,
+`TestRegistryRefusesUnprovisionedTenant`, `TestRefreshAddsNewlyActiveTenant`,
+and `TestRefreshRemovesNoLongerActiveTenant` -- write-routing is confirmed,
+not just written, as of this pass.
 
 **Tantivy's side is built too, and genuinely verified.**
 `search/src/consumer.rs` reads the same `tenant_id` Kafka header and
