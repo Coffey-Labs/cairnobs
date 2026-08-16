@@ -2,13 +2,13 @@
 	import { page } from '$app/state';
 	import { GridStack, type GridStackNode } from 'gridstack';
 	import 'gridstack/dist/gridstack.min.css';
-	import QueryBar from '$lib/QueryBar.svelte';
 	import PanelViz from '$lib/PanelViz.svelte';
+	import PanelEditor from '$lib/components/PanelEditor.svelte';
+	import { Button, Card, EmptyState, Skeleton } from '$lib/components/ui';
 	import {
 		getDashboard,
 		updateDashboard,
 		deleteDashboard as apiDeleteDashboard,
-		addPanel,
 		deletePanel as apiDeletePanel,
 		updatePanel as apiUpdatePanel,
 		exportDashboard,
@@ -17,8 +17,6 @@
 		injectTimeRange,
 		type Dashboard,
 		type Panel,
-		type VizType,
-		type Language,
 		type QueryResult
 	} from '$lib/api';
 
@@ -37,11 +35,29 @@
 	let gridEl: HTMLDivElement | undefined = $state();
 	let grid: GridStack | undefined;
 
-	let showAddPanel = $state(false);
-	let newTitle = $state('');
-	let newQuery = $state('');
-	let newLanguage = $state<Language>('');
-	let newVizType = $state<VizType>('table');
+	let editorOpen = $state(false);
+	let editingPanel = $state<Panel | null>(null);
+
+	function openNewPanel() {
+		editingPanel = null;
+		editorOpen = true;
+	}
+	function openEditPanel(panel: Panel) {
+		editingPanel = panel;
+		editorOpen = true;
+	}
+
+	// Zoom on a time-series panel becomes the dashboard's new global
+	// range -- the brief's "zoomed range able to feed back into the
+	// global dashboard time-range picker" requirement. Reuses the exact
+	// same applyTimeRange() path the manual earliest/latest inputs use,
+	// so a zoom and a typed range behave identically (persisted, re-runs
+	// every panel), not two divergent code paths.
+	async function onPanelZoom(range: { earliest: string; latest: string }) {
+		earliestInput = range.earliest;
+		latestInput = range.latest;
+		await applyTimeRange();
+	}
 
 	async function load() {
 		loading = true;
@@ -97,30 +113,6 @@
 	function nextY(): number {
 		if (!dashboard?.panels || dashboard.panels.length === 0) return 0;
 		return Math.max(...dashboard.panels.map((p) => p.position_y + p.height));
-	}
-
-	async function submitAddPanel() {
-		if (!newQuery.trim()) return;
-		try {
-			await addPanel(dashboardId, {
-				title: newTitle,
-				query: newQuery,
-				query_language: newLanguage,
-				viz_type: newVizType,
-				position_x: 0,
-				position_y: nextY(),
-				width: 6,
-				height: 4
-			});
-			showAddPanel = false;
-			newTitle = '';
-			newQuery = '';
-			newLanguage = '';
-			newVizType = 'table';
-			await load();
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
 	}
 
 	async function removePanel(panelId: string) {
@@ -193,15 +185,23 @@
 
 <main>
 	{#if loading}
-		<p>Loading…</p>
+		<div class="skeleton-header">
+			<Skeleton width="16rem" height="1.75rem" />
+			<Skeleton width="8rem" height="1.5rem" />
+		</div>
+		<div class="skeleton-grid">
+			{#each Array(4) as _, i (i)}
+				<Card><Skeleton height="10rem" /></Card>
+			{/each}
+		</div>
 	{:else if !dashboard}
-		<p class="error">Error: {error}</p>
+		<EmptyState icon="⚠" title="Couldn't load this dashboard" description={error} />
 	{:else}
 		<div class="header">
 			<h1>{dashboard.name}</h1>
 			<div class="header-actions">
-				<button onclick={doExport}>Export JSON</button>
-				<button class="delete" onclick={removeDashboard}>Delete dashboard</button>
+				<Button variant="secondary" onclick={doExport}>Export JSON</Button>
+				<Button variant="danger" onclick={removeDashboard}>Delete dashboard</Button>
 			</div>
 		</div>
 		{#if dashboard.description}<p class="desc">{dashboard.description}</p>{/if}
@@ -210,8 +210,8 @@
 		<div class="time-range">
 			<label>Earliest <input bind:value={earliestInput} placeholder="-1h" /></label>
 			<label>Latest <input bind:value={latestInput} placeholder="now" /></label>
-			<button onclick={applyTimeRange}>Apply to all panels</button>
-			<span class="hint">Per-panel overrides win over this default -- see the panel editor.</span>
+			<Button size="sm" onclick={applyTimeRange}>Apply to all panels</Button>
+			<span class="hint">Per-panel overrides win over this default, and a time-series panel's zoom updates this automatically.</span>
 		</div>
 
 		{#if dashboard.panels && dashboard.panels.length > 0}
@@ -229,8 +229,10 @@
 					>
 						<div class="grid-stack-item-content panel">
 							<div class="panel-header">
-								<span class="panel-title">{panel.title || panel.query}</span>
-								<button class="panel-delete" onclick={() => removePanel(panel.id)}>×</button>
+								<button class="panel-title" onclick={() => openEditPanel(panel)} title="Edit panel">
+									{panel.title || panel.query}
+								</button>
+								<button class="panel-delete" onclick={() => removePanel(panel.id)} aria-label="Delete panel">×</button>
 							</div>
 							{#if panelErrors[panel.id]}
 								<p class="error">Error: {panelErrors[panel.id]}</p>
@@ -239,49 +241,49 @@
 									result={panelResults[panel.id]}
 									vizType={panel.viz_type}
 									vizConfig={panel.viz_config}
+									query={panel.query}
+									onZoom={onPanelZoom}
 								/>
 							{:else}
-								<p>Loading…</p>
+								<Skeleton height="100%" />
 							{/if}
 						</div>
 					</div>
 				{/each}
 			</div>
 		{:else}
-			<p>No panels yet. Add one below.</p>
+			<EmptyState
+				icon="▤"
+				title="No panels yet"
+				description="Build a query on the Search page, then add it here — or start straight from a blank panel below."
+			>
+				{#snippet action()}
+					<Button variant="primary" onclick={openNewPanel}>+ Add your first panel</Button>
+				{/snippet}
+			</EmptyState>
 		{/if}
 
-		<div class="add-panel">
-			<button onclick={() => (showAddPanel = !showAddPanel)}>
-				{showAddPanel ? 'Cancel' : '+ Add panel'}
-			</button>
-			{#if showAddPanel}
-				<div class="add-panel-form">
-					<input placeholder="Panel title" bind:value={newTitle} />
-					<QueryBar bind:query={newQuery} bind:language={newLanguage} onRun={submitAddPanel} />
-					<label>
-						Visualization:
-						<select bind:value={newVizType}>
-							<option value="table">Table</option>
-							<option value="line">Line chart</option>
-							<option value="bar">Bar chart</option>
-							<option value="single_stat">Single stat</option>
-							<option value="top_n">Top-N</option>
-						</select>
-					</label>
-					<button onclick={submitAddPanel} disabled={!newQuery.trim()}>Add panel</button>
-				</div>
-			{/if}
-		</div>
+		{#if dashboard.panels && dashboard.panels.length > 0}
+			<div class="add-panel">
+				<Button onclick={openNewPanel}>+ Add panel</Button>
+			</div>
+		{/if}
+
+		<PanelEditor
+			bind:open={editorOpen}
+			{dashboardId}
+			panel={editingPanel}
+			dashboardEarliest={earliestInput}
+			dashboardLatest={latestInput}
+			{nextY}
+			onSaved={load}
+		/>
 	{/if}
 </main>
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 1200px;
-		margin: 2rem auto;
-		padding: 0 1rem;
+		max-width: 75rem;
 	}
 	.header {
 		display: flex;
@@ -290,73 +292,90 @@
 	}
 	.header-actions {
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 	.desc {
-		color: #555;
+		color: var(--color-text-muted);
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
 	}
 	.time-range {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		margin: 1rem 0;
+		gap: var(--space-3);
+		margin: var(--space-4) 0;
 		flex-wrap: wrap;
 	}
 	.time-range input {
 		width: 6rem;
+		background: var(--color-surface);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: var(--space-1) var(--space-2);
+		font-family: var(--font-mono);
 	}
 	.hint {
-		font-size: 0.8rem;
-		color: #777;
-	}
-	.delete {
-		color: #b00020;
-		background: none;
-		border: 1px solid #b00020;
-		border-radius: 4px;
-		padding: 0.15rem 0.5rem;
-		cursor: pointer;
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 	.panel {
-		border: 1px solid #ddd;
-		border-radius: 6px;
-		padding: 0.5rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: var(--space-2) var(--space-3);
 		height: 100%;
 		box-sizing: border-box;
 		overflow: auto;
-		background: white;
+		background: var(--color-surface);
+		color: var(--color-text);
 	}
 	.panel-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		font-weight: 600;
-		margin-bottom: 0.5rem;
+		gap: var(--space-2);
+		margin-bottom: var(--space-2);
+	}
+	.panel-title {
+		background: none;
+		border: none;
+		padding: 0;
+		font-family: var(--font-ui);
+		font-weight: var(--font-weight-medium);
+		font-size: var(--text-base);
+		color: var(--color-text);
+		text-align: left;
+		cursor: pointer;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.panel-title:hover {
+		color: var(--color-accent);
 	}
 	.panel-delete {
 		background: none;
 		border: none;
 		cursor: pointer;
-		font-size: 1rem;
-		color: #999;
+		font-size: var(--text-md);
+		color: var(--color-text-muted);
+		flex: none;
+	}
+	.panel-delete:hover {
+		color: var(--color-danger);
 	}
 	.add-panel {
-		margin-top: 1.5rem;
+		margin-top: var(--space-5);
 	}
-	.add-panel-form {
-		border: 1px solid #ddd;
-		border-radius: 6px;
-		padding: 1rem;
-		margin-top: 0.5rem;
+	.skeleton-header {
 		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		max-width: 640px;
+		justify-content: space-between;
+		margin-bottom: var(--space-5);
 	}
-	.add-panel-form input {
-		box-sizing: border-box;
+	.skeleton-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+		gap: var(--space-4);
 	}
 </style>

@@ -6,6 +6,7 @@
 		importDashboard,
 		type Dashboard
 	} from '$lib/api';
+	import { Button, Input, EmptyState, Skeleton } from '$lib/components/ui';
 
 	let dashboards = $state<Dashboard[]>([]);
 	let loading = $state(true);
@@ -65,12 +66,12 @@
 	{#if error}<p class="error">Error: {error}</p>{/if}
 
 	<div class="create-row">
-		<input
+		<Input
 			placeholder="New dashboard name"
 			bind:value={newName}
-			onkeydown={(e) => e.key === 'Enter' && create()}
+			onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && create()}
 		/>
-		<button onclick={create} disabled={!newName.trim()}>Create</button>
+		<Button onclick={create} disabled={!newName.trim()}>Create</Button>
 		<label class="import-label">
 			Import JSON
 			<input type="file" accept="application/json" onchange={onImportFile} hidden />
@@ -78,9 +79,17 @@
 	</div>
 
 	{#if loading}
-		<p>Loading…</p>
+		<div class="skeleton-list">
+			{#each Array(3) as _, i (i)}
+				<Skeleton height="2.25rem" />
+			{/each}
+		</div>
 	{:else if dashboards.length === 0}
-		<p>No dashboards yet.</p>
+		<EmptyState
+			icon="▤"
+			title="No dashboards yet"
+			description="Build a query on the Search page and save it here, or create an empty dashboard above and add panels to it."
+		/>
 	{:else}
 		<ul class="dashboard-list">
 			{#each dashboards as d (d.id)}
@@ -96,24 +105,31 @@
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 960px;
-		margin: 2rem auto;
-		padding: 0 1rem;
+		max-width: 48rem;
+	}
+	h1 {
+		font-size: var(--text-xl);
+		margin-bottom: var(--space-4);
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
+	}
+	.skeleton-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
 	}
 	.create-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
+		gap: var(--space-3);
+		margin-bottom: var(--space-5);
 	}
 	.import-label {
 		cursor: pointer;
-		color: #06c;
-		font-size: 0.85rem;
+		color: var(--color-accent);
+		font-size: var(--text-sm);
+		white-space: nowrap;
 	}
 	.dashboard-list {
 		list-style: none;
@@ -122,26 +138,30 @@
 	.dashboard-list li {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0;
-		border-bottom: 1px solid #eee;
+		gap: var(--space-3);
+		padding: var(--space-3) 0;
+		border-bottom: 1px solid var(--color-border);
 	}
 	.dashboard-list a {
-		font-weight: 600;
-		color: #06c;
+		font-weight: var(--font-weight-medium);
+		color: var(--color-text);
 		text-decoration: none;
 	}
+	.dashboard-list a:hover {
+		color: var(--color-accent);
+	}
 	.desc {
-		color: #777;
-		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		font-size: var(--text-sm);
 	}
 	.delete {
 		margin-left: auto;
-		color: #b00020;
+		color: var(--color-danger);
 		background: none;
-		border: 1px solid #b00020;
-		border-radius: 4px;
-		padding: 0.15rem 0.5rem;
+		border: 1px solid var(--color-danger);
+		border-radius: var(--radius-sm);
+		padding: 0.15rem var(--space-2);
 		cursor: pointer;
+		font-family: var(--font-ui);
 	}
 </style>
