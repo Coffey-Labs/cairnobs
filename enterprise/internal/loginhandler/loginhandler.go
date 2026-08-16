@@ -157,7 +157,7 @@ func (h *Handler) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: oidcStateCookieName, Value: state, Path: "/auth/oidc/callback",
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(loginCookieTTL.Seconds()),
 	})
 	http.Redirect(w, r, h.oidc.AuthCodeURL(state), http.StatusFound)
@@ -170,9 +170,28 @@ func (h *Handler) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 func clearCookie(w http.ResponseWriter, r *http.Request, name, path string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: name, Value: "", Path: path,
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode,
 		MaxAge: -1,
 	})
+}
+
+// isSecureRequest decides every cookie's Secure attribute in this file.
+// r.TLS != nil alone is wrong for the deployment shape this handler
+// actually runs in: enterprise-auth doesn't terminate TLS itself (see
+// its own README/Dockerfile -- it's a plain http.Server, same as every
+// other service here), so in any real deployment TLS is terminated at a
+// reverse proxy/ingress in front of it, and r.TLS is nil at this process
+// even though the original client connection was HTTPS. Confirmed live:
+// the SAML ACS cookie (SameSite=None, which the cookie spec requires to
+// be paired with Secure) came back without Secure behind a real
+// TLS-terminating nginx proxy, and Chrome silently drops such a cookie
+// -- breaking the entire SAML flow, not just weakening it. Trusting
+// X-Forwarded-Proto here doesn't introduce a new trust boundary: this
+// handler already trusts its network position (it's meant to sit behind
+// exactly this kind of proxy, never directly internet-facing -- see
+// /docs/security/threat-model.md's deployment/network assumptions).
+func isSecureRequest(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
 
 func (h *Handler) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +257,7 @@ func (h *Handler) handleSAMLLogin(w http.ResponseWriter, r *http.Request) {
 	// login will not work correctly over plain HTTP.
 	http.SetCookie(w, &http.Cookie{
 		Name: samlRequestCookieName, Value: requestID, Path: "/auth/saml/acs",
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteNoneMode,
+		HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteNoneMode,
 		MaxAge: int(loginCookieTTL.Seconds()),
 	})
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -303,7 +322,7 @@ func (h *Handler) issueSessionAndRedirect(w http.ResponseWriter, r *http.Request
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: authhandler.SessionCookieName, Value: token, Path: "/",
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(session.HumanSessionTTL.Seconds()),
 	})
 	http.Redirect(w, r, h.postLoginRedirectURL, http.StatusFound)
@@ -323,7 +342,7 @@ func (h *Handler) startTenantSelection(w http.ResponseWriter, r *http.Request, u
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: pendingLoginCookieName, Value: token, Path: "/auth",
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(session.PendingLoginTTL.Seconds()),
 	})
 	http.Redirect(w, r, h.selectTenantRedirectURL, http.StatusFound)
@@ -433,7 +452,7 @@ func (h *Handler) handleSelectTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: authhandler.SessionCookieName, Value: token, Path: "/",
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(session.HumanSessionTTL.Seconds()),
 	})
 	w.Header().Set("Content-Type", "application/json")
