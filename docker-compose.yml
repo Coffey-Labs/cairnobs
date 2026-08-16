@@ -72,6 +72,21 @@ services:
       # the actual security boundary here) — it exists purely to satisfy
       # this image's login gate for local/homelab use.
       CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      # Phase 4's per-tenant provisioning (enterprise/internal/tenantprovision)
+      # runs CREATE USER/GRANT against this connection as the ClickHouse
+      # admin -- the official image's default user doesn't have
+      # access_management rights unless this is set, confirmed the hard
+      # way: -provision-tenant failed with "Not enough privileges... grant
+      # CREATE USER ON *.*" the first time this ran against a real
+      # ClickHouse container, since every prior verification of
+      # tenantprovision had been Docker-free (fakes) or never actually
+      # exercised the admin connection this env var gates. The variable is
+      # genuinely named CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT, not
+      # CLICKHOUSE_ACCESS_MANAGEMENT -- confirmed by reading the image's
+      # own /entrypoint.sh after the more obvious name silently did
+      # nothing (no error, just left access_management="0" in the
+      # generated users.d/default-user.xml).
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     ulimits:
@@ -296,8 +311,8 @@ services:
   # manual testing (mint a service token, set the two env vars, restart).
   enterprise-auth:
     build:
-      context: enterprise
-      dockerfile: Dockerfile
+      context: . # needs api/, ingest/, proto/, and enterprise/ itself -- see enterprise/Dockerfile's doc comment
+      dockerfile: enterprise/Dockerfile
     container_name: sentry-enterprise-auth
     depends_on:
       metadata-migrate:
