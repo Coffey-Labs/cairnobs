@@ -82,14 +82,15 @@ func New(admin driver.Conn) *Provisioner {
 // check rbacstore for existing credentials before ever calling this,
 // not rely on this function to be safely re-callable.
 //
-// system.* access: intentionally not explicitly granted anywhere here,
-// relying on ClickHouse RBAC's default-deny for a freshly created user
-// once access_management is enabled on the admin connection (required
-// for CREATE USER/GRANT to work at all). This is exactly the assumption
-// /docs/phase-4-isolation-design.md's task 2 finding says must be
-// verified live per ClickHouse version, not trusted from documentation
-// -- see /docs/security/threat-model.md's "system.query_log metadata
-// leakage" section; that verification has not happened yet.
+// system.* access: explicitly revoked below, not left to ClickHouse
+// RBAC's default. Verified live against ClickHouse 24.8 (the version
+// docker-compose.yml pins): a freshly created user is NOT default-denied
+// from system.* the way this package originally assumed --
+// system.tables lists every tenant's database/table names to any
+// authenticated user regardless of per-database grants unless this
+// REVOKE runs. See /docs/phase-4-isolation-design.md's task 2 item 2 and
+// /docs/security/threat-model.md's "system.query_log metadata leakage"
+// section.
 func (p *Provisioner) ProvisionClickHouse(ctx context.Context, tenantID string) (Credentials, error) {
 	if !tenantIdentifierPattern.MatchString(tenantID) {
 		return Credentials{}, fmt.Errorf("tenantprovision: tenant id %q is not a safe ClickHouse identifier", tenantID)
@@ -118,6 +119,18 @@ func (p *Provisioner) ProvisionClickHouse(ctx context.Context, tenantID string) 
 
 	if err := p.admin.Exec(ctx, fmt.Sprintf("GRANT SELECT, INSERT ON `%s`.* TO `%s`", database, username)); err != nil {
 		return Credentials{}, fmt.Errorf("tenantprovision: granting select/insert: %w", err)
+	}
+
+	// A freshly created ClickHouse 24.8 user is NOT default-denied from
+	// system.* the way this package's original design assumed -- verified
+	// live (TestProvisionedUserCannotReadSystemTables failed against a
+	// real container before this REVOKE existed): system.tables lists
+	// every tenant's database/table names regardless of grants unless
+	// explicitly revoked. This closes /docs/phase-4-isolation-design.md's
+	// task 2 item 2 and /docs/security/threat-model.md's "system.query_log
+	// metadata leakage" finding for real, not just in the design doc.
+	if err := p.admin.Exec(ctx, fmt.Sprintf("REVOKE SELECT ON system.* FROM `%s`", username)); err != nil {
+		return Credentials{}, fmt.Errorf("tenantprovision: revoking system.* access: %w", err)
 	}
 
 	return Credentials{Username: username, Password: password}, nil
