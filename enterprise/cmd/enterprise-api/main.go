@@ -158,9 +158,8 @@ func main() {
 	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer, rbacstore.NewDashboardPermissions(rbac))
 
 	mux := http.NewServeMux()
-	queryHandler.RegisterRoutes(mux)
+	queryHandler.RegisterRoutes(mux) // also registers GET /healthz
 	dashboardsHandler.RegisterRoutes(mux)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,
