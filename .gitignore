@@ -22,6 +22,10 @@ web/.svelte-kit/
 # Dev-only generated secrets
 hack/dev-certs/out/
 
+# Local overrides that may carry real credentials (e.g. a real OIDC/SAML
+# dev-tenant client secret for manual SSO testing) -- never committed.
+docker-compose.override.yml
+
 # OS / editor
 .DS_Store
 Thumbs.db
