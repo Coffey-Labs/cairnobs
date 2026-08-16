@@ -7,11 +7,24 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-# VITE_API_BASE_URL is baked in at build time — this is a prerendered
-# static site, not a server. Override with --build-arg for non-default
-# deployments.
+# All three VITE_* vars are baked in at build time — this is a
+# prerendered static site, not a server. Override with --build-arg for
+# non-default deployments. Each one needs its own ARG: an undeclared
+# --build-arg from docker-compose.yml's build.args is silently dropped
+# by Docker, not an error -- confirmed the hard way when
+# VITE_ALERTING_API_BASE_URL/VITE_ENTERPRISE_AUTH_BASE_URL were being
+# passed in but only VITE_API_BASE_URL was ever declared here, so the
+# other two never reached `npm run build` even though docker-compose.yml
+# looked correct. VITE_ENTERPRISE_AUTH_BASE_URL has no default (unlike
+# the other two) -- web/src/lib/api.ts treats it as intentionally
+# undefined when unset, meaning "enterprise-auth isn't deployed", not
+# "use some fallback host."
 ARG VITE_API_BASE_URL=http://localhost:8080
+ARG VITE_ALERTING_API_BASE_URL=http://localhost:8081
+ARG VITE_ENTERPRISE_AUTH_BASE_URL
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_ALERTING_API_BASE_URL=${VITE_ALERTING_API_BASE_URL}
+ENV VITE_ENTERPRISE_AUTH_BASE_URL=${VITE_ENTERPRISE_AUTH_BASE_URL}
 RUN npm run build
 
 # Not distroless: serving a static SPA needs *some* HTTP server, and
