@@ -4,6 +4,28 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			// Applied synchronously, before first paint, so switching themes
+			// never produces a flash of the wrong one on reload. Kept as a
+			// plain inline script (not a Svelte component) for exactly that
+			// reason -- component code doesn't run until after SvelteKit
+			// hydrates. Mirrors the read/write shape of $lib/theme.ts and
+			// $lib/density.ts; see those for the source of truth.
+			(function () {
+				try {
+					var theme = localStorage.getItem('sentry.theme');
+					if (theme === 'dark' || theme === 'light') {
+						document.documentElement.setAttribute('data-theme', theme);
+					}
+					if (localStorage.getItem('sentry.density') === 'compact') {
+						document.documentElement.classList.add('density-compact');
+					}
+				} catch (e) {
+					/* localStorage unavailable (private mode, etc.) -- fall back
+					   to the dark/comfortable defaults, same as a first visit. */
+				}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

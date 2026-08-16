@@ -1,0 +1,206 @@
+/* Design tokens -- Signal direction (see /docs/design-system.md for the
+   full rationale). Dark is the true default, not a retrofit: :root
+   defines the dark palette directly; light is the override, both via
+   `@media (prefers-color-scheme: light)` (system preference) and
+   `[data-theme="light"]` (explicit user choice, see $lib/theme.ts).
+   Component styles must only ever read a token (--color-..., --space-...,
+   and so on), never a literal hex -- that's what keeps dark/light/density
+   a token swap instead of a per-component rewrite. */
+
+:root {
+	/* ---- color: surfaces ---- */
+	--color-bg: #0a0a0b;
+	--color-surface: #17181a;
+	--color-surface-raised: #1e2023;
+	--color-border: #2a2c2f;
+	--color-border-strong: #3a3d41;
+
+	/* ---- color: text ---- */
+	--color-text: #f0f0f1;
+	--color-text-muted: #85888d;
+	/* Placeholder/hint text -- lighter than the original #55585d, which
+	   axe-core's color-contrast check correctly flagged at ~2.5:1 against
+	   --color-surface (needs 4.5:1 for AA body text). #8a8d92 clears
+	   ~5.2:1 against both --color-surface and --color-bg. */
+	--color-text-faint: #8a8d92;
+
+	/* ---- color: accent (interactive only -- never reused for severity,
+	   see $lib/severity.ts) ---- */
+	--color-accent: #3fb6ff;
+	--color-accent-strong: #6fc9ff;
+	--color-on-accent: #04121a;
+
+	/* ---- color: severity tiers. Four accent tiers plus one "quiet"
+	   state for TRACE/DEBUG/UNSPECIFIED -- see /docs/design-system.md's
+	   severity-mapping table. Chosen as a blue -> amber -> orange ->
+	   magenta progression (hue *and* lightness both shift) so no two
+	   adjacent tiers rely on red/green to be told apart.
+	   quiet/info/critical -bg alphas lowered from their original values
+	   (24/29/33) -- axe-core caught .pill.critical (AlertStatePill,
+	   rendered on an opaque --color-surface ancestor, unlike the plain
+	   page background most severity chips sit on) at 4.04:1, below the
+	   4.5:1 AA text threshold. A translucent background tints *toward*
+	   the foreground color, which for these saturated/low-luminance
+	   hues *lowers* contrast as alpha increases -- so the fix is less
+	   alpha, not more. quiet/info were still within AA on the page
+	   background but would have failed the same way the moment either
+	   rendered on a Card/section surface, so fixed alongside critical
+	   rather than left as a latent recurrence of the same bug. ---- */
+	--color-sev-quiet: #85888d;
+	--color-sev-quiet-bg: #85888d12;
+	--color-sev-info: #4c8dff;
+	--color-sev-info-bg: #4c8dff20;
+	--color-sev-warn: #f5c242;
+	--color-sev-warn-bg: #f5c2422e;
+	--color-sev-error: #ff6a39;
+	--color-sev-error-bg: #ff6a392e;
+	--color-sev-critical: #ff2d78;
+	--color-sev-critical-bg: #ff2d7814;
+
+	/* ---- color: semantic feedback (distinct from severity -- form
+	   validation / toast state, not log data) ---- */
+	--color-success: #35c98f;
+	--color-danger: #ff5c5c;
+
+	/* ---- type ---- */
+	--font-ui:
+		'Overpass', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono:
+		'Overpass Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+	/* modular scale, 1.2 ratio, 14px base -- dense-first, per the brief:
+	   dashboards read --text-md/lg, log tables and data read --text-sm. */
+	--text-xs: 0.6875rem; /* 11px */
+	--text-sm: 0.8125rem; /* 13px */
+	--text-base: 0.875rem; /* 14px */
+	--text-md: 1rem; /* 16px */
+	--text-lg: 1.25rem; /* 20px */
+	--text-xl: 1.75rem; /* 28px */
+	--text-2xl: 2.5rem; /* 40px */
+
+	--font-weight-normal: 400;
+	--font-weight-medium: 600;
+	--font-weight-bold: 700;
+
+	--line-height-tight: 1.25;
+	--line-height-normal: 1.5;
+
+	/* ---- spacing (8px base) ---- */
+	--space-1: 0.25rem; /* 4px */
+	--space-2: 0.5rem; /* 8px */
+	--space-3: 0.75rem; /* 12px */
+	--space-4: 1rem; /* 16px */
+	--space-5: 1.5rem; /* 24px */
+	--space-6: 2rem; /* 32px */
+	--space-7: 3rem; /* 48px */
+	--space-8: 4rem; /* 64px */
+
+	/* ---- radius ---- */
+	--radius-sm: 4px;
+	--radius-md: 6px;
+	--radius-lg: 10px;
+	--radius-full: 999px;
+
+	/* ---- shadow (used sparingly -- Signal's restraint extends to
+	   elevation; only true overlays get one) ---- */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+	--shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+
+	--focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+
+	/* ---- density (see $lib/density.ts). Comfortable is the default;
+	   .density-compact on <html> swaps these -- log tables/results
+	   opt into compact explicitly, dashboards/forms stay comfortable. ---- */
+	--row-height: 2.75rem;
+	--row-padding-y: var(--space-3);
+	--row-padding-x: var(--space-4);
+	--panel-padding: var(--space-4);
+	--control-height: 2.25rem;
+}
+
+html.density-compact {
+	--row-height: 1.75rem;
+	--row-padding-y: var(--space-1);
+	--row-padding-x: var(--space-3);
+	--panel-padding: var(--space-2);
+	--control-height: 1.75rem;
+	--text-base: var(--text-sm);
+}
+
+@media (prefers-color-scheme: light) {
+	:root:not([data-theme='dark']) {
+		--color-bg: #f7f7f8;
+		--color-surface: #ffffff;
+		--color-surface-raised: #ffffff;
+		--color-border: #dfe0e2;
+		--color-border-strong: #c7c9cc;
+
+		--color-text: #101113;
+		--color-text-muted: #6b6e73;
+		--color-text-faint: #75787d; /* ~4.6:1 against light-mode surfaces, was 2.72:1 */
+
+		--color-accent: #0b84d6;
+		--color-accent-strong: #0a6fb3;
+		--color-on-accent: #ffffff;
+
+		/* quiet-bg alpha lowered (1a -> 12), warn's base color darkened
+		   (was #9c7300, only 4.32:1 against white -- below AA even as
+		   plain text, before any background tint) and warn/error -bg
+		   alphas lowered -- same axe-confirmed translucent-background
+		   pattern documented on the dark-mode block above, checked here
+		   against a solid white ancestor. critical/info were already
+		   >=4.5:1 against white and are unchanged. */
+		--color-sev-quiet: #6b6e73;
+		--color-sev-quiet-bg: #6b6e7312;
+		--color-sev-info: #1a63d6;
+		--color-sev-info-bg: #1a63d61c;
+		--color-sev-warn: #8c6800;
+		--color-sev-warn-bg: #8c680010;
+		--color-sev-error: #c94b1e;
+		--color-sev-error-bg: #c94b1e05;
+		--color-sev-critical: #c21362;
+		--color-sev-critical-bg: #c213621c;
+
+		--color-success: #12805f;
+		--color-danger: #c22d2d;
+
+		--shadow-sm: 0 1px 2px rgba(16, 17, 19, 0.08);
+		--shadow-md: 0 4px 16px rgba(16, 17, 19, 0.1);
+		--shadow-lg: 0 12px 40px rgba(16, 17, 19, 0.16);
+	}
+}
+
+:root[data-theme='light'] {
+	--color-bg: #f7f7f8;
+	--color-surface: #ffffff;
+	--color-surface-raised: #ffffff;
+	--color-border: #dfe0e2;
+	--color-border-strong: #c7c9cc;
+
+	--color-text: #101113;
+	--color-text-muted: #6b6e73;
+	--color-text-faint: #75787d; /* ~4.6:1 against light-mode surfaces, was 2.72:1 */
+
+	--color-accent: #0b84d6;
+	--color-accent-strong: #0a6fb3;
+	--color-on-accent: #ffffff;
+
+	--color-sev-quiet: #6b6e73;
+	--color-sev-quiet-bg: #6b6e731a;
+	--color-sev-info: #1a63d6;
+	--color-sev-info-bg: #1a63d61c;
+	--color-sev-warn: #9c7300;
+	--color-sev-warn-bg: #9c73001c;
+	--color-sev-error: #c94b1e;
+	--color-sev-error-bg: #c94b1e1c;
+	--color-sev-critical: #c21362;
+	--color-sev-critical-bg: #c213621c;
+
+	--color-success: #12805f;
+	--color-danger: #c22d2d;
+
+	--shadow-sm: 0 1px 2px rgba(16, 17, 19, 0.08);
+	--shadow-md: 0 4px 16px rgba(16, 17, 19, 0.1);
+	--shadow-lg: 0 12px 40px rgba(16, 17, 19, 0.16);
+}
