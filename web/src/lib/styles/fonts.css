@@ -1,0 +1,20 @@
+/* Self-hosted (not a Google Fonts CDN link -- no runtime dependency on a
+   third party for the app to render correctly). See
+   /web/static/fonts/LICENSE.txt. Both are variable fonts, one file
+   covers the whole weight range used. */
+
+@font-face {
+	font-family: 'Overpass';
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('/fonts/overpass-variable.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Overpass Mono';
+	font-style: normal;
+	font-weight: 300 700;
+	font-display: swap;
+	src: url('/fonts/overpass-mono-variable.woff2') format('woff2');
+}

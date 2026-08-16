@@ -1,0 +1,7 @@
+Overpass and Overpass Mono are licensed under the SIL Open Font License,
+Version 1.1: https://openfontlicense.org/
+
+Fetched from Google Fonts (fonts.google.com/specimen/Overpass,
+fonts.google.com/specimen/Overpass+Mono) and self-hosted here rather than
+loaded from a CDN, so the app has no runtime dependency on Google's font
+service.
