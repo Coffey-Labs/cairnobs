@@ -267,6 +267,43 @@ func TestHandleSAMLLoginRedirectsAndSetsRequestCookie(t *testing.T) {
 	if requestCookie.SameSite != http.SameSiteNoneMode {
 		t.Fatalf("SameSite = %v, want SameSiteNoneMode -- the acs POST is cross-site from the idp's origin", requestCookie.SameSite)
 	}
+	if requestCookie.Secure {
+		t.Fatal("expected Secure=false for a plain-HTTP request with no X-Forwarded-Proto")
+	}
+}
+
+// TestHandleSAMLLoginSetsSecureCookieBehindATLSProxy is the regression
+// test for a real bug found running this against an actual
+// TLS-terminating nginx proxy: r.TLS is nil at this process in that
+// topology even though the original client connection was HTTPS, so the
+// SameSite=None request cookie above came back without Secure --
+// which Chrome silently drops, since the cookie spec requires
+// SameSite=None to be paired with Secure. enterprise-auth never
+// terminates TLS itself (see isSecureRequest's doc comment), so this is
+// the deployment shape that actually matters, not an edge case.
+func TestHandleSAMLLoginSetsSecureCookieBehindATLSProxy(t *testing.T) {
+	idp := newTestSAMLIdP(t)
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, idp.serviceProvider(t), newTestSessionManager(t), newFakeUserStore(), "http://web/", "http://web/select-tenant")
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/saml/login", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	var requestCookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == samlRequestCookieName {
+			requestCookie = c
+		}
+	}
+	if requestCookie == nil {
+		t.Fatal("expected a saml request cookie to be set")
+	}
+	if !requestCookie.Secure {
+		t.Fatal("expected Secure=true when X-Forwarded-Proto: https is present")
+	}
 }
 
 func TestFullSAMLLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
