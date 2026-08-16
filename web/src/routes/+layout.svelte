@@ -1,10 +1,12 @@
 <script lang="ts">
+	import '$lib/styles/app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import NavSidebar from '$lib/components/NavSidebar.svelte';
+	import CommandPalette from '$lib/components/CommandPalette.svelte';
 
-	// Phase 3: dashboards + alerts routes added, so there's now more than
-	// one page -- a minimal nav replaces the previous "no nav, one page"
-	// layout.
 	let { children } = $props();
+	let paletteOpen = $state(false);
+	let mobileNavOpen = $state(false);
 </script>
 
 <svelte:head>
@@ -12,30 +14,62 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<nav>
-	<a href="/">Query</a>
-	<a href="/dashboards">Dashboards</a>
-	<a href="/alerts">Alerts</a>
-	<a href="/settings">Settings</a>
-</nav>
+<div class="shell">
+	<NavSidebar
+		onOpenPalette={() => (paletteOpen = true)}
+		mobileOpen={mobileNavOpen}
+		onCloseMobile={() => (mobileNavOpen = false)}
+	/>
+	<div class="main-col">
+		<button type="button" class="menu-toggle" onclick={() => (mobileNavOpen = true)} aria-label="Open menu">
+			☰
+		</button>
+		<div class="page">
+			{@render children()}
+		</div>
+	</div>
+</div>
 
-{@render children()}
+<CommandPalette bind:open={paletteOpen} />
 
 <style>
-	nav {
-		font-family: system-ui, sans-serif;
-		max-width: 960px;
-		margin: 1rem auto 0;
-		padding: 0 1rem;
-		display: flex;
-		gap: 1.25rem;
+	.shell {
+		display: grid;
+		grid-template-columns: 15rem 1fr;
+		min-height: 100vh;
 	}
-	nav a {
-		color: #06c;
-		text-decoration: none;
-		font-size: 0.9rem;
+	.main-col {
+		min-width: 0;
 	}
-	nav a:hover {
-		text-decoration: underline;
+	.page {
+		padding: var(--space-6);
+		min-width: 0;
+	}
+	.menu-toggle {
+		display: none;
+	}
+
+	@media (max-width: 860px) {
+		.shell {
+			grid-template-columns: 1fr;
+		}
+		.menu-toggle {
+			display: block;
+			position: sticky;
+			top: 0;
+			z-index: 10;
+			width: 100%;
+			text-align: left;
+			background: var(--color-surface);
+			border: none;
+			border-bottom: 1px solid var(--color-border);
+			color: var(--color-text);
+			font-size: var(--text-md);
+			padding: var(--space-3) var(--space-4);
+			cursor: pointer;
+		}
+		.page {
+			padding: var(--space-4);
+		}
 	}
 </style>
