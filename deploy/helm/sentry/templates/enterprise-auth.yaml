@@ -16,6 +16,8 @@ spec:
       labels:
         {{- include "sentry.selectorLabels" (list $ "enterprise-auth") | nindent 8 }}
     spec:
+      initContainers:
+        {{- include "sentry.waitForTCP" (list "postgres" (printf "%s-postgres" .Release.Name) "5432") | nindent 8 }}
       containers:
         - name: enterprise-auth
           image: "{{ .Values.enterprise.image.repository }}:{{ .Values.enterprise.image.tag }}"
@@ -26,6 +28,17 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-enterprise-auth
                   key: sessionSigningKey
+            - name: POSTGRES_ADDR
+              value: "{{ .Release.Name }}-postgres:5432"
+            - name: POSTGRES_DATABASE
+              value: sentry_metadata
+            - name: POSTGRES_USERNAME
+              value: sentry
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: password
             {{- if .Values.enterprise.oidc.issuerURL }}
             - name: OIDC_ISSUER_URL
               value: {{ .Values.enterprise.oidc.issuerURL | quote }}
