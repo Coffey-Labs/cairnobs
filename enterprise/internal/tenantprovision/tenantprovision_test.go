@@ -190,26 +190,47 @@ func TestProvisionedUserCannotReadSystemTables(t *testing.T) {
 	}
 	defer tenantConn.Close()
 
-	// system.query_log/system.tables: expect a hard access-denied error,
-	// not a filtered/empty result -- these tables contain other
-	// tenants' query text and schema, so "succeeds but happens to
-	// return nothing for this user" would still be a version-dependent
-	// assumption worth catching, not something this test treats as a pass.
-	for _, probe := range []string{
-		"SELECT * FROM system.query_log LIMIT 1",
-		"SELECT * FROM system.tables LIMIT 1",
-	} {
-		if err := tenantConn.Exec(context.Background(), probe); err == nil {
-			t.Errorf("tenant user was able to run %q -- system.* access was not actually revoked on this ClickHouse version", probe)
-		}
+	// system.query_log: expect a hard access-denied error, not a
+	// filtered/empty result -- it contains other tenants' query text,
+	// so "succeeds but happens to return nothing for this user" would
+	// still be a version-dependent assumption worth catching, not
+	// something this test treats as a pass. Verified live against
+	// ClickHouse 24.8: REVOKE SELECT ON system.* does make this probe
+	// hard-deny, ACCESS_DENIED, not silently filter.
+	if err := tenantConn.Exec(context.Background(), "SELECT * FROM system.query_log LIMIT 1"); err == nil {
+		t.Error("tenant user was able to run system.query_log query -- system.* access was not actually revoked on this ClickHouse version")
 	}
+
+	// system.tables: unlike query_log, ClickHouse 24.8 treats this as a
+	// filtered catalog view rather than an access-checked table --
+	// querying it never itself errors, regardless of grants (confirmed
+	// live, not assumed). The actual security property that matters is
+	// "no other tenant's database/table names leak through it," checked
+	// the same way SHOW DATABASES is checked below, not "the query
+	// errors."
+	rows, err := tenantConn.Query(context.Background(), "SELECT DISTINCT database FROM system.tables")
+	if err != nil {
+		t.Fatalf("querying system.tables: %v", err)
+	}
+	func() {
+		defer rows.Close()
+		for rows.Next() {
+			var db string
+			if err := rows.Scan(&db); err != nil {
+				t.Fatalf("scanning system.tables row: %v", err)
+			}
+			if db != tenantID && db != "system" && db != "INFORMATION_SCHEMA" && db != "information_schema" {
+				t.Errorf("system.tables revealed a database this tenant user shouldn't see: %q", db)
+			}
+		}
+	}()
 
 	// SHOW DATABASES is checked differently: some ClickHouse versions
 	// filter this to only databases the user can see rather than
 	// erroring outright, which is an acceptable outcome for this
 	// specific statement (unlike query_log/tables above) as long as it
 	// doesn't reveal other tenants' database names.
-	rows, err := tenantConn.Query(context.Background(), "SHOW DATABASES")
+	rows, err = tenantConn.Query(context.Background(), "SHOW DATABASES")
 	if err != nil {
 		return // erroring outright is also an acceptable outcome here.
 	}
