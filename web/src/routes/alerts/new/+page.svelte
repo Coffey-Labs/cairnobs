@@ -193,49 +193,48 @@
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 720px;
-		margin: 2rem auto;
-		padding: 0 1rem;
+		max-width: 45rem;
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
 	}
 	.field {
 		display: block;
-		margin-bottom: 0.75rem;
-		font-size: 0.85rem;
+		margin-bottom: var(--space-3);
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 	.field input {
 		display: block;
 		width: 100%;
 		box-sizing: border-box;
-		margin-top: 0.2rem;
+		margin-top: var(--space-1);
 	}
 	.hint {
-		font-size: 0.8rem;
-		color: #777;
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 	.row {
 		display: flex;
-		gap: 1rem;
+		gap: var(--space-4);
 		align-items: flex-end;
-		margin: 1rem 0;
+		margin: var(--space-4) 0;
 		flex-wrap: wrap;
 	}
 	.row label {
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: var(--space-1);
 	}
 	.new-target {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		gap: var(--space-2);
+		margin-bottom: var(--space-4);
 	}
 	.submit {
-		margin-top: 1rem;
-		padding: 0.4rem 1rem;
+		margin-top: var(--space-4);
+		padding: var(--space-2) var(--space-4);
 	}
 </style>
