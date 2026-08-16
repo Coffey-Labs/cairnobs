@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { getRule, deleteRule, listDeliveries, type AlertRule, type DeliveryLogEntry } from '$lib/api';
+	import { Button } from '$lib/components/ui';
+	import AlertStatePill from '$lib/components/AlertStatePill.svelte';
+	import DeliveryTimeline from '$lib/components/DeliveryTimeline.svelte';
 
 	const ruleId = page.params.id!;
 
@@ -43,7 +46,7 @@
 	{:else}
 		<div class="header">
 			<h1>{rule.name}</h1>
-			<button class="delete" onclick={remove}>Delete rule</button>
+			<Button variant="danger" onclick={remove}>Delete rule</Button>
 		</div>
 		{#if rule.description}<p class="desc">{rule.description}</p>{/if}
 		{#if error}<p class="error">Error: {error}</p>{/if}
@@ -51,13 +54,7 @@
 		<section class="summary">
 			<div>
 				<span class="label">State</span>
-				<span
-					class="state"
-					class:firing={rule.state.state === 'firing'}
-					class:pending={rule.state.state === 'pending'}
-				>
-					{rule.state.state}
-				</span>
+				<AlertStatePill state={rule.state.state} />
 			</div>
 			<div><span class="label">Condition</span> {rule.condition_type} — {conditionSummary(rule)}</div>
 			<div><span class="label">Query</span> <code>{rule.query}</code></div>
@@ -74,45 +71,15 @@
 			{/if}
 		</section>
 
-		<h2>Delivery log</h2>
+		<h2>State history</h2>
 		<p class="hint">Most recent first — this is "why didn't I get paged."</p>
-		{#if deliveries.length === 0}
-			<p>No deliveries yet.</p>
-		{:else}
-			<table>
-				<thead>
-					<tr>
-						<th>When</th>
-						<th>Event</th>
-						<th>Status</th>
-						<th>Attempts</th>
-						<th>Response</th>
-						<th>Error</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each deliveries as d (d.id)}
-						<tr>
-							<td>{new Date(d.created_at).toLocaleString()}</td>
-							<td>{d.event_type}</td>
-							<td>{d.status}</td>
-							<td>{d.attempt_count}</td>
-							<td>{d.response_status ?? '—'}</td>
-							<td class="error-cell">{d.last_error ?? ''}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		{/if}
+		<DeliveryTimeline {deliveries} />
 	{/if}
 </main>
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 900px;
-		margin: 2rem auto;
-		padding: 0 1rem;
+		max-width: 56rem;
 	}
 	.header {
 		display: flex;
@@ -120,69 +87,31 @@
 		justify-content: space-between;
 	}
 	.desc {
-		color: #555;
+		color: var(--color-text-muted);
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
 	}
 	.summary {
-		border: 1px solid #ddd;
-		border-radius: 6px;
-		padding: 0.75rem 1rem;
-		margin: 1rem 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: var(--space-3) var(--space-4);
+		margin: var(--space-4) 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		font-size: 0.9rem;
+		gap: var(--space-1);
+		font-size: var(--text-base);
+		background: var(--color-surface);
 	}
 	.label {
-		font-weight: 600;
-		margin-right: 0.4rem;
-	}
-	.state {
-		font-size: 0.75rem;
-		padding: 0.1rem 0.5rem;
-		border-radius: 1rem;
-		background: #eee;
-	}
-	.state.pending {
-		background: #ffe9b3;
-	}
-	.state.firing {
-		background: #fdd;
-		color: #900;
+		font-weight: var(--font-weight-medium);
+		margin-right: var(--space-1);
 	}
 	.eval-error {
-		color: #b00020;
+		color: var(--color-danger);
 	}
 	.hint {
-		font-size: 0.8rem;
-		color: #777;
-	}
-	.delete {
-		color: #b00020;
-		background: none;
-		border: 1px solid #b00020;
-		border-radius: 4px;
-		padding: 0.15rem 0.5rem;
-		cursor: pointer;
-	}
-	table {
-		border-collapse: collapse;
-		width: 100%;
-	}
-	th,
-	td {
-		border-bottom: 1px solid #eee;
-		padding: 0.3rem 0.5rem;
-		text-align: left;
-		font-size: 0.85rem;
-	}
-	.error-cell {
-		color: #b00020;
-		max-width: 20rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 </style>

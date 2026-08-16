@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { listRules, deleteRule, type AlertRule } from '$lib/api';
+	import { Button, Table, EmptyState, Skeleton } from '$lib/components/ui';
+	import AlertStatePill from '$lib/components/AlertStatePill.svelte';
 
 	let rules = $state<AlertRule[]>([]);
 	let loading = $state(true);
@@ -31,102 +33,92 @@
 		const symbols: Record<string, string> = { gt: '>', gte: '>=', lt: '<', lte: '<=', eq: '==', ne: '!=' };
 		return `${symbols[r.comparator ?? ''] ?? r.comparator} ${r.threshold_value}`;
 	}
+
+	// Firing rules first, then pending, then ok -- "what needs my
+	// attention" reads at the top of the list without having to scan
+	// every row (Phase 5 task 7's "at a glance" requirement).
+	const statePriority: Record<AlertRule['state']['state'], number> = { firing: 0, pending: 1, ok: 2 };
+	let sortedRules = $derived([...rules].sort((a, b) => statePriority[a.state.state] - statePriority[b.state.state]));
 </script>
 
 <main>
-	<h1>Alerts</h1>
+	<div class="header">
+		<h1>Alerts</h1>
+		<Button href="/alerts/new" variant="primary">+ New rule</Button>
+	</div>
 	{#if error}<p class="error">Error: {error}</p>{/if}
 
-	<a class="new-rule" href="/alerts/new">+ New rule</a>
-
 	{#if loading}
-		<p>Loading…</p>
+		<div class="skeleton-list">
+			{#each Array(3) as _, i (i)}
+				<Skeleton height="2.5rem" />
+			{/each}
+		</div>
 	{:else if rules.length === 0}
-		<p>No alert rules yet.</p>
+		<EmptyState
+			icon="▲"
+			title="No alert rules yet"
+			description="Rules watch a query on an interval and notify you when it crosses a threshold, or goes silent."
+		>
+			{#snippet action()}
+				<Button href="/alerts/new" variant="primary">+ New rule</Button>
+			{/snippet}
+		</EmptyState>
 	{:else}
-		<table>
+		<Table>
 			<thead>
 				<tr>
+					<th>State</th>
 					<th>Name</th>
 					<th>Condition</th>
-					<th>State</th>
 					<th>Enabled</th>
-					<th></th>
+					<th><span class="sr-only">Actions</span></th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each rules as r (r.id)}
+				{#each sortedRules as r (r.id)}
 					<tr>
-						<td><a href={`/alerts/${r.id}`}>{r.name}</a></td>
-						<td><code>{conditionSummary(r)}</code></td>
 						<td>
-							<span class="state" class:firing={r.state.state === 'firing'} class:pending={r.state.state === 'pending'}>
-								{r.state.state}
-							</span>
+							<AlertStatePill state={r.state.state} />
 							{#if r.state.last_eval_status === 'error'}
 								<span class="eval-error" title={r.state.last_error}>eval error</span>
 							{/if}
 						</td>
+						<td><a href={`/alerts/${r.id}`}>{r.name}</a></td>
+						<td><code>{conditionSummary(r)}</code></td>
 						<td>{r.enabled ? 'yes' : 'no'}</td>
-						<td><button class="delete" onclick={() => remove(r.id)}>Delete</button></td>
+						<td><Button size="sm" variant="danger" onclick={() => remove(r.id)}>Delete</Button></td>
 					</tr>
 				{/each}
 			</tbody>
-		</table>
+		</Table>
 	{/if}
 </main>
 
 <style>
 	main {
-		font-family: system-ui, sans-serif;
-		max-width: 960px;
-		margin: 2rem auto;
-		padding: 0 1rem;
+		max-width: 60rem;
+	}
+	.header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: var(--space-4);
+	}
+	h1 {
+		font-size: var(--text-xl);
 	}
 	.error {
-		color: #b00020;
+		color: var(--color-danger);
 	}
-	.new-rule {
-		display: inline-block;
-		margin-bottom: 1rem;
-		color: #06c;
-		text-decoration: none;
-	}
-	table {
-		border-collapse: collapse;
-		width: 100%;
-	}
-	th,
-	td {
-		border-bottom: 1px solid #eee;
-		padding: 0.4rem 0.6rem;
-		text-align: left;
-		font-size: 0.9rem;
-	}
-	.state {
-		font-size: 0.75rem;
-		padding: 0.1rem 0.5rem;
-		border-radius: 1rem;
-		background: #eee;
-	}
-	.state.pending {
-		background: #ffe9b3;
-	}
-	.state.firing {
-		background: #fdd;
-		color: #900;
+	.skeleton-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
 	}
 	.eval-error {
-		margin-left: 0.4rem;
-		font-size: 0.75rem;
-		color: #b00020;
-	}
-	.delete {
-		color: #b00020;
-		background: none;
-		border: 1px solid #b00020;
-		border-radius: 4px;
-		padding: 0.15rem 0.5rem;
-		cursor: pointer;
+		margin-left: var(--space-2);
+		font-size: var(--text-xs);
+		color: var(--color-danger);
 	}
 </style>
