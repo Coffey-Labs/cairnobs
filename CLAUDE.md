@@ -383,6 +383,71 @@ Non-goals for this phase (same discipline as every phase so far):
   someone with database superuser access; that's an operational control,
   out of scope here and named explicitly, not silently assumed away.
 
+## What "done" looks like for Phase 5
+
+**Status: shipped.** A ground-up frontend redesign — visual direction,
+a real design system, navigation/IA, charting, dashboard panels,
+query/search, and alerting UI — plus an accessibility pass, all verified
+against a live docker-compose stack with real seeded data, not just
+`npm run check`/`npm run build` passing. See `/docs/design-system.md`
+for the token system and component library, and
+`/docs/phase-5-runbook.md` for the full verification log, including five
+real bugs this phase's live-verification discipline caught that a
+type-checked, successfully-building frontend would not have surfaced on
+its own.
+
+The visual direction ("Signal": near-neutral grayscale UI, color rationed
+to the four-tier severity system plus a single interactive accent, real
+dark-mode-as-default) was picked from three proposed directions before
+any token or component work started, per an explicit stop point in this
+phase's brief. The charting library (ECharts, over Observable Plot and
+raw D3 — see the design-system doc for the reasoning and the verified
+bundle-size/perf numbers) was likewise confirmed before being wired into
+every panel type, the second explicit stop point.
+
+Two of the five bugs this phase's verification caught were backend bugs
+with no connection to the frontend redesign itself, only surfaced
+because getting real dashboard/alert data to verify the new UI against
+required actually exercising write paths nothing had exercised since
+Phase 4's `tenant_id` migrations landed:
+
+- `alerting`'s `rulestore.Create`/`ApplyTransition` never populated the
+  `tenant_id` column Phase 4 added to `alert_state`/`delivery_log` (with
+  a `NOT NULL` constraint) — every alert rule created against a
+  Phase-4-or-later database silently failed. Existing rows all had a
+  value from Phase 4's backfill migration, which is exactly why this
+  went uncaught: Phase 4's own verification never created a *new* rule
+  post-migration, and its runbook already discloses that Docker access
+  was lost partway through that phase.
+- `dashboard_panels`'s `viz_type` CHECK constraint was never updated
+  alongside `heatmap`'s addition to the Go/TS validators — a three-place
+  change (Go validator, TS union, DB constraint), not two.
+
+Both are fixed (`alerting/internal/rulestore/store.go`,
+`metadata/migrations/0035_add_heatmap_viz_type.sql`) and confirmed
+against a live stack: rule creation → evaluation → firing → a real
+(failed, to an intentionally fake webhook) delivery attempt, and a
+heatmap panel created, persisted, and rendered end to end. See the
+runbook for the other three findings (one more real product bug — a
+`findIndex`/nullish-coalescing bug in the chart-pivoting logic that made
+every `single_stat` panel render `0` — and two real accessibility
+findings caught by axe-core against live-rendered pages with real data,
+not fixture data or empty states).
+
+Non-goals for this phase (same discipline as every phase so far):
+- No query-language or data-model changes beyond the one narrowly
+  justified exception: `heatmap` as a `VizType`, needed to feed a new
+  visualization, not a new query capability.
+- No changes to tenant isolation, RBAC, SSO, or audit logging — Phase 4's
+  surface area is untouched; this phase is presentation-layer only.
+- No mobile-phone-width layout — responsive verification stops at
+  tablet-landscape width, per the brief's explicit scope ("laptop/
+  tablet-landscape," not phone-width).
+- No fuzzy search in the command palette, no data-grid virtualization for
+  very large result sets, no chart types beyond the five built
+  (time-series, bar, single-stat, heatmap, top-N) — real, disclosed
+  future work, not oversights.
+
 ## When in doubt
 Ask before: changing the pinned stack, adding a new external dependency
 that pulls in a large transitive tree, or making an architectural decision
