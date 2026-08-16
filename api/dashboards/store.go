@@ -183,6 +183,9 @@ func (s *Store) DeleteDashboard(ctx context.Context, tenantID, id string) error 
 }
 
 func (s *Store) AddPanel(ctx context.Context, tenantID, dashboardID string, p *Panel) error {
+	if err := validatePanel(p); err != nil {
+		return err
+	}
 	ok, err := s.dashboardTenantMatches(ctx, tenantID, dashboardID)
 	if err != nil {
 		return err
@@ -203,6 +206,9 @@ func (s *Store) AddPanel(ctx context.Context, tenantID, dashboardID string, p *P
 }
 
 func (s *Store) UpdatePanel(ctx context.Context, tenantID string, p *Panel) error {
+	if err := validatePanel(p); err != nil {
+		return err
+	}
 	ok, err := s.dashboardTenantMatches(ctx, tenantID, p.DashboardID)
 	if err != nil {
 		return err
