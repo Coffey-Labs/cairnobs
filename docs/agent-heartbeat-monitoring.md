@@ -95,6 +95,80 @@ still useful — it tightens how quickly *evidence* of an outage
 accumulates in the query window — but the alert itself can't fire on a
 tighter cadence than 30s.
 
+## Fleet-wide alerting without one rule per host (punch-list item 2)
+
+The absence-rule pattern above is genuinely one rule per agent — a
+real, disclosed limitation, not an oversight (see the `query` bullet
+above: the evaluator's absence check only asks "did any row come back,"
+so it can't distinguish "one specific host went quiet" from "everything
+did" once a query spans more than one host). Building true per-host
+alerting from one fleet-wide *rule* would mean the alerting engine
+firing and tracking state separately per matching row/group — the same
+"no per-group/multi-row alerting" capability `/docs/phase-3-alerting-
+design.md` already named as a non-goal for the *entire* engine, not
+something specific to agents. That's a real evaluator/`alert_state`
+rearchitecture (state today is one row per *rule*, not per rule-and-
+group), out of scope for an agent-management punch-list item.
+
+What's genuinely achievable without touching the alerting engine at
+all: an **aggregate** fleet-health rule using the raw-SQL escape hatch
+(already fully supported for alert rules — `rulestore.Rule.
+QueryLanguage`/`validateRule` never restricted it to the pipe syntax,
+this was simply never exercised in this specific way before) and a
+`count(DISTINCT host)` against a **known expected fleet size**:
+
+```sh
+# Note the outer JSON uses double quotes for the shell, so the SQL's
+# own single-quoted string literals inside it don't need escaping.
+curl -X POST http://localhost:8081/rules -H "Content-Type: application/json" -d "{
+  \"name\": \"fleet degraded\",
+  \"description\": \"fires when fewer than 3 of the expected fleet hosts have heartbeated recently\",
+  \"query\": \"SELECT count(DISTINCT host) AS active_agents FROM logs WHERE timestamp > now() - INTERVAL 3 MINUTE AND attributes['sentry.heartbeat'] = 'true' AND host LIKE 'web-%'\",
+  \"query_language\": \"sql\",
+  \"condition_type\": \"threshold\",
+  \"comparator\": \"lt\",
+  \"threshold_value\": 3,
+  \"eval_interval_seconds\": 30,
+  \"for_minutes\": 0,
+  \"notification_target_id\": \"<your notification target id>\",
+  \"enabled\": true
+}"
+```
+
+Note ClickHouse SQL uses **single quotes for string literals** (double
+quotes are identifier quoting there) — the opposite of the pipe
+syntax's `field="value"` convention. This tripped up the first draft of
+this exact query during live verification: quoting `'true'` and the
+`LIKE` pattern with double quotes silently turned them into identifier
+references instead of string literals, and ClickHouse rejected the
+query outright (`Unknown expression or function identifier`) rather
+than silently misbehaving — a loud, easy-to-catch failure, not a subtle
+one, but worth calling out since it's an easy mistake to repeat.
+
+One rule now covers an entire named group of hosts (matched by a `LIKE`
+pattern, a naming convention, or any other `WHERE` predicate over
+`host`/`service` you already use) instead of one rule per host. The
+real tradeoff, stated plainly rather than glossed over: `threshold_value`
+is a fixed expected count an operator sets and must update by hand as
+the fleet's size actually changes (a host decommissioned without
+updating the threshold reads as "one is missing" forever) — this is the
+same shape of tradeoff as any "alert if fewer than N of M expected
+instances are healthy" check in any monitoring system, not unique to
+this platform. It also only tells you the fleet is degraded in
+aggregate, not *which* host — pair it with the `/agents` inventory page
+(already built, per-host healthy/stale status) for that, the same way
+an aggregate alert triggering an investigation and a dashboard
+pinpointing the specific instance is how this already works in
+practice elsewhere.
+
+A **scripted rule-per-host generator** (reconciling `/agents` inventory
+into one absence rule per active host, created/removed automatically as
+hosts come and go) is a real alternative that keeps true per-host
+alerts without any engine changes, at the cost of N actual rule rows to
+manage. Not built here — it's tooling, and overlaps with punch-list item
+3 (a CLI surface for agent management) enough that it belongs there if
+wanted, not duplicated as a one-off script now.
+
 ## Verified live
 
 This exact flow was run end-to-end against a live stack in this repo: a
