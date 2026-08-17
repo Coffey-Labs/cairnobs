@@ -1,9 +1,9 @@
 // Package tenantresolver is ingest's HTTP client for resolving an
 // agent-presented ingest credential to a tenant -- calls enterprise-
 // auth's POST /internal/authorize-ingest over the network, never
-// importing enterprise/ (ingest is AGPL core; enterprise/ is
-// commercial-licensed and must never be imported by core code -- same
-// "network boundary, not import boundary" shape api/authz.HTTPAuthorizer
+// importing enterprise/ (both ingest and enterprise/ are AGPLv3 as of
+// Phase 6; the import boundary is architectural, not a licensing wall --
+// same "network boundary, not import boundary" shape api/authz.HTTPAuthorizer
 // already uses for the query path, and enterprise-auth's own doc
 // comment on POST /internal/authorize-ingest). nil (no resolver
 // configured) is grpcserver.Server's documented no-op default --

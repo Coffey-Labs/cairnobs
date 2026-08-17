@@ -5,11 +5,13 @@
 
 export const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 export const alertingBase = import.meta.env.VITE_ALERTING_API_BASE_URL ?? 'http://localhost:8081';
-// Optional third backend (Phase 4, commercial-license) -- undefined in a
-// deployment that hasn't built/deployed enterprise-auth, same "runtime
-// capability check" shape /docs/phase-4-rbac-design.md's Web UI boundary
-// section describes. getAuthFeatures below treats a missing base URL the
-// same as a failed fetch: everything reports disabled, no broken links.
+// Optional third backend (Phase 4; enterprise/ is AGPLv3 same as core
+// as of Phase 6, but stays a separate optional service architecturally)
+// -- undefined in a deployment that hasn't built/deployed enterprise-auth,
+// same "runtime capability check" shape /docs/phase-4-rbac-design.md's
+// Web UI boundary section describes. getAuthFeatures below treats a
+// missing base URL the same as a failed fetch: everything reports
+// disabled, no broken links.
 export const enterpriseAuthBase = import.meta.env.VITE_ENTERPRISE_AUTH_BASE_URL as string | undefined;
 
 export type Language = '' | 'sql' | 'spl';

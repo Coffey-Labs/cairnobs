@@ -192,10 +192,13 @@ replacement for it. Full middleware/handler wiring is task 5's scope.
 
 ## Web UI boundary: a runtime capability check, not a conditional import
 
-Core `web` never bundles enterprise-licensed Svelte components into its
-build — that would put commercial-licensed source inside an AGPL
-artifact, the UI-layer equivalent of the Go import-boundary problem
-`hack/check-tenant-boundary.sh` already guards against. Instead: core
+Core `web` never bundles `enterprise/`'s Svelte components into its
+build (at the time this was written, that would have put
+commercial-licensed source inside an AGPL artifact; as of Phase 6 both
+are AGPLv3, but the architectural separation stands on its own merits —
+core builds and ships standalone, the UI-layer equivalent of the Go
+import-boundary problem `hack/check-tenant-boundary.sh` already guards
+against). Instead: core
 `web` ships a generic settings/admin route
 (`web/src/routes/settings/+page.svelte`, added in task 5) that, on load,
 calls `GET {enterprise-auth base URL}/auth/features` and renders

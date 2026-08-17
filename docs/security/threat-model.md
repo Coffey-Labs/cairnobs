@@ -167,9 +167,14 @@ always into the default index — genuinely verified in this environment,
 same as the read-side Tantivy claim above, since Tantivy is an embedded
 library with no Docker dependency. No "second binary" was needed here,
 unlike ClickHouse: Tantivy has no grant system to gate a
-commercially-licensed credential behind, so `IndexRegistry` already
-lived directly in this AGPL-core `search` binary, and read/write simply
-share it. This write path is now also active-tenant-gated:
+separately-credentialed binary behind, so `IndexRegistry` already lived
+directly in this AGPL-core `search` binary, and read/write simply share
+it. (This reasoning predates Phase 6's relicensing of `enterprise/` to
+AGPLv3 and originally referred to a commercially-licensed credential --
+restated here because the architectural point holds independent of
+licensing: Tantivy still has no grant system, so the split was never
+about which license `enterprise/` carried.)
+This write path is now also active-tenant-gated:
 `search/src/tenants.rs`'s `ActiveTenantTracker` polls a new
 `GET /internal/active-tenants` endpoint on `enterprise-auth` every 60
 seconds (RoleService-credentialed, the same auth shape `alerting` uses
@@ -245,10 +250,15 @@ design doc doesn't yet cover, not just an implementation gap.
 
 ## Module boundary (trust boundary #1)
 
-`enterprise/` (commercial license: SSO, RBAC storage, audit logging,
-session issuance) is never imported by AGPL core (`/api`, `/alerting`,
-`/web`, `/cli`) — enforced in CI by `hack/check-tenant-boundary.sh`,
-which greps for the import edge on every build. Core calls
+`enterprise/` (SSO, RBAC storage, audit logging, session issuance — AGPLv3,
+same as core as of Phase 6, see `/docs/compliance/license-audit-report.md`)
+is never imported by core (`/api`, `/alerting`, `/web`, `/cli`) —
+enforced in CI by `hack/check-tenant-boundary.sh`, which greps for the
+import edge on every build. This is an architectural trust boundary, not
+a licensing one: it keeps core buildable and deployable with zero
+multi-tenant mechanism present regardless of what license either side
+carries, and keeps tenant identity resolution server-side rather than
+trusting a request parameter. Core calls
 `enterprise-auth` over plain HTTP (`api/authz.HTTPAuthorizer`),
 forwarding only the `Cookie`/`Authorization` headers, never the full
 request (`api/authz/httpauthz_test.go` asserts this — an

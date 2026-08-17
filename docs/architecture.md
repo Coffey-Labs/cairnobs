@@ -79,8 +79,8 @@ This split is not to be changed without discussion — see CLAUDE.md.
 | `search` (Rust, Phase 1) | Consumes the same Redpanda topic `ingest` does (own offset tracking), builds a Tantivy full-text index over `message`, serves matches over gRPC. Writes always go to one shared (default) index (`ingest` isn't tenant-aware); reads can be scoped per-tenant via `SearchRequest.tenant_id` and `src/registry.rs`'s `IndexRegistry` (Phase 4) — see "Tenant isolation" below. |
 | `api` (Go) | gRPC + REST gateway. `POST /query` compiles pipe-syntax or raw SQL to one IR, executed across ClickHouse/Tantivy (`/docs/query-language-design.md`). `internal/dashboards` is CRUD only — panel query execution happens client-side, reusing `/query`. `internal/authz` (Phase 4) enforces RBAC via a network call to `enterprise-auth`, never an import. |
 | `alerting` (Go, Phase 3) | Evaluates alert rules on an interval, calls `api`'s `POST /query` (via a `RoleService` credential once Phase 4 auth is configured — see `/docs/phase-4-isolation-design.md`'s alerting↔api gap), delivers firing/resolved notifications (webhook/Slack/PagerDuty). |
-| `enterprise` (Go, commercial license, Phase 4) | OIDC login (`internal/loginhandler`'s `/auth/oidc/login`+`/auth/oidc/callback`) and SAML login (`/auth/saml/login`+`/auth/saml/acs`, via `internal/saml`'s `crewjam/saml` wiring) — both a real IdP round trip, each verified with a real fake IdP (`coreos/go-oidc`'s `oidctest`, `crewjam/saml`'s `samlidp`) but not a real external one, RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`), per-tenant ClickHouse provisioning (`internal/tenantprovision`) and query routing (`internal/chrunner`), and `cmd/enterprise-api` — a second binary combining core's `api/queryapi`/`api/dashboards` handlers with these tenant-aware implementations. Never imported by core — see "Licensing boundary" below. Also `internal/searchclient` (per-tenant Tantivy routing, wired the same way into `search`). |
-| `web` (SvelteKit, static build) | Query bar, dashboards, alerts, and (Phase 4) a settings page that renders SSO status via a runtime capability check (`GET /auth/features`) rather than bundling enterprise-licensed components. |
+| `enterprise` (Go, AGPLv3 — see "Licensing boundary" below, Phase 4) | OIDC login (`internal/loginhandler`'s `/auth/oidc/login`+`/auth/oidc/callback`) and SAML login (`/auth/saml/login`+`/auth/saml/acs`, via `internal/saml`'s `crewjam/saml` wiring) — both a real IdP round trip, each verified with a real fake IdP (`coreos/go-oidc`'s `oidctest`, `crewjam/saml`'s `samlidp`) but not a real external one, RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`), per-tenant ClickHouse provisioning (`internal/tenantprovision`) and query routing (`internal/chrunner`), and `cmd/enterprise-api` — a second binary combining core's `api/queryapi`/`api/dashboards` handlers with these tenant-aware implementations. Never imported by core — see "Licensing boundary" below. Also `internal/searchclient` (per-tenant Tantivy routing, wired the same way into `search`). |
+| `web` (SvelteKit, static build) | Query bar, dashboards, alerts, and (Phase 4) a settings page that renders SSO status via a runtime capability check (`GET /auth/features`) rather than bundling `enterprise/`'s components directly — an architectural choice (core builds and runs standalone) that predates and doesn't depend on Phase 6's relicensing. |
 | `cli` (`sentryctl`) | `ping`, `query`, `dashboards` (list/get/apply), `alerts` (list/get/apply). `$SENTRYCTL_TOKEN`, if set, is forwarded as a Bearer credential (Phase 4). |
 | `deploy` | A Helm chart covering every `docker-compose.yml` service, plus (Phase 4) a small Go Operator managing one CRD (`Tenant`) that provisions a per-tenant ClickHouse credential Secret. Never applied to a live cluster in the environment this was built in — see `/deploy/README.md`'s verification section before trusting it. |
 
@@ -169,9 +169,12 @@ escape hatch is opaque to any compiler-injected filter.
   (`search/src/registry.rs` + `enterprise/internal/searchclient`)
   already used, and writes there instead of always into the default
   index. No "second binary" needed here, unlike ClickHouse — Tantivy has
-  no grant system to gate a commercially-licensed credential behind, so
-  `IndexRegistry` already lived directly in this AGPL-core binary, and
-  read/write just share it. The active-tenant gap this design left open
+  no grant system to gate a separately-credentialed binary behind
+  (originally written when that credential was commercially licensed;
+  the split was never actually about which license `enterprise/`
+  carried, only about ClickHouse's grant system being the thing worth
+  isolating), so `IndexRegistry` already lived directly in this AGPL-core
+  binary, and read/write just share it. The active-tenant gap this design left open
   is now closed too: `search/src/tenants.rs`'s `ActiveTenantTracker`
   polls a new `GET /internal/active-tenants` endpoint on
   `enterprise-auth` — `search` has no Postgres access, so unlike
@@ -219,16 +222,27 @@ IdP or a real running multi-container deployment.
 
 ## Licensing boundary
 
-AGPLv3 for core + agents. Enterprise features (SSO, RBAC storage, audit
-logging) live under `enterprise/` (commercial license stub, added
-Phase 4). AGPL code must never import from `enterprise/` — enforced in
-CI by `hack/check-tenant-boundary.sh`, which greps every build for the
-import edge. Where core needs a decision only `enterprise/` can make
-(is this request authorized, what SSO is configured), it calls
-`enterprise-auth` over plain HTTP instead
-(`api/authz.HTTPAuthorizer`, `web`'s `GET /auth/features`) —
-the same "network boundary, not import boundary" shape `/alerting`↔`api`
-already used before `enterprise/` existed.
+**AGPLv3 for the entire project**, including `enterprise/` — as of
+Phase 6, there is no separate commercial-license carve-out anywhere in
+this repo. `enterprise/` (added Phase 4 under a commercial-license stub,
+covering SSO, RBAC storage, audit logging) was relicensed to AGPLv3 in
+Phase 6; see `/docs/compliance/license-audit-report.md` for the full
+record of that decision, including the deliberate business-model
+consequence: anyone, including competitors, can now legally self-host or
+fork those features under AGPLv3's terms.
+
+Core still never imports from `enterprise/` — enforced in CI by
+`hack/check-tenant-boundary.sh`, which greps every build for the import
+edge — but this is now purely an **architectural** boundary, not a
+licensing one. It exists so core stays buildable and deployable with
+zero multi-tenant mechanism present regardless of what license either
+side carries, and so tenant identity resolution stays server-side rather
+than trusting a request parameter — see `/docs/phase-4-isolation-design.md`.
+Where core needs a decision only `enterprise/` can make (is this request
+authorized, what SSO is configured), it calls `enterprise-auth` over
+plain HTTP instead (`api/authz.HTTPAuthorizer`, `web`'s
+`GET /auth/features`) — the same "network boundary, not import boundary"
+shape `/alerting`↔`api` already used before `enterprise/` existed.
 
 ## Non-negotiables carried from CLAUDE.md
 
