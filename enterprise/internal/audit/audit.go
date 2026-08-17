@@ -47,6 +47,12 @@ const (
 	EventGrantChange     EventType = "grant_change"
 	EventSSOConfigChange EventType = "sso_config_change"
 	EventSecretReveal    EventType = "secret_reveal"
+	// EventAIInteraction (Phase 7 task 12): a translate/fix/optimize
+	// suggestion's accept-or-dismiss outcome. QueryText carries the
+	// resulting query (if any); Detail carries the operation, the
+	// original input, confidence, and whether the user edited the
+	// suggestion before using it -- see ai_interaction_adapter.go.
+	EventAIInteraction EventType = "ai_interaction"
 )
 
 type Status string

@@ -19,6 +19,10 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/ai/aiapi"
+	"github.com/sentry/sentry/api/ai/grounding"
+	"github.com/sentry/sentry/api/ai/provider/ollama"
+	"github.com/sentry/sentry/api/ai/router"
 	"github.com/sentry/sentry/api/authz"
 	"github.com/sentry/sentry/api/dashboards"
 	"github.com/sentry/sentry/api/httpserver"
@@ -27,6 +31,13 @@ import (
 	"github.com/sentry/sentry/api/querylang/executor"
 	"github.com/sentry/sentry/api/searchclient"
 )
+
+// groundingRefreshInterval matches chwriter.Registry/search's
+// ActiveTenantTracker's own one-minute refresh cadence -- no strong
+// reason for a different number, and consistency means one interval to
+// reason about across every "sample something periodically" mechanism
+// in this codebase, not several slightly different ones.
+const groundingRefreshInterval = time.Minute
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -115,6 +126,32 @@ func main() {
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux)
 	dashboardsHandler.RegisterRoutes(mux)
+
+	// AI routes (Phase 7) are only registered at all when OLLAMA_BASE_URL
+	// is set -- an unconfigured deployment gets a plain 404 on /ai/*
+	// rather than every request failing against an unreachable
+	// localhost:11434, matching "no cloud dependency required for the
+	// default deployment" by not forcing a *local* model dependency on a
+	// deployment that doesn't want AI features either.
+	if cfg.AI.OllamaBaseURL != "" {
+		groundingSvc := grounding.New(sqlRunner)
+		groundingSvc.StartRefreshing(ctx, groundingRefreshInterval, func(err error) {
+			logger.Warn("grounding refresh failed", "error", err)
+		})
+
+		defaultProvider := ollama.New(cfg.AI.OllamaBaseURL, cfg.AI.OllamaModel)
+		aiRouter := router.New(defaultProvider)
+		if cfg.AI.OllamaFastModel != "" && cfg.AI.OllamaFastModel != cfg.AI.OllamaModel {
+			aiRouter.SetOperation(router.OpComplete, ollama.New(cfg.AI.OllamaBaseURL, cfg.AI.OllamaFastModel))
+		}
+
+		// nil interaction logger: core has no enterprise/internal/audit
+		// implementation to log translate/fix/optimize interactions
+		// against, same posture as queryHandler's nil audit logger above.
+		aiHandler := aiapi.NewHandler(logger, aiRouter, groundingSvc, authorizer, nil)
+		aiHandler.RegisterRoutes(mux)
+		logger.Info("ai routes enabled", "ollama_base_url", cfg.AI.OllamaBaseURL, "model", cfg.AI.OllamaModel)
+	}
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,

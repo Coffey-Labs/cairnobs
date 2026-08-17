@@ -507,6 +507,65 @@ judged sufficient); redesigning `favicon.svg` (flagged as a leftover
 SvelteKit scaffold asset, not a license blocker — a design task, not a
 compliance one).
 
+## What "done" looks like for Phase 7
+
+**Status: shipped.** AI-assisted query authoring: from the same query
+bar, a user can (a) get AI-assisted autocomplete, explanations, and fix
+suggestions while writing pipe-syntax or SQL queries by hand, and (b)
+type a plain-English question and get a generated structured query with
+explanation, editable before running — both paths executing through the
+unchanged Phase 2 compiler (`api/internal/querylang/planner`,
+`api/querylang/executor`) with Phase 4 tenant scoping, cost guardrails,
+and audit logging applying identically to both. No cloud dependency
+required for the default deployment (self-hosted via Ollama,
+`qwen2.5-coder:7b`/`1.5b`, both Apache-2.0 — chosen specifically to keep
+Phase 6's license-purity work intact; a pluggable, opt-in, off-by-default
+cloud adapter exists for deployments that want one).
+
+Non-negotiable design principle held throughout, confirmed by inspection
+of the actual code paths rather than merely asserted: every AI-assisted
+or AI-translated query compiles down to and executes through the same
+Phase 2 IR and compiler, and passes through the same Phase 4
+tenant-scoping enforcement and cost guardrails as a hand-written query —
+no parallel execution path, no scoping shortcut, for either track. No AI
+code path anywhere constructs a `SQLRunner`, calls `executor.Execute`,
+or bypasses `authz.RequireRoleOrService`.
+
+Every AI-assisted suggestion a user explicitly accepts or dismisses
+(translate/fix/optimize — deliberately not ghost-text completion or
+explain, see the design doc for why) is logged into the same
+append-only, hash-chained `audit_log` table Phase 4 built, via a new
+`event_type='ai_interaction'` rather than a new table
+(`metadata/migrations/0036`) — genuinely verified against a live
+Postgres in this environment, not just unit-tested against a fake, the
+same rigor Phase 4's own audit-logging guarantees were held to.
+
+Two real product bugs were found and fixed via this phase's live
+browser verification — neither would have been caught by
+`svelte-check`/`npm run build` — and a real logic bug in the cost/safety
+guard itself (an unbounded-aggregation-vs-raw-row distinction) was found
+and fixed by the test suite written for it. Full accounting of all
+three: `/docs/phase-7-ai-design.md`. Integration tests
+(`api/ai/aiapi/integration_test.go`) wire a real `ollama.Client` through
+a real `router`/`Handler` against a mock server matching Ollama's actual
+wire contract (`hack/mock-ollama`, new — also used for this phase's live
+verification), proving the plumbing without needing real model weights;
+testing actual model *quality* is deliberately kept out of CI as a
+disclosed, periodic human-run checklist item instead — see the design
+doc's CI-testability section for the reasoning.
+
+Explicit non-goals for this phase (scoped out, not deferred by oversight):
+result summarization, incident narrative generation, and proactive/
+unprompted AI suggestions — this phase is query authoring assistance
+only (structured and natural-language), not analysis or automation. Real
+future-phase candidates, not silently dropped.
+
+See `/docs/phase-7-ai-design.md` for the model-provider architecture,
+shared foundation (schema grounding, cost/safety guard), both tracks'
+build-and-verification record, and the audit-logging/CI-testability
+design; `/docs/phase-7-runbook.md` for the step-by-step live-stack
+verification procedure.
+
 ## When in doubt
 Ask before: changing the pinned stack, adding a new external dependency
 that pulls in a large transitive tree, or making an architectural decision

@@ -17,6 +17,20 @@ type Config struct {
 	QueryTimeout      time.Duration
 	CORSAllowedOrigin string
 	EnterpriseAuthURL string
+	AI                AIConfig
+}
+
+// AIConfig gates Phase 7's AI-assisted query features (Track A/B) --
+// off unless OllamaBaseURL is set, same "off unless configured"
+// convention as EnterpriseAuthURL and everything else optional in this
+// codebase. OllamaFastModel is the per-operation override for
+// Complete's tight latency budget (/docs/phase-7-ai-design.md's
+// per-operation provider/model config) -- empty means Complete uses
+// OllamaModel too, same as every other operation.
+type AIConfig struct {
+	OllamaBaseURL   string
+	OllamaModel     string
+	OllamaFastModel string
 }
 
 type ClickHouseConfig struct {
@@ -65,6 +79,17 @@ func Load() (Config, error) {
 		// base URL (e.g. "http://enterprise-auth:8081") to turn on
 		// real session/service-token enforcement.
 		EnterpriseAuthURL: getenv("ENTERPRISE_AUTH_URL", ""),
+		// Empty OllamaBaseURL means AI features are entirely disabled --
+		// /ai/* routes aren't even registered (see main.go), matching
+		// "no cloud dependency required for the default deployment" and,
+		// by the same reasoning, no *local* model dependency forced on a
+		// deployment that doesn't want one either. Model names default to
+		// the recommendation confirmed in /docs/phase-7-ai-design.md.
+		AI: AIConfig{
+			OllamaBaseURL:   getenv("OLLAMA_BASE_URL", ""),
+			OllamaModel:     getenv("OLLAMA_MODEL", "qwen2.5-coder:7b"),
+			OllamaFastModel: getenv("OLLAMA_FAST_MODEL", "qwen2.5-coder:1.5b"),
+		},
 	}
 
 	timeoutSec, err := strconv.Atoi(getenv("QUERY_TIMEOUT_SECONDS", "30"))

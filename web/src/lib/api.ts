@@ -16,7 +16,13 @@ export const enterpriseAuthBase = import.meta.env.VITE_ENTERPRISE_AUTH_BASE_URL 
 
 export type Language = '' | 'sql' | 'spl';
 
-export type QueryResult = { columns: string[]; rows: unknown[][] };
+// warnings (Phase 7) is populated by the shared costguard package's
+// assessment of every query, hand-written or AI-suggested alike --
+// informational only, never a reason a query didn't run. Optional/absent
+// (not an empty array) when there's nothing to say, matching the
+// backend's `omitempty` -- see api/queryapi/handler.go's doc comment on
+// why this is additive, not new enforcement.
+export type QueryResult = { columns: string[]; rows: unknown[][]; warnings?: string[] };
 
 export type VizType = 'table' | 'line' | 'bar' | 'single_stat' | 'top_n' | 'heatmap';
 
@@ -81,6 +87,117 @@ function alertingRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function runQuery(query: string, language: Language): Promise<QueryResult> {
 	return request('/query', { method: 'POST', body: JSON.stringify({ query, language }) });
+}
+
+// ---- AI-assisted query authoring (Phase 7 Track A) ----
+// Every function here returns text/suggestions only -- running anything
+// still goes through runQuery above, unchanged, per the phase's
+// non-negotiable "no parallel execution path" design principle. A
+// deployment with no OLLAMA_BASE_URL configured has these routes
+// entirely unregistered server-side (api/cmd/api's main.go), so a 404
+// here is a normal, expected "AI isn't enabled" response, not a bug --
+// callers (QueryBar.svelte) treat any error from these functions as
+// "AI unavailable right now," never a user-facing failure.
+
+export type Confidence = 'high' | 'medium' | 'low';
+
+export function aiComplete(queryPrefix: string, language: string): Promise<{ suggestion: string }> {
+	return request('/ai/complete', { method: 'POST', body: JSON.stringify({ queryPrefix, language }) });
+}
+
+export function aiExplain(
+	query: string,
+	language: string,
+	originalIntent?: string
+): Promise<{ explanation: string }> {
+	return request('/ai/explain', {
+		method: 'POST',
+		body: JSON.stringify({ query, language, originalIntent: originalIntent ?? '' })
+	});
+}
+
+export type FixResponse = {
+	suggestedQuery: string;
+	explanation: string;
+	confidence: Confidence | '';
+	blocked: boolean;
+	costWarnings?: string[];
+};
+
+export function aiFix(
+	query: string,
+	language: string,
+	opts: { parseError?: string; executionError?: string }
+): Promise<FixResponse> {
+	return request('/ai/fix', {
+		method: 'POST',
+		body: JSON.stringify({
+			query,
+			language,
+			parseError: opts.parseError ?? '',
+			executionError: opts.executionError ?? ''
+		})
+	});
+}
+
+export type OptimizeResponse = {
+	findings: string[];
+	phrased: string;
+	suggestedQuery?: string;
+};
+
+export function aiOptimize(query: string, language: string): Promise<OptimizeResponse> {
+	return request('/ai/optimize', { method: 'POST', body: JSON.stringify({ query, language }) });
+}
+
+// ---- Natural language translation (Phase 7 Track B) ----
+// Same non-negotiable split as every other AI operation: this returns a
+// query for review, never executes it. Running the result is the exact
+// same runQuery() above, reused unchanged -- task 9's explicit
+// requirement.
+export type TranslateResponse = {
+	query: string;
+	confidence: Confidence | '';
+	lowConfidenceReason?: string;
+	compiles: boolean;
+	compileError?: string;
+	blocked: boolean;
+	costWarnings?: string[];
+};
+
+export function aiTranslate(nlQuery: string): Promise<TranslateResponse> {
+	return request('/ai/translate', { method: 'POST', body: JSON.stringify({ nlQuery }) });
+}
+
+// ---- Interaction audit logging (task 12) ----
+// Fire-and-forget: a failure here (including AI being unconfigured
+// server-side, same 404-is-normal posture as every other /ai/* call)
+// must never block or surface an error for the accept/dismiss action
+// that triggered it, so callers should not await rejection handling
+// beyond a swallowed .catch(() => {}).
+export type InteractionOperation = 'translate' | 'fix' | 'optimize';
+
+export function logInteraction(entry: {
+	operation: InteractionOperation;
+	input: string;
+	output: string;
+	confidence?: Confidence | '';
+	accepted: boolean;
+	edited: boolean;
+	finalQuery?: string;
+}): Promise<void> {
+	return request('/ai/log-interaction', {
+		method: 'POST',
+		body: JSON.stringify({
+			operation: entry.operation,
+			input: entry.input,
+			output: entry.output,
+			confidence: entry.confidence ?? '',
+			accepted: entry.accepted,
+			edited: entry.edited,
+			finalQuery: entry.finalQuery ?? ''
+		})
+	});
 }
 
 export function listDashboards(): Promise<Dashboard[]> {
@@ -355,3 +472,4 @@ export function createNotificationTarget(input: {
 }): Promise<NotificationTarget> {
 	return alertingRequest('/targets', { method: 'POST', body: JSON.stringify(input) });
 }
+

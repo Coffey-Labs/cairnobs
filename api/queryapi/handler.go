@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sentry/sentry/api/ai/costguard"
 	"github.com/sentry/sentry/api/authz"
 	"github.com/sentry/sentry/api/internal/querylang/planner"
 	"github.com/sentry/sentry/api/querylang/executor"
@@ -99,6 +100,20 @@ type queryRequest struct {
 type queryResponse struct {
 	Columns []string `json:"columns"`
 	Rows    [][]any  `json:"rows"`
+	// Warnings surfaces costguard's assessment (Phase 7 task 4) for
+	// every query, hand-written or AI-suggested alike -- the same
+	// guard, never a hard block here. AI-suggested queries get a
+	// stricter treatment (a Reject-level assessment withholds the
+	// suggestion entirely, see the ai package) before a query ever
+	// reaches this handler; a hand-written query submitted directly
+	// always runs regardless of what this says, matching every prior
+	// phase's behavior -- this field is informational, not new
+	// enforcement, a deliberate choice recorded in
+	// /docs/phase-7-ai-design.md rather than a retrofit nobody decided
+	// on. Omitted (not an empty array) when there's nothing to say, so
+	// existing callers that don't look for this field see no shape
+	// change at all.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 type errorResponse struct {
@@ -149,7 +164,11 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logAudit(r.Context(), req, len(result.Rows), duration, nil)
-	writeJSON(w, queryResponse{Columns: result.Columns, Rows: result.Rows})
+	resp := queryResponse{Columns: result.Columns, Rows: result.Rows}
+	if assessment := costguard.Assess(plan); assessment.Level != costguard.LevelOK {
+		resp.Warnings = []string{costguard.Summary(assessment)}
+	}
+	writeJSON(w, resp)
 }
 
 // logAudit is fail-open by design (see AuditLogger's doc comment): a

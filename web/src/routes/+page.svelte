@@ -23,6 +23,7 @@
 	let columns = $state<string[]>([]);
 	let rows = $state<unknown[][]>([]);
 	let error = $state('');
+	let warnings = $state<string[]>([]);
 	let loading = $state(false);
 	let hasRun = $state(false);
 	let history = $state<HistoryEntry[]>(loadHistory());
@@ -55,10 +56,12 @@
 	async function runQuery() {
 		loading = true;
 		error = '';
+		warnings = [];
 		try {
 			const result = await apiRunQuery(query, language);
 			columns = result.columns ?? [];
 			rows = result.rows ?? [];
+			warnings = result.warnings ?? [];
 			saveHistory({ query, language, at: Date.now() });
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -98,7 +101,7 @@
 		sheet below. Build reusable queries into a <a href="/dashboards">dashboard</a>.
 	</p>
 
-	<QueryBar bind:query bind:language onRun={runQuery} {loading} />
+	<QueryBar bind:query bind:language onRun={runQuery} {loading} errorMessage={error} {warnings} />
 
 	{#if error}
 		<p class="error">Error: {error}</p>
