@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/sentry/sentry/ingest/internal/config"
+	agentv1 "github.com/sentry/sentry/proto/sentry/agent/v1"
 	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
 
@@ -50,12 +51,40 @@ func (f *fakeResolver) ResolveTenant(_ context.Context, token string) (string, e
 	return tenantID, nil
 }
 
+// fakeAgentRegistry is an in-memory stand-in for
+// ingest/internal/agentregistry.Registry, keyed by "tenantID/host" so
+// tests can assert cross-tenant isolation the same way the real
+// UNIQUE (tenant_id, host) constraint provides it.
+type fakeAgentRegistry struct {
+	mu        sync.Mutex
+	checkIns  []AgentCheckIn
+	overrides map[string]AgentOverride
+	err       error
+}
+
+func (f *fakeAgentRegistry) CheckIn(_ context.Context, tenantID string, info AgentCheckIn) (AgentOverride, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return AgentOverride{}, f.err
+	}
+	f.checkIns = append(f.checkIns, info)
+	if f.overrides == nil {
+		return AgentOverride{HasOverride: false}, nil
+	}
+	return f.overrides[tenantID+"/"+info.Host], nil
+}
+
 func newTestServer(p batchProducer) *Server {
-	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), config.GRPCConfig{}, config.TLSConfig{}, p, nil)
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), config.GRPCConfig{}, config.TLSConfig{}, p, nil, nil)
 }
 
 func newTestServerWithResolver(p batchProducer, resolver TenantResolver) *Server {
-	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), config.GRPCConfig{}, config.TLSConfig{}, p, resolver)
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), config.GRPCConfig{}, config.TLSConfig{}, p, resolver, nil)
+}
+
+func newTestServerWithAgents(agents AgentRegistry) *Server {
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), config.GRPCConfig{}, config.TLSConfig{}, &fakeProducer{}, nil, agents)
 }
 
 // contextWithBearerToken builds an incoming gRPC context carrying an
@@ -251,5 +280,97 @@ func TestPushBatchWithResolverRejectsInvalidToken(t *testing.T) {
 	defer fp.mu.Unlock()
 	if len(fp.written) != 0 {
 		t.Fatal("a batch with an invalid token must never reach the producer once a resolver is configured")
+	}
+}
+
+func TestCheckInNilRegistryIsANoOp(t *testing.T) {
+	s := newTestServer(&fakeProducer{})
+
+	resp, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{Host: "h1", CurrentConfig: &agentv1.ReportedConfig{}})
+	if err != nil {
+		t.Fatalf("CheckIn() error = %v", err)
+	}
+	if resp.GetHasOverride() {
+		t.Fatal("expected has_override=false with no AgentRegistry configured")
+	}
+}
+
+func TestCheckInRejectsEmptyHost(t *testing.T) {
+	s := newTestServer(&fakeProducer{})
+
+	_, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{CurrentConfig: &agentv1.ReportedConfig{}})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("CheckIn() error = %v, want InvalidArgument", err)
+	}
+}
+
+func TestCheckInRecordsReportedConfig(t *testing.T) {
+	reg := &fakeAgentRegistry{}
+	s := newTestServerWithAgents(reg)
+
+	_, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{
+		Host:    "web-01",
+		Service: "web",
+		CurrentConfig: &agentv1.ReportedConfig{
+			AgentVersion:         "0.1.0",
+			SourceKind:           "journald",
+			BatchMaxSize:         500,
+			BatchFlushIntervalMs: 2000,
+			HeartbeatEnabled:     true,
+			HeartbeatIntervalMs:  60000,
+		},
+		AppliedOverrideVersion: "v3",
+	})
+	if err != nil {
+		t.Fatalf("CheckIn() error = %v", err)
+	}
+
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	if len(reg.checkIns) != 1 {
+		t.Fatalf("expected 1 recorded check-in, got %d", len(reg.checkIns))
+	}
+	got := reg.checkIns[0]
+	if got.Host != "web-01" || got.AgentVersion != "0.1.0" || got.BatchMaxSize != 500 || got.AppliedOverrideVersion != "v3" {
+		t.Fatalf("unexpected recorded check-in: %+v", got)
+	}
+}
+
+// TestCheckInReturnsOverrideWhenSet is the regression test for the
+// actual point of this RPC: an operator-set override for this specific
+// host comes back in the response, correctly shaped.
+func TestCheckInReturnsOverrideWhenSet(t *testing.T) {
+	// Keyed by "" (empty tenantID) rather than "default" -- the
+	// empty-to-"default" substitution is agentregistry.Registry's own
+	// Postgres-specific behavior (matching the seeded default tenant
+	// row), not something grpcserver itself does; this fake exercises
+	// grpcserver.CheckIn in isolation, so it sees the tenantID exactly
+	// as resolveTenant produced it (empty, since no resolver is
+	// configured for this test).
+	interval := uint64(30000)
+	reg := &fakeAgentRegistry{overrides: map[string]AgentOverride{
+		"/web-01": {HasOverride: true, HeartbeatIntervalMS: &interval, Version: "v2"},
+	}}
+	s := newTestServerWithAgents(reg)
+
+	resp, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{Host: "web-01", CurrentConfig: &agentv1.ReportedConfig{}})
+	if err != nil {
+		t.Fatalf("CheckIn() error = %v", err)
+	}
+	if !resp.GetHasOverride() {
+		t.Fatal("expected has_override=true")
+	}
+	if resp.GetOverride().GetHeartbeatIntervalMs() != 30000 || resp.GetOverride().GetVersion() != "v2" {
+		t.Fatalf("unexpected override: %+v", resp.GetOverride())
+	}
+}
+
+func TestCheckInWithResolverRejectsMissingToken(t *testing.T) {
+	resolver := &fakeResolver{tenantByToken: map[string]string{"real-token": "acme"}}
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), config.GRPCConfig{}, config.TLSConfig{}, &fakeProducer{}, resolver, &fakeAgentRegistry{})
+
+	_, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{Host: "web-01", CurrentConfig: &agentv1.ReportedConfig{}})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("CheckIn() error = %v, want Unauthenticated", err)
 	}
 }

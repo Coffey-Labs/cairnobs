@@ -45,6 +45,20 @@ impl Batcher {
         }
     }
 
+    /// Unconditionally drains whatever is buffered, ignoring both
+    /// `max_size` and `flush_interval` -- for shutdown and for a
+    /// config hot-reload replacing this `Batcher` outright (Phase:
+    /// agent management's remote config editing), neither of which
+    /// should silently drop records just because the timeout hadn't
+    /// elapsed yet.
+    pub fn flush_all(&mut self) -> Option<Vec<LogRecord>> {
+        if self.buf.is_empty() {
+            None
+        } else {
+            Some(self.drain())
+        }
+    }
+
     fn drain(&mut self) -> Vec<LogRecord> {
         self.last_flush = Instant::now();
         std::mem::replace(&mut self.buf, Vec::with_capacity(self.max_size))
@@ -105,5 +119,20 @@ mod tests {
         let mut b = Batcher::new(10, Duration::from_secs(999));
         b.push(rec("a"));
         assert!(b.poll_timeout().is_none());
+    }
+
+    // Regression test: shutdown used to call poll_timeout(), which
+    // silently drops anything buffered before flush_interval elapses --
+    // real data loss on a graceful shutdown that happened to land
+    // between flushes. flush_all() is what shutdown (and hot-reload)
+    // must use instead.
+    #[test]
+    fn flush_all_drains_regardless_of_timeout() {
+        let mut b = Batcher::new(10, Duration::from_secs(999));
+        b.push(rec("a"));
+        assert!(b.poll_timeout().is_none(), "sanity: timeout hasn't elapsed");
+        let batch = b.flush_all().expect("flush_all should drain unconditionally");
+        assert_eq!(batch.len(), 1);
+        assert!(b.flush_all().is_none(), "buffer should be empty after draining");
     }
 }

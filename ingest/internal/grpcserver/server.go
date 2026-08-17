@@ -39,6 +39,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/sentry/sentry/ingest/internal/config"
+	agentv1 "github.com/sentry/sentry/proto/sentry/agent/v1"
 	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
 )
 
@@ -52,12 +53,14 @@ const TenantIDHeaderKey = "tenant_id"
 
 type Server struct {
 	logsv1.UnimplementedLogIngestServer
+	agentv1.UnimplementedAgentControlServer
 
 	logger   *slog.Logger
 	grpcCfg  config.GRPCConfig
 	tlsCfg   config.TLSConfig
 	producer batchProducer
 	resolver TenantResolver
+	agents   AgentRegistry
 }
 
 // batchProducer is the subset of *producer.Producer this package depends
@@ -80,8 +83,52 @@ type TenantResolver interface {
 	ResolveTenant(ctx context.Context, token string) (tenantID string, err error)
 }
 
-func New(logger *slog.Logger, grpcCfg config.GRPCConfig, tlsCfg config.TLSConfig, p batchProducer, resolver TenantResolver) *Server {
-	return &Server{logger: logger, grpcCfg: grpcCfg, tlsCfg: tlsCfg, producer: p, resolver: resolver}
+// AgentRegistry records an agent's CheckIn (for the web UI's inventory
+// view) and returns any remote config override an operator has set for
+// it. nil is a deliberate no-op, same "off unless configured" shape as
+// TenantResolver: CheckIn always succeeds and reports "no override" --
+// a deployment that hasn't configured AGENT_REGISTRY_POSTGRES_ADDR
+// simply doesn't get agent inventory/management, exactly like one
+// without ENTERPRISE_AUTH_URL doesn't get tenant-tagged records.
+type AgentRegistry interface {
+	CheckIn(ctx context.Context, tenantID string, info AgentCheckIn) (AgentOverride, error)
+}
+
+// AgentCheckIn is what an agent reports about itself on each CheckIn --
+// a plain-Go mirror of agentv1.ReportedConfig plus the identity/
+// tenant fields, kept separate from the proto type so AgentRegistry
+// implementations (ingest/internal/agentregistry) don't need to import
+// this package's gRPC-facing types just to satisfy the interface.
+type AgentCheckIn struct {
+	Host                   string
+	Service                string
+	AgentVersion           string
+	SourceKind             string
+	SourceDetail           string
+	BatchMaxSize           uint64
+	BatchFlushIntervalMS   uint64
+	HeartbeatEnabled       bool
+	HeartbeatIntervalMS    uint64
+	AppliedOverrideVersion string
+}
+
+// AgentOverride is the remotely-editable subset of an agent's config, as
+// currently stored for it -- a plain-Go mirror of agentv1.DesiredOverride.
+// Every pointer field is nil when that field has no override set.
+// HasOverride false means no override has ever been set at all (Version
+// is meaningless in that case).
+type AgentOverride struct {
+	HasOverride          bool
+	BatchMaxSize         *uint64
+	BatchFlushIntervalMS *uint64
+	HeartbeatEnabled     *bool
+	HeartbeatIntervalMS  *uint64
+	JournaldUnit         *string
+	Version              string
+}
+
+func New(logger *slog.Logger, grpcCfg config.GRPCConfig, tlsCfg config.TLSConfig, p batchProducer, resolver TenantResolver, agents AgentRegistry) *Server {
+	return &Server{logger: logger, grpcCfg: grpcCfg, tlsCfg: tlsCfg, producer: p, resolver: resolver, agents: agents}
 }
 
 // Run blocks serving gRPC until ctx is canceled, then gracefully stops.
@@ -98,6 +145,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	grpcSrv := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConf)))
 	logsv1.RegisterLogIngestServer(grpcSrv, s)
+	agentv1.RegisterAgentControlServer(grpcSrv, s)
 
 	s.logger.Info("gRPC server listening", "addr", s.grpcCfg.ListenAddr)
 
@@ -118,26 +166,10 @@ func (s *Server) PushBatch(ctx context.Context, req *logsv1.PushBatchRequest) (*
 		return &logsv1.PushBatchResponse{Accepted: 0}, nil
 	}
 
-	// tenantID stays empty (no header attached below) unless a resolver
-	// is actually configured -- single-tenant deployments never present
-	// a bearer credential and never need to. Once a resolver IS
-	// configured, a missing/invalid credential fails the whole batch
-	// closed rather than falling back to "no tenant" -- exactly the
-	// same fail-closed shape enterprise/internal/chrunner.Registry.RunSQL
-	// uses on the read side, applied here at the point data enters the
-	// system.
-	var tenantID string
-	if s.resolver != nil {
-		token, ok := bearerTokenFromContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "missing bearer credential")
-		}
-		resolved, err := s.resolver.ResolveTenant(ctx, token)
-		if err != nil {
-			s.logger.Error("resolving ingest tenant", "batch_id", req.GetBatchId(), "error", err)
-			return nil, status.Error(codes.Unauthenticated, "invalid ingest credential")
-		}
-		tenantID = resolved
+	tenantID, err := s.resolveTenant(ctx)
+	if err != nil {
+		s.logger.Error("resolving ingest tenant", "batch_id", req.GetBatchId(), "error", err)
+		return nil, err
 	}
 
 	msgs := make([]kafka.Message, 0, len(req.GetRecords()))
@@ -172,6 +204,83 @@ func (s *Server) PushBatch(ctx context.Context, req *logsv1.PushBatchRequest) (*
 
 	s.logger.Debug("batch produced to redpanda", "batch_id", req.GetBatchId(), "records", len(req.GetRecords()), "tenant_id", tenantID)
 	return &logsv1.PushBatchResponse{Accepted: uint32(len(req.GetRecords()))}, nil
+}
+
+// resolveTenant is PushBatch's and CheckIn's shared tenant-resolution
+// step, extracted so CheckIn gets the identical fail-closed behavior
+// without duplicating it: empty tenantID (no resolver configured, the
+// single-tenant default) is not an error, but a configured resolver
+// that gets no/an invalid credential is -- exactly the same posture
+// enterprise/internal/chrunner.Registry.RunSQL uses on the read side,
+// applied here at the point data (or a check-in) enters the system.
+func (s *Server) resolveTenant(ctx context.Context) (string, error) {
+	if s.resolver == nil {
+		return "", nil
+	}
+	token, ok := bearerTokenFromContext(ctx)
+	if !ok {
+		return "", status.Error(codes.Unauthenticated, "missing bearer credential")
+	}
+	resolved, err := s.resolver.ResolveTenant(ctx, token)
+	if err != nil {
+		return "", status.Error(codes.Unauthenticated, "invalid ingest credential")
+	}
+	return resolved, nil
+}
+
+// CheckIn is AgentControl's one RPC (see agent_control.proto) -- agent-
+// initiated, on its own heartbeat ticker. A nil AgentRegistry (no
+// AGENT_REGISTRY_POSTGRES_ADDR configured) makes this a pure no-op that
+// always reports "no override," so agents calling in against a
+// deployment that hasn't opted into this feature see no behavior
+// change at all.
+func (s *Server) CheckIn(ctx context.Context, req *agentv1.CheckInRequest) (*agentv1.CheckInResponse, error) {
+	if req.GetHost() == "" {
+		return nil, status.Error(codes.InvalidArgument, "host must not be empty")
+	}
+
+	tenantID, err := s.resolveTenant(ctx)
+	if err != nil {
+		s.logger.Error("resolving ingest tenant for check-in", "host", req.GetHost(), "error", err)
+		return nil, err
+	}
+
+	if s.agents == nil {
+		return &agentv1.CheckInResponse{HasOverride: false}, nil
+	}
+
+	cfg := req.GetCurrentConfig()
+	override, err := s.agents.CheckIn(ctx, tenantID, AgentCheckIn{
+		Host:                   req.GetHost(),
+		Service:                req.GetService(),
+		AgentVersion:           cfg.GetAgentVersion(),
+		SourceKind:             cfg.GetSourceKind(),
+		SourceDetail:           cfg.GetSourceDetail(),
+		BatchMaxSize:           cfg.GetBatchMaxSize(),
+		BatchFlushIntervalMS:   cfg.GetBatchFlushIntervalMs(),
+		HeartbeatEnabled:       cfg.GetHeartbeatEnabled(),
+		HeartbeatIntervalMS:    cfg.GetHeartbeatIntervalMs(),
+		AppliedOverrideVersion: req.GetAppliedOverrideVersion(),
+	})
+	if err != nil {
+		s.logger.Error("recording agent check-in", "host", req.GetHost(), "error", err)
+		return nil, status.Errorf(codes.Internal, "recording check-in: %v", err)
+	}
+
+	if !override.HasOverride {
+		return &agentv1.CheckInResponse{HasOverride: false}, nil
+	}
+	return &agentv1.CheckInResponse{
+		HasOverride: true,
+		Override: &agentv1.DesiredOverride{
+			BatchMaxSize:         override.BatchMaxSize,
+			BatchFlushIntervalMs: override.BatchFlushIntervalMS,
+			HeartbeatEnabled:     override.HeartbeatEnabled,
+			HeartbeatIntervalMs:  override.HeartbeatIntervalMS,
+			JournaldUnit:         override.JournaldUnit,
+			Version:              override.Version,
+		},
+	}, nil
 }
 
 // bearerTokenFromContext reads the same "authorization: Bearer <token>"

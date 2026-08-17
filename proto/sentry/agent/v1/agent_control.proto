@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package sentry.agent.v1;
+
+option go_package = "github.com/sentry/sentry/proto/sentry/agent/v1;agentv1";
+
+// AgentControl is the control-plane counterpart to logs.v1.LogIngest's
+// data-plane PushBatch -- the same mTLS channel/connection an agent
+// already has open to ingest, a second gRPC service on the same
+// listener rather than a second protocol or connection the agent would
+// need to maintain (see /docs/agent-management-design.md). CheckIn is
+// agent-initiated, called on the agent's own heartbeat ticker: there is
+// still no path for the platform to reach into an agent uninvited. An
+// agent asks "what should I be running" on its own schedule -- the same
+// push-not-pull posture the heartbeat feature this builds on already
+// established.
+service AgentControl {
+  rpc CheckIn(CheckInRequest) returns (CheckInResponse);
+}
+
+// ReportedConfig is what an agent tells the platform about itself --
+// read-only, for inventory/visibility. Deliberately excludes tls/ingest
+// endpoint fields: those are never reported and never remotely
+// overridable (see DesiredOverride's comment) -- reporting the ingest
+// endpoint back to itself would be redundant (that's exactly the
+// connection this request arrived over), and TLS material has no
+// business leaving the host at all.
+message ReportedConfig {
+  string agent_version = 1;
+  string source_kind = 2;    // "journald", "file", "eventlog", "etw"
+  string source_detail = 3;  // human-readable summary: unit name, file path, or channel list
+  uint64 batch_max_size = 4;
+  uint64 batch_flush_interval_ms = 5;
+  bool heartbeat_enabled = 6;
+  uint64 heartbeat_interval_ms = 7;
+}
+
+message CheckInRequest {
+  string host = 1;
+  string service = 2;
+  ReportedConfig current_config = 3;
+  // The DesiredOverride.version this agent last successfully applied,
+  // empty if it has never applied one. Lets the server distinguish
+  // "pending" (an edit exists the agent hasn't picked up yet) from
+  // "applied" for the web UI, without the agent needing to know
+  // anything about that distinction itself.
+  string applied_override_version = 4;
+}
+
+// DesiredOverride is the remotely-editable subset of an agent's config
+// -- batch/heartbeat tuning, and, for journald sources, the unit
+// filter. Every field is optional: unset means "no override for this
+// field, keep whatever agent.toml says locally" -- a partial edit only
+// touches the fields it sets. Never includes tls/ingest: those stay
+// local-file-only, permanently, a deliberate security boundary (see
+// /docs/agent-management-design.md) so a bad or malicious remote edit
+// can never strand an agent or redirect where its logs go.
+message DesiredOverride {
+  optional uint64 batch_max_size = 1;
+  optional uint64 batch_flush_interval_ms = 2;
+  optional bool heartbeat_enabled = 3;
+  optional uint64 heartbeat_interval_ms = 4;
+  // Only meaningful when the agent's local source is journald; ignored
+  // otherwise. Empty string means "no unit filter" (tail the whole
+  // journal), same semantics as the local config's own unit field.
+  optional string journald_unit = 5;
+  // Opaque version stamp the platform assigns on every edit. The
+  // agent's only obligation is to echo it back as
+  // CheckInRequest.applied_override_version once applied -- it never
+  // interprets the value itself.
+  string version = 6;
+}
+
+message CheckInResponse {
+  // False when no override has ever been set for this agent -- it
+  // should be running whatever agent.toml already has, untouched.
+  bool has_override = 1;
+  DesiredOverride override = 2;
+}

@@ -42,6 +42,7 @@ import (
 	chdriver "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/agents"
 	"github.com/sentry/sentry/api/ai/aiapi"
 	"github.com/sentry/sentry/api/ai/provider/ollama"
 	"github.com/sentry/sentry/api/ai/router"
@@ -164,10 +165,12 @@ func main() {
 
 	queryHandler := queryapi.NewHandler(logger, registry, search, cfg.QueryTimeout, auditLogger, authorizer)
 	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer, rbacstore.NewDashboardPermissions(rbac))
+	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer)
 
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux) // also registers GET /healthz
 	dashboardsHandler.RegisterRoutes(mux)
+	agentsHandler.RegisterRoutes(mux)
 
 	// Same "off unless OLLAMA_BASE_URL is set" gate as api/cmd/api --
 	// see that file's doc comment.

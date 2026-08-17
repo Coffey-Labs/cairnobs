@@ -162,6 +162,8 @@ services:
         condition: service_completed_successfully
       clickhouse-migrate:
         condition: service_completed_successfully
+      metadata-migrate:
+        condition: service_completed_successfully
     ports:
       - "4317:4317" # gRPC, mTLS — this is what the host-run agent connects to
     environment:
@@ -181,6 +183,17 @@ services:
       # via `enterprise-auth -create-ingest-credential-tenant=<id>`) or
       # be refused outright -- not turned on here since nothing in this
       # compose file provisions one.
+      #
+      # AGENT_REGISTRY_POSTGRES_ADDR enables agent inventory/remote
+      # config (see /docs/agent-management-design.md) -- same "sentry"
+      # shared Postgres role api/dashboards already uses (agent
+      # inventory carries no tamper-evidence requirement, unlike
+      # audit_log's dedicated restricted role). Set here (unlike
+      # ENTERPRISE_AUTH_URL above) since this feature has no multi-
+      # tenancy prerequisite -- it works the same in single-tenant core.
+      AGENT_REGISTRY_POSTGRES_ADDR: "metadata-postgres:5432"
+      AGENT_REGISTRY_POSTGRES_USERNAME: "sentry"
+      AGENT_REGISTRY_POSTGRES_PASSWORD: "sentry-dev-only"
     volumes:
       - ./hack/dev-certs/out:/etc/sentry-ingest:ro
 

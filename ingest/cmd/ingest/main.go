@@ -19,10 +19,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/sentry/sentry/ingest/clickhousewriter"
 	"github.com/sentry/sentry/ingest/consumer"
+	"github.com/sentry/sentry/ingest/internal/agentregistry"
 	"github.com/sentry/sentry/ingest/internal/config"
 	"github.com/sentry/sentry/ingest/internal/grpcserver"
 	"github.com/sentry/sentry/ingest/internal/producer"
@@ -87,7 +89,31 @@ func main() {
 		} else {
 			logger.Info("ENTERPRISE_AUTH_URL not set -- ingest records carry no tenant_id, single-tenant behavior")
 		}
-		srv := grpcserver.New(logger, cfg.GRPC, cfg.TLS, p, resolver)
+
+		// agents stays nil (CheckIn always reports "no override," nothing
+		// recorded) unless AGENT_REGISTRY_POSTGRES_ADDR is configured --
+		// same "off unless configured" shape as resolver above. Uses its
+		// own pgxpool rather than sharing one across mode=server/consumer
+		// -- consumer's half of this binary has no Postgres dependency at
+		// all today and shouldn't gain one just because server's did.
+		var agents grpcserver.AgentRegistry
+		if cfg.AgentRegistry.Postgres.Addr != "" {
+			dsn := fmt.Sprintf("postgres://%s:%s@%s/%s",
+				cfg.AgentRegistry.Postgres.Username, cfg.AgentRegistry.Postgres.Password,
+				cfg.AgentRegistry.Postgres.Addr, cfg.AgentRegistry.Postgres.Database)
+			pool, err := pgxpool.New(ctx, dsn)
+			if err != nil {
+				logger.Error("opening agent registry postgres pool", "error", err)
+				os.Exit(1)
+			}
+			defer pool.Close()
+			agents = agentregistry.New(pool)
+			logger.Info("agent registry configured", "postgres_addr", cfg.AgentRegistry.Postgres.Addr)
+		} else {
+			logger.Info("AGENT_REGISTRY_POSTGRES_ADDR not set -- agent check-ins are accepted but not recorded, no remote config")
+		}
+
+		srv := grpcserver.New(logger, cfg.GRPC, cfg.TLS, p, resolver, agents)
 		g.Go(func() error { return srv.Run(ctx) })
 	}
 
