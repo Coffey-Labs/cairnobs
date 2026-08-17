@@ -53,6 +53,14 @@ const (
 	// original input, confidence, and whether the user edited the
 	// suggestion before using it -- see ai_interaction_adapter.go.
 	EventAIInteraction EventType = "ai_interaction"
+	// EventAgentCommand: a lifecycle command (restart) issued to an
+	// agent. Detail carries the target host and the command; Status is
+	// always success here -- this logs that the command was *issued* to
+	// storage, not that the agent confirmed executing it (a restarting
+	// agent's process can't send that confirmation -- see
+	// agent_control.proto's CheckInResponse comment). See
+	// agent_command_adapter.go.
+	EventAgentCommand EventType = "agent_command"
 )
 
 type Status string

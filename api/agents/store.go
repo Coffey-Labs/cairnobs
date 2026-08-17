@@ -17,6 +17,16 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// CommandRestart is the one supported lifecycle command -- see
+// ingest/internal/grpcserver.AgentCommandRestart and
+// agent_control.proto's AgentCommand enum comment for why STOP/
+// UNINSTALL aren't here yet.
+const CommandRestart = "restart"
+
+func validCommand(c string) bool {
+	return c == CommandRestart
+}
+
 // ConfigOverride is the remotely-editable subset of an agent's config --
 // a plain-Go mirror of ingest/internal/agentregistry's overrideFields
 // and agent_control.proto's DesiredOverride. Deliberately duplicated
@@ -57,6 +67,17 @@ type Agent struct {
 	// recomputing the same string comparison itself.
 	Pending   bool   `json:"pending"`
 	UpdatedBy string `json:"updated_by,omitempty"`
+	// PendingCommand is "" when nothing is queued, or CommandRestart
+	// while a restart hasn't yet been delivered to the agent. Unlike
+	// Pending (config), there's no way to observe "delivered" from this
+	// table alone -- ingest clears pending_command the instant it hands
+	// the command out (see ingest/internal/agentregistry.Registry.
+	// CheckIn), so PendingCommand flipping back to "" just as plausibly
+	// means "delivered a moment ago" as "never issued." CommandIssuedAt
+	// is what the web UI shows instead, as a last-issued record.
+	PendingCommand  string     `json:"pending_command,omitempty"`
+	CommandIssuedAt *time.Time `json:"command_issued_at,omitempty"`
+	CommandIssuedBy string     `json:"command_issued_by,omitempty"`
 }
 
 type Store struct {
@@ -73,7 +94,8 @@ const selectColumns = `
 	reported_batch_max_size, reported_batch_flush_ms,
 	reported_heartbeat_on, reported_heartbeat_ms,
 	first_seen_at, last_seen_at,
-	desired_override, desired_override_version, applied_override_version, updated_by`
+	desired_override, desired_override_version, applied_override_version, updated_by,
+	pending_command, command_issued_at, command_issued_by`
 
 func (s *Store) List(ctx context.Context, tenantID string) ([]Agent, error) {
 	rows, err := s.pool.Query(ctx, `
@@ -145,6 +167,27 @@ func (s *Store) SetOverride(ctx context.Context, tenantID, host string, override
 	return s.Get(ctx, tenantID, host)
 }
 
+// IssueCommand queues a one-shot lifecycle command for host, delivered
+// on its next CheckIn and cleared atomically by ingest the instant
+// that happens (see ingest/internal/agentregistry.Registry.CheckIn) --
+// unlike SetOverride, there's no "applied" confirmation to wait for,
+// since a restarting agent's process is gone before it could send one.
+// command_issued_at/by are overwritten on every call, forming a
+// last-issued record even after pending_command itself clears.
+func (s *Store) IssueCommand(ctx context.Context, tenantID, host, command, issuedBy string) (*Agent, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE agents SET pending_command = $1, command_issued_at = now(), command_issued_by = $2
+		WHERE tenant_id = $3 AND host = $4`,
+		command, issuedBy, tenantID, host)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
+	return s.Get(ctx, tenantID, host)
+}
+
 // ClearOverride reverts an agent to running its local agent.toml
 // untouched -- the next CheckIn gets has_override=false.
 func (s *Store) ClearOverride(ctx context.Context, tenantID, host string) error {
@@ -167,7 +210,7 @@ type rowScanner interface {
 func scanAgent(row rowScanner) (Agent, error) {
 	var a Agent
 	var desiredOverride []byte
-	var desiredVersion, updatedBy *string
+	var desiredVersion, updatedBy, pendingCommand, commandIssuedBy *string
 	if err := row.Scan(
 		&a.ID, &a.TenantID, &a.Host, &a.Service,
 		&a.AgentVersion, &a.SourceKind, &a.SourceDetail,
@@ -175,6 +218,7 @@ func scanAgent(row rowScanner) (Agent, error) {
 		&a.HeartbeatEnabled, &a.HeartbeatIntervalMS,
 		&a.FirstSeenAt, &a.LastSeenAt,
 		&desiredOverride, &desiredVersion, &a.AppliedOverrideVersion, &updatedBy,
+		&pendingCommand, &a.CommandIssuedAt, &commandIssuedBy,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Agent{}, ErrNotFound
@@ -183,6 +227,12 @@ func scanAgent(row rowScanner) (Agent, error) {
 	}
 	if updatedBy != nil {
 		a.UpdatedBy = *updatedBy
+	}
+	if pendingCommand != nil {
+		a.PendingCommand = *pendingCommand
+	}
+	if commandIssuedBy != nil {
+		a.CommandIssuedBy = *commandIssuedBy
 	}
 	if desiredVersion != nil {
 		a.DesiredOverrideVersion = *desiredVersion

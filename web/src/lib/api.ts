@@ -505,6 +505,15 @@ export type Agent = {
 	applied_override_version: string;
 	pending: boolean;
 	updated_by?: string;
+	// pending_command/command_issued_at/by (real, restart only for now
+	// -- see /docs/agent-management-design.md's punch list) have no
+	// "delivered" signal to show the way config's `pending` does:
+	// ingest clears pending_command the instant it hands the command to
+	// the agent, not once the agent confirms it ran, so
+	// command_issued_at is shown as a last-issued record instead.
+	pending_command?: string;
+	command_issued_at?: string;
+	command_issued_by?: string;
 };
 
 export function listAgents(): Promise<Agent[]> {
@@ -524,4 +533,15 @@ export function setAgentConfig(host: string, override: ConfigOverride): Promise<
 
 export function clearAgentConfig(host: string): Promise<void> {
 	return request(`/agents/${encodeURIComponent(host)}/config`, { method: 'DELETE' });
+}
+
+// "restart" is the only supported value today -- server-validated
+// (400 on anything else), RoleAdmin-gated (403 for a Viewer/Editor
+// session), and audit-logged. See /docs/agent-management-design.md's
+// punch list for why stop/uninstall aren't here yet.
+export function issueAgentCommand(host: string, command: 'restart'): Promise<Agent> {
+	return request(`/agents/${encodeURIComponent(host)}/command`, {
+		method: 'PUT',
+		body: JSON.stringify({ command })
+	});
 }

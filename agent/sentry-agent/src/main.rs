@@ -20,7 +20,7 @@ use anyhow::{Context, Result};
 use batch::Batcher;
 use clap::Parser;
 use config::Config;
-use pb::agent::v1::{agent_control_client::AgentControlClient, CheckInRequest, DesiredOverride, ReportedConfig};
+use pb::agent::v1::{agent_control_client::AgentControlClient, AgentCommand, CheckInRequest, DesiredOverride, ReportedConfig};
 use pb::{log_ingest_client::LogIngestClient, LogRecord, Severity};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -170,6 +170,26 @@ pub async fn run_agent(config_path: Option<PathBuf>) -> Result<()> {
                                 applied_override_version = ov.version.clone();
                                 tracing::info!(version = %applied_override_version, "applied remote config override");
                             }
+                        }
+                        if AgentCommand::try_from(resp.pending_command) == Ok(AgentCommand::Restart) {
+                            tracing::info!("received remote restart command, shutting down gracefully");
+                            // flush_all(), not poll_timeout(): same reasoning as
+                            // the normal shutdown path below -- whatever's
+                            // buffered must go out regardless of whether
+                            // flush_interval has elapsed yet.
+                            if let Some(batch) = batcher.flush_all() {
+                                flush(&mut client, batch).await;
+                            }
+                            source_handle.abort();
+                            // A hard process exit, not a `break` out of this
+                            // loop: this agent's own restart policy is
+                            // entirely the host's service manager's
+                            // responsibility (systemd/Windows SCM), the same
+                            // contract any well-behaved service relies on --
+                            // see AgentCommand's doc comment for why STOP/
+                            // UNINSTALL need real per-platform work this
+                            // doesn't.
+                            std::process::exit(0);
                         }
                     }
                     // A failed check-in is not fatal -- same graceful-

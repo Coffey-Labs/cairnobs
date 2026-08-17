@@ -126,7 +126,10 @@ func main() {
 	// AGENT_REGISTRY_POSTGRES_ADDR to be set on ingest; these routes work
 	// unconditionally, they'll just show an empty inventory if ingest
 	// hasn't been configured to record check-ins.
-	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer)
+	// nil command logger: core has no enterprise/internal/audit
+	// implementation to log lifecycle commands against, same posture as
+	// queryHandler's/aiHandler's nil audit loggers above.
+	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer, nil)
 
 	// One shared mux, CORS applied once around the whole thing -- see
 	// httpserver's doc comment for why this changed from each
