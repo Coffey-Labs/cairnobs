@@ -76,6 +76,34 @@ func TestLexFieldWithDots(t *testing.T) {
 	}
 }
 
+// TestLexIdentWithInternalHyphens is a regression test for a real bug:
+// isIdentPart didn't include '-', so a bare (unquoted) hyphenated value
+// like host-03 -- the exact example /docs/query-language-reference.md
+// itself uses (`host!=host-03`) -- lexed as IDENT("host") MINUS
+// IDENT("03") and failed to parse at all. A leading hyphen must still
+// lex as its own MINUS token (earliest=-1h, sort -count depend on it) --
+// only an internal hyphen, once a real identifier character has already
+// started the token, should be absorbed.
+func TestLexIdentWithInternalHyphens(t *testing.T) {
+	cases := []string{"host-03", "api-service", "heartbeat-test-host", "multi-hyphen-value"}
+	for _, c := range cases {
+		l := New(c)
+		tok := l.Next()
+		if tok.Kind != Ident || tok.Value != c {
+			t.Errorf("lexing %q: got %v, want Ident(%s)", c, tok, c)
+		}
+		if end := l.Next(); end.Kind != EOF {
+			t.Errorf("lexing %q: expected EOF after the identifier, got %v", c, end)
+		}
+	}
+}
+
+func TestLexFilterWithHyphenatedValue(t *testing.T) {
+	got := collectKinds(`host!=host-03`)
+	want := []Kind{Ident, Neq, Ident, EOF}
+	assertKinds(t, got, want)
+}
+
 func TestLexNumber(t *testing.T) {
 	cases := []string{"123", "1.5", "0"}
 	for _, c := range cases {
