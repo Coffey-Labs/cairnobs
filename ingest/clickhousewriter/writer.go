@@ -5,8 +5,9 @@
 // tenant -- same reasoning api/internal/dashboards and friends moved out
 // of internal/ earlier in Phase 4: Go's compiler-enforced internal/
 // visibility blocks a separate module (enterprise/) from importing
-// anything under ingest/internal/..., regardless of what the AGPL/
-// commercial licensing boundary itself would otherwise allow.
+// anything under ingest/internal/..., independent of licensing --
+// both modules are AGPLv3 as of Phase 6, and this was always an
+// import-graph constraint, not a license one.
 package clickhousewriter
 
 import (

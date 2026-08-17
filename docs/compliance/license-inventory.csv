@@ -1,0 +1,777 @@
+component,dependency,version,license,direct_or_transitive,ecosystem,flagged,flag_reason,classification
+api,github.com/ClickHouse/ch-go,(see go.sum),Apache-2.0,transitive,go,False,,a
+api,github.com/ClickHouse/clickhouse-go/v2,(see go.sum),Apache-2.0,direct,go,False,,a
+api,github.com/andybalholm/brotli,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/andybalholm/brotli/flate,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,github.com/cespare/xxhash/v2,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/go-faster/city,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/go-faster/errors,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,github.com/google/uuid,(see go.sum),BSD-3-Clause,direct,go,False,,a
+api,github.com/jackc/pgpassfile,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/jackc/pgservicefile,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/jackc/pgx/v5,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/jackc/puddle/v2,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/klauspost/compress,(see go.sum),Apache-2.0,transitive,go,False,,a
+api,github.com/klauspost/compress/internal/snapref,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,github.com/klauspost/compress/zstd/internal/xxhash,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/paulmach/orb,(see go.sum),MIT,transitive,go,False,,a
+api,github.com/pierrec/lz4/v4,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,github.com/segmentio/asm/bswap,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+api,github.com/segmentio/asm/cpu,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+api,github.com/segmentio/asm/cpu/arm,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+api,github.com/segmentio/asm/cpu/arm64,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+api,github.com/segmentio/asm/cpu/cpuid,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+api,github.com/segmentio/asm/cpu/x86,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+api,github.com/shopspring/decimal,(see go.sum),MIT,transitive,go,False,,a
+api,go.opentelemetry.io/otel,(see go.sum),Apache-2.0,transitive,go,False,,a
+api,go.opentelemetry.io/otel/trace,(see go.sum),Apache-2.0,transitive,go,False,,a
+api,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,golang.org/x/sync/semaphore,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,golang.org/x/sys,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+api,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+api,google.golang.org/grpc,(see go.sum),Apache-2.0,direct,go,False,,a
+api,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/ClickHouse/ch-go,(see go.sum),Apache-2.0,transitive,go,False,,a
+ingest,github.com/ClickHouse/clickhouse-go/v2,(see go.sum),Apache-2.0,direct,go,False,,a
+ingest,github.com/andybalholm/brotli,(see go.sum),MIT,transitive,go,False,,a
+ingest,github.com/andybalholm/brotli/flate,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/cespare/xxhash/v2,(see go.sum),MIT,transitive,go,False,,a
+ingest,github.com/go-faster/city,(see go.sum),MIT,transitive,go,False,,a
+ingest,github.com/go-faster/errors,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/google/uuid,(see go.sum),BSD-3-Clause,direct,go,False,,a
+ingest,github.com/klauspost/compress,(see go.sum),Apache-2.0,transitive,go,False,,a
+ingest,github.com/klauspost/compress/internal/snapref,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/klauspost/compress/s2,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/klauspost/compress/snappy,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/klauspost/compress/zstd/internal/xxhash,(see go.sum),MIT,transitive,go,False,,a
+ingest,github.com/paulmach/orb,(see go.sum),MIT,transitive,go,False,,a
+ingest,github.com/pierrec/lz4/v4,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,github.com/segmentio/asm/bswap,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+ingest,github.com/segmentio/asm/cpu,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+ingest,github.com/segmentio/asm/cpu/arm,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+ingest,github.com/segmentio/asm/cpu/arm64,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+ingest,github.com/segmentio/asm/cpu/cpuid,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+ingest,github.com/segmentio/asm/cpu/x86,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+ingest,github.com/segmentio/kafka-go,(see go.sum),MIT,direct,go,False,,a
+ingest,github.com/shopspring/decimal,(see go.sum),MIT,transitive,go,False,,a
+ingest,go.opentelemetry.io/otel,(see go.sum),Apache-2.0,transitive,go,False,,a
+ingest,go.opentelemetry.io/otel/trace,(see go.sum),Apache-2.0,transitive,go,False,,a
+ingest,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,golang.org/x/sync/errgroup,(see go.sum),BSD-3-Clause,direct,go,False,,a
+ingest,golang.org/x/sys,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+ingest,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+ingest,google.golang.org/grpc,(see go.sum),Apache-2.0,direct,go,False,,a
+ingest,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,direct,go,False,,a
+enterprise,github.com/ClickHouse/ch-go,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/ClickHouse/clickhouse-go/v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/andybalholm/brotli,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/andybalholm/brotli/flate,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/beevik/etree,(see go.sum),BSD-2-Clause,transitive,go,False,,a
+enterprise,github.com/cespare/xxhash/v2,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/coreos/go-oidc/v3/oidc,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/crewjam/saml,(see go.sum),BSD-2-Clause,transitive,go,False,,a
+enterprise,github.com/davecgh/go-spew/spew,(see go.sum),ISC,transitive,go,False,,a
+enterprise,github.com/emicklei/go-restful/v3,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/fxamacker/cbor/v2,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/go-faster/city,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/go-faster/errors,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/go-jose/go-jose/v4,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/go-jose/go-jose/v4/json,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/go-logr/logr,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/go-openapi/jsonpointer,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/go-openapi/jsonreference,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/go-openapi/swag,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/gogo/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/golang-jwt/jwt/v4,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/golang/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/google/gnostic-models,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/google/go-cmp/cmp,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/google/gofuzz,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/google/uuid,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/imdario/mergo,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/jackc/pgpassfile,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/jackc/pgservicefile,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/jackc/pgx/v5,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/jackc/puddle/v2,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/jonboulle/clockwork,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/josharian/intern,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/json-iterator/go,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/klauspost/compress,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/klauspost/compress/internal/snapref,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/klauspost/compress/s2,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/klauspost/compress/snappy,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/klauspost/compress/zstd/internal/xxhash,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/mailru/easyjson,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/mattermost/xml-roundtrip-validator,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/modern-go/concurrent,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/modern-go/reflect2,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/munnerz/goautoneg,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/paulmach/orb,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/pierrec/lz4/v4,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/russellhaering/goxmldsig,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,github.com/segmentio/asm/bswap,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+enterprise,github.com/segmentio/asm/cpu,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+enterprise,github.com/segmentio/asm/cpu/arm,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+enterprise,github.com/segmentio/asm/cpu/arm64,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+enterprise,github.com/segmentio/asm/cpu/cpuid,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+enterprise,github.com/segmentio/asm/cpu/x86,(see go.sum),"MIT-0 (declared as ""MIT No Attribution"" in LICENSE; SPDX MIT-0, permissive)",transitive,go,True,go-licenses reported Unknown; manually confirmed from module's LICENSE file,a
+enterprise,github.com/segmentio/kafka-go,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/shopspring/decimal,(see go.sum),MIT,transitive,go,False,,a
+enterprise,github.com/spf13/pflag,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,github.com/x448/float16,(see go.sum),MIT,transitive,go,False,,a
+enterprise,go.opentelemetry.io/otel,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,go.opentelemetry.io/otel/trace,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,golang.org/x/crypto/ripemd160,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/oauth2,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/sync,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/sys,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/term,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,golang.org/x/time/rate,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,google.golang.org/grpc,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,gopkg.in/inf.v0,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,gopkg.in/yaml.v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,gopkg.in/yaml.v3,(see go.sum),MIT,transitive,go,False,,a
+enterprise,k8s.io/api,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/apimachinery/pkg,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/apimachinery/third_party/forked/golang/reflect,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,k8s.io/client-go,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/klog/v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/kube-openapi/pkg,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,k8s.io/kube-openapi/pkg/validation/spec,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/utils,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,k8s.io/utils/internal/third_party/forked/golang/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+enterprise,sigs.k8s.io/json,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,sigs.k8s.io/structured-merge-diff/v4,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,sigs.k8s.io/yaml,(see go.sum),Apache-2.0,transitive,go,False,,a
+enterprise,sigs.k8s.io/yaml/goyaml.v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/beorn7/perks/quantile,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/cespare/xxhash/v2,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/davecgh/go-spew/spew,(see go.sum),ISC,transitive,go,False,,a
+deploy/operator,github.com/emicklei/go-restful/v3,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/evanphx/json-patch/v5,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/fxamacker/cbor/v2,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/go-logr/logr,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/go-logr/zapr,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/go-openapi/jsonpointer,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/go-openapi/jsonreference,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/go-openapi/swag,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/gogo/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/golang/groupcache/lru,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/golang/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/google/gnostic-models,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/google/go-cmp/cmp,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/google/gofuzz,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/google/uuid,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/imdario/mergo,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/josharian/intern,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/json-iterator/go,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/mailru/easyjson,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,github.com/modern-go/concurrent,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/modern-go/reflect2,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/munnerz/goautoneg,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/pkg/errors,(see go.sum),BSD-2-Clause,transitive,go,False,,a
+deploy/operator,github.com/prometheus/client_golang/prometheus,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/prometheus/client_model/go,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/prometheus/common,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/prometheus/procfs,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,github.com/spf13/pflag,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,github.com/x448/float16,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,go.uber.org/multierr,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,go.uber.org/zap,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,golang.org/x/exp/maps,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,golang.org/x/oauth2,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,golang.org/x/sys/unix,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,golang.org/x/term,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,golang.org/x/time/rate,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,gomodules.xyz/jsonpatch/v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,gopkg.in/inf.v0,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,gopkg.in/yaml.v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,gopkg.in/yaml.v3,(see go.sum),MIT,transitive,go,False,,a
+deploy/operator,k8s.io/api,(see go.sum),Apache-2.0,direct,go,False,,a
+deploy/operator,k8s.io/apiextensions-apiserver/pkg/apis/apiextensions,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,k8s.io/apimachinery/pkg,(see go.sum),Apache-2.0,direct,go,False,,a
+deploy/operator,k8s.io/apimachinery/third_party/forked/golang,(see go.sum),BSD-3-Clause,direct,go,False,,a
+deploy/operator,k8s.io/client-go,(see go.sum),Apache-2.0,direct,go,False,,a
+deploy/operator,k8s.io/klog/v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,k8s.io/kube-openapi/pkg,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,k8s.io/kube-openapi/pkg/validation/spec,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,k8s.io/utils,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,k8s.io/utils/internal/third_party/forked/golang/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+deploy/operator,sigs.k8s.io/controller-runtime,(see go.sum),Apache-2.0,direct,go,False,,a
+deploy/operator,sigs.k8s.io/json,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,sigs.k8s.io/structured-merge-diff/v4,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,sigs.k8s.io/yaml,(see go.sum),Apache-2.0,transitive,go,False,,a
+deploy/operator,sigs.k8s.io/yaml/goyaml.v2,(see go.sum),Apache-2.0,transitive,go,False,,a
+terraform,github.com/fatih/color,(see go.sum),MIT,transitive,go,False,,a
+terraform,github.com/golang/protobuf/ptypes/empty,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+terraform,github.com/hashicorp/go-hclog,(see go.sum),MIT,transitive,go,False,,a
+terraform,github.com/hashicorp/go-plugin,(see go.sum),MPL-2.0,transitive,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/go-uuid,(see go.sum),MPL-2.0,transitive,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/terraform-plugin-framework,(see go.sum),MPL-2.0,direct,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/terraform-plugin-go,(see go.sum),MPL-2.0,direct,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/terraform-plugin-log,(see go.sum),MPL-2.0,transitive,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/terraform-registry-address,(see go.sum),MPL-2.0,transitive,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/terraform-svchost,(see go.sum),MPL-2.0,transitive,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/hashicorp/yamux,(see go.sum),MPL-2.0,transitive,go,True,"MPL-2.0: flagged for explicit per-item citation per policy, not because it's expected to block",a
+terraform,github.com/mattn/go-colorable,(see go.sum),MIT,transitive,go,False,,a
+terraform,github.com/mattn/go-isatty,(see go.sum),MIT,transitive,go,False,,a
+terraform,github.com/mitchellh/go-testing-interface,(see go.sum),MIT,transitive,go,False,,a
+terraform,github.com/oklog/run,(see go.sum),Apache-2.0,transitive,go,False,,a
+terraform,github.com/vmihailenco/msgpack/v5,(see go.sum),BSD-2-Clause,transitive,go,False,,a
+terraform,github.com/vmihailenco/tagparser/v2,(see go.sum),BSD-2-Clause,transitive,go,False,,a
+terraform,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+terraform,golang.org/x/sys/unix,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+terraform,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+terraform,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+terraform,google.golang.org/grpc,(see go.sum),Apache-2.0,transitive,go,False,,a
+terraform,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+proto,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+proto,golang.org/x/sys/unix,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+proto,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+proto,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+proto,google.golang.org/grpc,(see go.sum),Apache-2.0,direct,go,False,,a
+proto,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,direct,go,False,,a
+hack/benchmark-fixture,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/benchmark-fixture,golang.org/x/sys/unix,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/benchmark-fixture,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/benchmark-fixture,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+hack/benchmark-fixture,google.golang.org/grpc,(see go.sum),Apache-2.0,direct,go,False,,a
+hack/benchmark-fixture,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/windows-fixture,golang.org/x/net,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/windows-fixture,golang.org/x/sys/unix,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/windows-fixture,golang.org/x/text,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+hack/windows-fixture,google.golang.org/genproto/googleapis/rpc/status,(see go.sum),Apache-2.0,transitive,go,False,,a
+hack/windows-fixture,google.golang.org/grpc,(see go.sum),Apache-2.0,direct,go,False,,a
+hack/windows-fixture,google.golang.org/protobuf,(see go.sum),BSD-3-Clause,transitive,go,False,,a
+web,@codemirror/autocomplete,6.20.3,MIT,direct,npm,False,,a
+web,@codemirror/commands,6.10.4,MIT,direct,npm,False,,a
+web,@codemirror/language,6.12.4,MIT,direct,npm,False,,a
+web,@codemirror/state,6.7.1,MIT,direct,npm,False,,a
+web,@codemirror/view,6.43.8,MIT,direct,npm,False,,a
+web,@jridgewell/gen-mapping,0.3.13,MIT,transitive,npm,False,,a
+web,@jridgewell/remapping,2.3.5,MIT,transitive,npm,False,,a
+web,@jridgewell/resolve-uri,3.1.2,MIT,transitive,npm,False,,a
+web,@jridgewell/sourcemap-codec,1.5.5,MIT,transitive,npm,False,,a
+web,@jridgewell/trace-mapping,0.3.31,MIT,transitive,npm,False,,a
+web,@lezer/common,1.5.2,MIT,transitive,npm,False,,a
+web,@lezer/highlight,1.2.3,MIT,transitive,npm,False,,a
+web,@lezer/lr,1.4.10,MIT,transitive,npm,False,,a
+web,@marijn/find-cluster-break,1.0.3,MIT,transitive,npm,False,,a
+web,@oxc-project/types,0.144.0,MIT,transitive,npm,False,,a
+web,@polka/url,1.0.0-next.29,MIT,transitive,npm,False,,a
+web,@rolldown/binding-linux-x64-gnu,1.2.4,MIT,transitive,npm,False,,a
+web,@rolldown/pluginutils,1.0.1,MIT,transitive,npm,False,,a
+web,@standard-schema/spec,1.1.0,MIT,transitive,npm,False,,a
+web,@sveltejs/acorn-typescript,1.0.13,MIT,transitive,npm,False,,a
+web,@sveltejs/adapter-static,3.0.10,MIT,direct,npm,False,,a
+web,@sveltejs/kit,2.70.2,MIT,direct,npm,False,,a
+web,@sveltejs/load-config,0.2.3,MIT,transitive,npm,False,,a
+web,@sveltejs/vite-plugin-svelte,7.3.0,MIT,direct,npm,False,,a
+web,@types/cookie,0.6.0,MIT,transitive,npm,False,,a
+web,@types/estree,1.0.9,MIT,transitive,npm,False,,a
+web,@types/trusted-types,2.0.7,MIT,transitive,npm,False,,a
+web,acorn,8.18.0,MIT,transitive,npm,False,,a
+web,aria-query,5.3.1,Apache-2.0,transitive,npm,False,,a
+web,axe-core,4.13.0,MPL-2.0,direct,npm,True,"MPL-2.0: file-level copyleft, generally fine as a dependency per policy -- flagged for explicit citation, not because it's expected to block",a
+web,axobject-query,4.1.0,Apache-2.0,transitive,npm,False,,a
+web,chokidar,4.0.3,MIT,transitive,npm,False,,a
+web,clsx,2.1.1,MIT,transitive,npm,False,,a
+web,cookie,0.6.0,MIT,transitive,npm,False,,a
+web,crelt,1.0.7,MIT,transitive,npm,False,,a
+web,deepmerge,4.3.1,MIT,transitive,npm,False,,a
+web,detect-libc,2.1.2,Apache-2.0,transitive,npm,False,,a
+web,devalue,5.9.0,MIT,transitive,npm,False,,a
+web,echarts,6.1.0,Apache-2.0,direct,npm,False,,a
+web,esm-env,1.2.2,MIT,transitive,npm,False,,a
+web,esrap,2.3.2,MIT,transitive,npm,False,,a
+web,fdir,6.5.0,MIT,transitive,npm,False,,a
+web,gridstack,11.5.1,MIT,direct,npm,False,,a
+web,is-reference,3.0.3,MIT,transitive,npm,False,,a
+web,kleur,4.1.5,MIT,transitive,npm,False,,a
+web,lightningcss-linux-x64-gnu,1.33.0,MPL-2.0,transitive,npm,True,"MPL-2.0: file-level copyleft, generally fine as a dependency per policy -- flagged for explicit citation, not because it's expected to block",a
+web,lightningcss,1.33.0,MPL-2.0,transitive,npm,True,"MPL-2.0: file-level copyleft, generally fine as a dependency per policy -- flagged for explicit citation, not because it's expected to block",a
+web,locate-character,3.0.0,MIT,transitive,npm,False,,a
+web,magic-string,0.30.21,MIT,transitive,npm,False,,a
+web,magic-string,1.2.0,MIT,transitive,npm,False,,a
+web,mri,1.2.0,MIT,transitive,npm,False,,a
+web,mrmime,2.0.1,MIT,transitive,npm,False,,a
+web,nanoid,3.3.18,MIT,transitive,npm,False,,a
+web,obug,2.1.4,MIT,transitive,npm,False,,a
+web,picocolors,1.1.1,ISC,transitive,npm,False,,a
+web,picomatch,4.0.5,MIT,transitive,npm,False,,a
+web,postcss,8.5.26,MIT,transitive,npm,False,,a
+web,readdirp,4.1.2,MIT,transitive,npm,False,,a
+web,rolldown,1.2.4,MIT,transitive,npm,False,,a
+web,sade,1.8.1,MIT,transitive,npm,False,,a
+web,set-cookie-parser,3.1.2,MIT,transitive,npm,False,,a
+web,sirv,3.0.2,MIT,transitive,npm,False,,a
+web,source-map-js,1.2.1,BSD-3-Clause,transitive,npm,False,,a
+web,style-mod,4.1.3,MIT,transitive,npm,False,,a
+web,svelte-check,4.7.6,MIT,direct,npm,False,,a
+web,svelte,5.56.9,MIT,direct,npm,False,,a
+web,tinyglobby,0.2.17,MIT,transitive,npm,False,,a
+web,totalist,3.0.1,MIT,transitive,npm,False,,a
+web,tslib,2.3.0,0BSD,transitive,npm,False,,a
+web,typescript,6.0.3,Apache-2.0,direct,npm,False,,a
+web,vite,8.2.1,MIT,direct,npm,False,,a
+web,vitefu,1.1.3,MIT,transitive,npm,False,,a
+web,w3c-keyname,2.2.8,MIT,transitive,npm,False,,a
+web,zimmerframe,1.1.4,MIT,transitive,npm,False,,a
+web,zrender,6.1.0,BSD-3-Clause,transitive,npm,False,,a
+agent,anstream,1.0.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,anstyle,1.0.14,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,anstyle-parse,1.0.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,anstyle-query,1.1.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,anstyle-wincon,3.0.11,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,anyhow,1.0.104,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,async-stream,0.3.6,MIT,transitive,rust,False,,a
+agent,async-stream-impl,0.3.6,MIT,transitive,rust,False,,a
+agent,async-trait,0.1.92,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,atomic-waker,1.1.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,autocfg,1.5.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,axum,0.7.9,MIT,transitive,rust,False,,a
+agent,axum-core,0.4.5,MIT,transitive,rust,False,,a
+agent,base64,0.22.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,bitflags,2.13.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,bytes,1.12.1,MIT,transitive,rust,False,,a
+agent,cc,1.4.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,cfg-if,1.0.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,clap,4.6.6,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,clap_builder,4.6.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,clap_derive,4.6.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,clap_lex,1.1.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,colorchoice,1.0.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,either,1.17.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,equivalent,1.0.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,errno,0.3.14,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,fastrand,2.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,find-msvc-tools,0.1.10,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,fixedbitset,0.5.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,fnv,1.0.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,futures-channel,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,futures-core,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,futures-sink,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,futures-task,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,futures-util,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,getrandom,0.2.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,getrandom,0.4.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,h2,0.4.15,MIT,transitive,rust,False,,a
+agent,hashbrown,0.12.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,hashbrown,0.17.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,heck,0.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,http,1.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,http-body,1.1.0,MIT,transitive,rust,False,,a
+agent,http-body-util,0.1.5,MIT,transitive,rust,False,,a
+agent,httparse,1.10.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,httpdate,1.0.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,hyper,1.11.0,MIT,transitive,rust,False,,a
+agent,hyper-timeout,0.5.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,hyper-util,0.1.20,MIT,transitive,rust,False,,a
+agent,indexmap,1.9.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,indexmap,2.14.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,is_terminal_polyfill,1.70.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,itertools,0.14.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,itoa,1.0.18,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,lazy_static,1.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,libc,0.2.189,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,linux-raw-sys,0.12.1,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+agent,log,0.4.33,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,matchers,0.2.0,MIT,transitive,rust,False,,a
+agent,matchit,0.7.3,BSD-3-Clause OR MIT,transitive,rust,False,,a
+agent,memchr,2.8.3,MIT OR Unlicense,transitive,rust,False,,a
+agent,mime,0.3.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,mio,1.2.2,MIT,transitive,rust,False,,a
+agent,multimap,0.10.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,nu-ansi-term,0.50.3,MIT,transitive,rust,False,,a
+agent,once_cell,1.21.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,once_cell_polyfill,1.70.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,percent-encoding,2.3.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,petgraph,0.7.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,pin-project,1.1.13,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,pin-project-internal,1.1.13,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,pin-project-lite,0.2.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,ppv-lite86,0.2.21,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,prettyplease,0.2.37,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,proc-macro2,1.0.107,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,prost,0.13.5,Apache-2.0,direct,rust,False,,a
+agent,prost-build,0.13.5,Apache-2.0,transitive,rust,False,,a
+agent,prost-derive,0.13.5,Apache-2.0,transitive,rust,False,,a
+agent,prost-types,0.13.5,Apache-2.0,transitive,rust,False,,a
+agent,quick-xml,0.36.2,MIT,direct,rust,False,,a
+agent,quote,1.0.47,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,r-efi,6.0.0,Apache-2.0 OR LGPL-2.1-or-later OR MIT,transitive,rust,True,carries a copyleft/less-common license alongside permissive alternatives (SPDX OR) -- see classification,a
+agent,rand,0.8.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,rand_chacha,0.3.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,rand_core,0.6.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,regex,1.13.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,regex-automata,0.4.18,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,regex-syntax,0.8.11,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,ring,0.17.14,Apache-2.0 OR ISC,transitive,rust,False,,a
+agent,rustix,1.1.4,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+agent,rustls,0.23.43,Apache-2.0 OR ISC OR MIT,transitive,rust,False,,a
+agent,rustls-pemfile,2.2.0,Apache-2.0 OR ISC OR MIT,transitive,rust,False,,a
+agent,rustls-pki-types,1.15.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,rustls-webpki,0.103.14,ISC,transitive,rust,False,,a
+agent,rustversion,1.0.23,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,serde,1.0.229,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,serde_core,1.0.229,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,serde_derive,1.0.229,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,serde_json,1.0.151,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,serde_spanned,0.6.9,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,sharded-slab,0.1.7,MIT,transitive,rust,False,,a
+agent,shlex,2.0.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,signal-hook-registry,1.4.8,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,slab,0.4.12,MIT,transitive,rust,False,,a
+agent,smallvec,1.15.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,socket2,0.5.10,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,socket2,0.6.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,strsim,0.11.1,MIT,transitive,rust,False,,a
+agent,subtle,2.6.1,BSD-3-Clause,transitive,rust,False,,a
+agent,syn,2.0.119,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,syn,3.0.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,sync_wrapper,1.0.2,Apache-2.0,transitive,rust,False,,a
+agent,tempfile,3.27.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,thread_local,1.1.10,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,tokio,1.53.1,MIT,direct,rust,False,,a
+agent,tokio-macros,2.7.2,MIT,transitive,rust,False,,a
+agent,tokio-rustls,0.26.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,tokio-stream,0.1.19,MIT,transitive,rust,False,,a
+agent,tokio-util,0.7.19,MIT,transitive,rust,False,,a
+agent,toml,0.8.23,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,toml_datetime,0.6.11,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,toml_edit,0.22.27,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,toml_write,0.1.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,tonic,0.12.3,MIT,direct,rust,False,,a
+agent,tonic-build,0.12.3,MIT,direct,rust,False,,a
+agent,tower,0.4.13,MIT,transitive,rust,False,,a
+agent,tower,0.5.3,MIT,transitive,rust,False,,a
+agent,tower-layer,0.3.3,MIT,transitive,rust,False,,a
+agent,tower-service,0.3.3,MIT,transitive,rust,False,,a
+agent,tracing,0.1.44,MIT,direct,rust,False,,a
+agent,tracing-attributes,0.1.31,MIT,transitive,rust,False,,a
+agent,tracing-core,0.1.36,MIT,transitive,rust,False,,a
+agent,tracing-log,0.2.0,MIT,transitive,rust,False,,a
+agent,tracing-subscriber,0.3.23,MIT,direct,rust,False,,a
+agent,try-lock,0.2.5,MIT,transitive,rust,False,,a
+agent,unicode-ident,1.0.24,Apache-2.0 OR MIT OR Unicode-3.0,transitive,rust,False,,a
+agent,untrusted,0.9.0,ISC,transitive,rust,False,,a
+agent,utf8parse,0.2.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,want,0.3.1,MIT,transitive,rust,False,,a
+agent,wasi,0.11.1+wasi-snapshot-preview1,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+agent,widestring,1.2.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows,0.58.0,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,windows-core,0.58.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-implement,0.58.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-interface,0.58.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-link,0.2.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-result,0.2.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-service,0.7.0,Apache-2.0 OR MIT,direct,rust,False,,a
+agent,windows-strings,0.1.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-sys,0.52.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-sys,0.61.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows-targets,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_aarch64_gnullvm,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_aarch64_msvc,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_i686_gnu,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_i686_gnullvm,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_i686_msvc,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_x86_64_gnu,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_x86_64_gnullvm,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,windows_x86_64_msvc,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,winnow,0.7.15,MIT,transitive,rust,False,,a
+agent,zerocopy,0.8.56,Apache-2.0 OR BSD-2-Clause OR MIT,transitive,rust,False,,a
+agent,zeroize,1.9.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+agent,zmij,1.0.23,MIT,transitive,rust,False,,a
+search,adler2,2.0.1,0BSD OR Apache-2.0 OR MIT,transitive,rust,False,,a
+search,aho-corasick,1.1.5,MIT OR Unlicense,transitive,rust,False,,a
+search,allocator-api2,0.2.21,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,anyhow,1.0.104,Apache-2.0 OR MIT,direct,rust,False,,a
+search,arc-swap,1.9.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,async-stream,0.3.6,MIT,transitive,rust,False,,a
+search,async-stream-impl,0.3.6,MIT,transitive,rust,False,,a
+search,async-trait,0.1.92,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,atomic-waker,1.1.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,autocfg,1.5.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,axum,0.7.9,MIT,transitive,rust,False,,a
+search,axum-core,0.4.5,MIT,transitive,rust,False,,a
+search,base64,0.22.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,bitflags,2.13.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,bitpacking,0.9.3,MIT,transitive,rust,False,,a
+search,block-buffer,0.10.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,bumpalo,3.20.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,byteorder,1.5.0,MIT OR Unlicense,transitive,rust,False,,a
+search,bytes,1.12.1,MIT,transitive,rust,False,,a
+search,cc,1.4.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,census,0.4.2,MIT,transitive,rust,False,,a
+search,cfg-if,1.0.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,chrono,0.4.45,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,cpufeatures,0.2.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crc32c,0.6.8,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crc32fast,1.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crossbeam-channel,0.5.16,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crossbeam-deque,0.8.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crossbeam-epoch,0.9.20,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crossbeam-utils,0.8.22,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,crunchy,0.2.4,MIT,transitive,rust,False,,a
+search,crypto-common,0.1.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,deranged,0.5.8,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,digest,0.10.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,displaydoc,0.2.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,downcast-rs,1.2.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,either,1.17.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,equivalent,1.0.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,errno,0.3.14,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,fastdivide,0.4.2,MIT OR zlib-acknowledgement,transitive,rust,True,carries a copyleft/less-common license alongside permissive alternatives (SPDX OR) -- see classification,a
+search,fastrand,2.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,find-msvc-tools,0.1.10,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,fixedbitset,0.5.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,flate2,1.1.9,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,fnv,1.0.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,foldhash,0.1.5,Zlib,transitive,rust,False,,a
+search,form_urlencoded,1.2.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,fs4,0.8.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-channel,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-core,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-executor,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-io,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-macro,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-sink,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-task,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,futures-util,0.3.34,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,generic-array,0.14.7,MIT,transitive,rust,False,,a
+search,getrandom,0.2.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,getrandom,0.4.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,h2,0.4.15,MIT,transitive,rust,False,,a
+search,hashbrown,0.12.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,hashbrown,0.15.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,hashbrown,0.17.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,heck,0.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,hermit-abi,0.5.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,hmac,0.12.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,htmlescape,0.3.1,Apache-2.0 OR MIT OR MPL-2.0,transitive,rust,True,carries a copyleft/less-common license alongside permissive alternatives (SPDX OR) -- see classification,a
+search,http,1.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,http-body,1.1.0,MIT,transitive,rust,False,,a
+search,http-body-util,0.1.5,MIT,transitive,rust,False,,a
+search,httparse,1.10.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,httpdate,1.0.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,hyper,1.11.0,MIT,transitive,rust,False,,a
+search,hyper-timeout,0.5.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,hyper-util,0.1.20,MIT,transitive,rust,False,,a
+search,icu_collections,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,icu_locale_core,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,icu_normalizer,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,icu_normalizer_data,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,icu_properties,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,icu_properties_data,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,icu_provider,2.3.0,Unicode-3.0,transitive,rust,False,,a
+search,idna,1.1.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,idna_adapter,1.2.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,indexmap,1.9.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,indexmap,2.14.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,instant,0.1.13,BSD-3-Clause,transitive,rust,False,,a
+search,integer-encoding,4.1.0,MIT,transitive,rust,False,,a
+search,ipnet,2.12.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,itertools,0.12.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,itertools,0.14.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,itoa,1.0.18,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,jobserver,0.1.35,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,js-sys,0.3.104,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,lazy_static,1.5.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,levenshtein_automata,0.2.1,MIT,transitive,rust,False,,a
+search,libc,0.2.189,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,libm,0.2.16,MIT,transitive,rust,False,,a
+search,linux-raw-sys,0.12.1,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+search,linux-raw-sys,0.4.15,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+search,litemap,0.8.3,Unicode-3.0,transitive,rust,False,,a
+search,lock_api,0.4.14,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,log,0.4.33,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,lru,0.12.5,MIT,transitive,rust,False,,a
+search,lz4,1.28.1,MIT,transitive,rust,False,,a
+search,lz4-sys,1.11.1+lz4-1.10.0,MIT,transitive,rust,False,,a
+search,lz4_flex,0.11.6,MIT,transitive,rust,False,,a
+search,matchers,0.2.0,MIT,transitive,rust,False,,a
+search,matchit,0.7.3,BSD-3-Clause OR MIT,transitive,rust,False,,a
+search,measure_time,0.8.3,MIT,transitive,rust,False,,a
+search,memchr,2.8.3,MIT OR Unlicense,transitive,rust,False,,a
+search,memmap2,0.9.11,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,mime,0.3.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,minimal-lexical,0.2.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,miniz_oxide,0.8.9,Apache-2.0 OR MIT OR Zlib,transitive,rust,False,,a
+search,mio,1.2.2,MIT,transitive,rust,False,,a
+search,multimap,0.10.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,murmurhash32,0.3.1,MIT,transitive,rust,False,,a
+search,nom,7.1.3,MIT,transitive,rust,False,,a
+search,nu-ansi-term,0.50.3,MIT,transitive,rust,False,,a
+search,num-conv,0.2.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,num-traits,0.2.19,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,num_cpus,1.17.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,once_cell,1.21.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,oneshot,0.1.13,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,ownedbytes,0.7.0,MIT,transitive,rust,False,,a
+search,parking_lot,0.12.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,parking_lot_core,0.9.12,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,pbkdf2,0.12.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,percent-encoding,2.3.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,petgraph,0.7.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,pin-project,1.1.13,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,pin-project-internal,1.1.13,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,pin-project-lite,0.2.17,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,pkg-config,0.3.33,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,potential_utf,0.1.6,Unicode-3.0,transitive,rust,False,,a
+search,powerfmt,0.2.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,ppv-lite86,0.2.21,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,prettyplease,0.2.37,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,proc-macro2,1.0.107,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,prost,0.13.5,Apache-2.0,direct,rust,False,,a
+search,prost-build,0.13.5,Apache-2.0,transitive,rust,False,,a
+search,prost-derive,0.13.5,Apache-2.0,transitive,rust,False,,a
+search,prost-types,0.13.5,Apache-2.0,transitive,rust,False,,a
+search,quote,1.0.47,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,r-efi,6.0.0,Apache-2.0 OR LGPL-2.1-or-later OR MIT,transitive,rust,True,carries a copyleft/less-common license alongside permissive alternatives (SPDX OR) -- see classification,a
+search,rand,0.8.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rand_chacha,0.3.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rand_core,0.6.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rand_distr,0.4.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rayon,1.12.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rayon-core,1.13.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,redox_syscall,0.5.18,MIT,transitive,rust,False,,a
+search,regex,1.13.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,regex-automata,0.4.18,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,regex-syntax,0.8.11,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,reqwest,0.12.28,Apache-2.0 OR MIT,direct,rust,False,,a
+search,rsasl,2.3.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rskafka,0.6.0,Apache-2.0 OR MIT,direct,rust,False,,a
+search,rust-stemmers,1.2.0,BSD-3-Clause OR MIT,transitive,rust,False,,a
+search,rustc-hash,1.1.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rustc_version,0.4.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,rustix,0.38.44,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+search,rustix,1.1.4,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+search,rustversion,1.0.23,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,ryu,1.0.23,Apache-2.0 OR BSL-1.0,transitive,rust,True,carries a copyleft/less-common license alongside permissive alternatives (SPDX OR) -- see classification,a
+search,scopeguard,1.2.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,semver,1.0.28,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,serde,1.0.229,Apache-2.0 OR MIT,direct,rust,False,,a
+search,serde_core,1.0.229,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,serde_derive,1.0.229,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,serde_json,1.0.151,Apache-2.0 OR MIT,direct,rust,False,,a
+search,serde_urlencoded,0.7.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,sha2,0.10.9,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,sharded-slab,0.1.7,MIT,transitive,rust,False,,a
+search,shlex,2.0.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,signal-hook-registry,1.4.8,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,simd-adler32,0.3.10,MIT,transitive,rust,False,,a
+search,sketches-ddsketch,0.2.2,Apache-2.0,transitive,rust,False,,a
+search,slab,0.4.12,MIT,transitive,rust,False,,a
+search,smallvec,1.15.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,snap,1.1.2,BSD-3-Clause,transitive,rust,False,,a
+search,socket2,0.5.10,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,socket2,0.6.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,stable_deref_trait,1.2.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,stringprep,0.1.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,subtle,2.6.1,BSD-3-Clause,transitive,rust,False,,a
+search,syn,2.0.119,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,syn,3.0.3,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,sync_wrapper,1.0.2,Apache-2.0,transitive,rust,False,,a
+search,synstructure,0.13.2,MIT,transitive,rust,False,,a
+search,tantivy,0.22.1,MIT,direct,rust,False,,a
+search,tantivy-bitpacker,0.6.0,MIT,transitive,rust,False,,a
+search,tantivy-columnar,0.3.0,MIT,transitive,rust,False,,a
+search,tantivy-common,0.7.0,MIT,transitive,rust,False,,a
+search,tantivy-fst,0.5.0,MIT OR Unlicense,transitive,rust,False,,a
+search,tantivy-query-grammar,0.22.0,MIT,transitive,rust,False,,a
+search,tantivy-sstable,0.3.0,MIT,transitive,rust,False,,a
+search,tantivy-stacker,0.3.0,MIT,transitive,rust,False,,a
+search,tantivy-tokenizer-api,0.3.0,MIT,transitive,rust,False,,a
+search,tempfile,3.27.0,Apache-2.0 OR MIT,direct,rust,False,,a
+search,thiserror,1.0.69,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,thiserror,2.0.20,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,thiserror-impl,1.0.69,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,thiserror-impl,2.0.20,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,thread_local,1.1.10,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,time,0.3.55,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,time-core,0.1.9,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,tinystr,0.8.4,Unicode-3.0,transitive,rust,False,,a
+search,tinyvec,1.12.0,Apache-2.0 OR MIT OR Zlib,transitive,rust,False,,a
+search,tinyvec_macros,0.1.1,Apache-2.0 OR MIT OR Zlib,transitive,rust,False,,a
+search,tokio,1.53.1,MIT,direct,rust,False,,a
+search,tokio-macros,2.7.2,MIT,transitive,rust,False,,a
+search,tokio-stream,0.1.19,MIT,transitive,rust,False,,a
+search,tokio-util,0.7.19,MIT,transitive,rust,False,,a
+search,tonic,0.12.3,MIT,direct,rust,False,,a
+search,tonic-build,0.12.3,MIT,direct,rust,False,,a
+search,tower,0.4.13,MIT,transitive,rust,False,,a
+search,tower,0.5.3,MIT,transitive,rust,False,,a
+search,tower-http,0.6.11,MIT,transitive,rust,False,,a
+search,tower-layer,0.3.3,MIT,transitive,rust,False,,a
+search,tower-service,0.3.3,MIT,transitive,rust,False,,a
+search,tracing,0.1.44,MIT,direct,rust,False,,a
+search,tracing-attributes,0.1.31,MIT,transitive,rust,False,,a
+search,tracing-core,0.1.36,MIT,transitive,rust,False,,a
+search,tracing-log,0.2.0,MIT,transitive,rust,False,,a
+search,tracing-subscriber,0.3.23,MIT,direct,rust,False,,a
+search,try-lock,0.2.5,MIT,transitive,rust,False,,a
+search,typenum,1.20.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,unicode-bidi,0.3.18,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,unicode-ident,1.0.24,Apache-2.0 OR MIT OR Unicode-3.0,transitive,rust,False,,a
+search,unicode-normalization,0.1.25,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,unicode-properties,0.1.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,url,2.5.8,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,utf8-ranges,1.0.5,MIT OR Unlicense,transitive,rust,False,,a
+search,utf8_iter,1.0.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,uuid,1.24.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,version_check,0.9.5,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,want,0.3.1,MIT,transitive,rust,False,,a
+search,wasi,0.11.1+wasi-snapshot-preview1,Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT,transitive,rust,False,,a
+search,wasm-bindgen,0.2.127,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,wasm-bindgen-futures,0.4.77,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,wasm-bindgen-macro,0.2.127,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,wasm-bindgen-macro-support,0.2.127,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,wasm-bindgen-shared,0.2.127,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,web-sys,0.3.104,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,winapi,0.3.9,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,winapi-i686-pc-windows-gnu,0.4.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,winapi-x86_64-pc-windows-gnu,0.4.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows-link,0.2.1,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows-sys,0.52.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows-sys,0.59.0,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows-sys,0.61.2,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows-targets,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_aarch64_gnullvm,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_aarch64_msvc,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_i686_gnu,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_i686_gnullvm,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_i686_msvc,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_x86_64_gnu,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_x86_64_gnullvm,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,windows_x86_64_msvc,0.52.6,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,writeable,0.6.4,Unicode-3.0,transitive,rust,False,,a
+search,yoke,0.8.3,Unicode-3.0,transitive,rust,False,,a
+search,yoke-derive,0.8.2,Unicode-3.0,transitive,rust,False,,a
+search,zerocopy,0.8.56,Apache-2.0 OR BSD-2-Clause OR MIT,transitive,rust,False,,a
+search,zerofrom,0.1.8,Unicode-3.0,transitive,rust,False,,a
+search,zerofrom-derive,0.1.7,Unicode-3.0,transitive,rust,False,,a
+search,zerotrie,0.2.5,Unicode-3.0,transitive,rust,False,,a
+search,zerovec,0.11.7,Unicode-3.0,transitive,rust,False,,a
+search,zerovec-derive,0.11.4,Unicode-3.0,transitive,rust,False,,a
+search,zmij,1.0.23,MIT,transitive,rust,False,,a
+search,zstd,0.13.3,MIT,transitive,rust,False,,a
+search,zstd-safe,7.2.4,Apache-2.0 OR MIT,transitive,rust,False,,a
+search,zstd-sys,2.0.16+zstd.1.5.7,Apache-2.0 OR MIT,transitive,rust,False,,a
+web,Overpass (font),variable,OFL-1.1,direct,font-asset,False,,a
+web,Overpass Mono (font),variable,OFL-1.1,direct,font-asset,False,,a
+web,favicon.svg,n/a,MIT (Svelte project asset),direct,vendored-asset,True,"Copied from SvelteKit's default project scaffold (<title>svelte-logo</title>), never replaced with an original mark -- not a license-compatibility blocker (Svelte's own assets are MIT) but is unauthored, unattributed, third-party branded content shipping as this product's own favicon. Flagged for replacement, not a legal blocker.",n/a-branding
+transport,redpanda (docker image),v24.2.7,"BSL 1.1 (Business Source License) for Redpanda Core, as pinned (v24.2.7, released 2024-10-11) -- NOT yet converted to Apache-2.0 (4-year Change Date is ~2028-10-11). Source-available, not OSI-approved open source. Additional Use Grant permits any use except offering it as a hosted 'Streaming or Queuing Service' to third parties.",direct,docker-image,True,"Category (c): BSL is explicitly source-available, not OSI-approved open source, per the audit's own classification framework. Verified against the actual licenses/bsl.md at the v24.2.7 tag, not assumed. No AGPL linking-compatibility issue (Redpanda is consumed only over the Kafka wire protocol, never linked into Sentry's own code -- same relationship as ClickHouse/Postgres). Real open question: whether a third party self-hosting Sentry (now fully AGPLv3 per task 6) 'as a service' would trip BSL's Streaming-or-Queuing-Service restriction on the bundled Redpanda image -- Sentry's ingest pipeline creates fixed internal topics, not per-end-user topics, so this is very likely NOT a Streaming-or-Queuing-Service under BSL's own definition, but this is a business/redistribution judgment call, not a pure technical one -- flagged for your decision, not resolved unilaterally. See license-audit-report.md's Redpanda section for the three remediation options (accept as-is / swap to Apache Kafka / flag only). RESOLVED 2026-08-16 (business decision): accept as-is. Sentry's own use (internal Kafka-protocol transport, no resale of broker access) is within BSL's Additional Use Grant; the third-party self-hosting-as-a-service question was judged unlikely to trip BSL's Streaming-or-Queuing-Service restriction, and was accepted as a known, disclosed risk rather than swapping to a heavier broker or dropping the bundled image. See license-audit-report.md's Redpanda section.",c
+storage,clickhouse-server (docker image),24.8,"Apache-2.0, confirmed directly against ClickHouse's LICENSE file. No evidence of any historical license change (unlike Redpanda/Elastic/MongoDB) -- confirmed via web search plus direct file fetch, not assumed from general reputation.",direct,docker-image,False,,a
+metadata,postgres (docker image),16-alpine,"PostgreSQL License (OSI-approved, MIT/BSD-equivalent permissive terms), confirmed directly against the official postgres/postgres COPYRIGHT file.",direct,docker-image,False,,a

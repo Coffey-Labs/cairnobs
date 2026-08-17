@@ -1,13 +1,21 @@
 # enterprise
 
-**Commercial license, not AGPLv3** — see `/CLAUDE.md`'s licensing
-boundary. SSO (OIDC/SAML), tenant provisioning, and RBAC. Nothing in
-`/agent`, `/ingest`, `/storage`, `/api`, `/web` core, or `/cli` imports
-from this module — confirmed by `hack/check-tenant-boundary.sh`, run in
-CI. `enterprise/` supplies tenant-scoped implementations of core's
-already-shipped `api/querylang/executor.SQLRunner`/
-`SearchClient` interfaces rather than core growing tenant awareness —
-see `/docs/phase-4-isolation-design.md` for why.
+**AGPLv3, same as core** (relicensed from a commercial-license stub as
+of Phase 6 — see `/docs/compliance/license-audit-report.md`'s
+"enterprise/ relicensing" section for the record of that decision and
+what it means). SSO (OIDC/SAML), tenant provisioning, and RBAC. Nothing
+in `/agent`, `/ingest`, `/storage`, `/api`, `/web` core, or `/cli`
+imports from this module — confirmed by `hack/check-tenant-boundary.sh`,
+run in CI. This is now an *architectural* boundary only, not a licensing
+one: keeps core buildable and deployable with zero multi-tenant
+mechanism present even though both sides carry the same license, and
+preserves the network-trust-boundary design
+`/docs/phase-4-isolation-design.md` describes (tenant identity is
+resolved server-side, never taken from a request parameter). `enterprise/`
+supplies tenant-scoped implementations of core's already-shipped
+`api/querylang/executor.SQLRunner`/`SearchClient` interfaces rather than
+core growing tenant awareness — see `/docs/phase-4-isolation-design.md`
+for why.
 
 ## Status
 

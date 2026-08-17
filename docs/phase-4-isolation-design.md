@@ -42,8 +42,11 @@ boundary text names multi-tenancy as enterprise-gated, and a
 "mechanism in core, feature in enterprise" split would have let a
 sufficiently motivated self-hosting AGPL user wire up real isolation
 without ever touching `enterprise/` — undermining that boundary in
-substance even while technically respecting the AGPL/commercial import
-graph. Confirmed: enterprise-only.
+substance even while technically respecting the import graph (at the
+time, an AGPL/commercial split; as of Phase 6, `enterprise/` is AGPLv3
+too, so the import graph is now the whole reason this boundary exists,
+not a proxy for a licensing one — see
+`/docs/compliance/license-audit-report.md`). Confirmed: enterprise-only.
 
 Mechanically, this works because `api/internal/querylang/executor`
 already defines the seam Phase 2 needs regardless of tenancy:

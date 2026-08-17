@@ -1,4 +1,4 @@
-# Commercial-license module, built like every other Go service here --
+# AGPLv3 module (same as core as of Phase 6), built like every other Go service here --
 # context must be the repo root, not enterprise/ alone. enterprise/go.mod
 # has replace directives for api/, ingest/, and proto/ (all resolved as
 # sibling directories, e.g. ../api), and enterprise-auth needs api/

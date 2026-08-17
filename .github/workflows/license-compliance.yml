@@ -1,0 +1,91 @@
+name: License compliance
+
+# Enforces the AGPLv3-project-wide license policy from the Phase 6
+# license audit (/docs/compliance/license-policy.md) on every PR --
+# a new dependency with an incompatible license fails the build here,
+# not months later when someone happens to re-run the one-time audit.
+# See /docs/compliance/license-audit-report.md for the audit this
+# policy was derived from.
+#
+# This is the first CI workflow in this repo. Several docs
+# (architecture.md, phase-4-isolation-design.md, phase-4-rbac-design.md)
+# already say "enforced in CI by hack/check-tenant-boundary.sh" -- that
+# was true of the *script*, but nothing had actually wired it into a
+# running CI system yet. Fixed here as part of standing up the first
+# real workflow file, not left as a second gap next to this one.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  rust-licenses:
+    name: Rust license check (cargo-deny)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate_dir: [agent, search]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: ${{ matrix.crate_dir }}/Cargo.toml
+          command: check licenses
+
+  go-licenses:
+    name: Go license check (go-licenses)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Every Go module with real third-party dependencies -- cli,
+        # hack/webhook-sink, and hack/alert-load-test are stdlib-only
+        # (confirmed at audit time) and intentionally excluded, not
+        # forgotten; add them here if they ever gain a dependency.
+        module_dir:
+          - api
+          - ingest
+          - alerting
+          - enterprise
+          - deploy/operator
+          - terraform
+          - proto
+          - hack/benchmark-fixture
+          - hack/windows-fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module_dir }}/go.mod
+      - run: go install github.com/google/go-licenses@latest
+      - name: Check licenses
+        working-directory: ${{ matrix.module_dir }}
+        run: |
+          go-licenses check ./... \
+            --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0,0BSD,Unlicense \
+            --ignore github.com/sentry/sentry \
+            --ignore github.com/segmentio/asm
+
+  npm-licenses:
+    name: npm license check (license-checker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: web
+        run: npm ci
+      - name: Check licenses
+        working-directory: web
+        run: |
+          npx --yes license-checker \
+            --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;MPL-2.0" \
+            --excludePackages "web@0.0.1"
+
+  tenant-boundary:
+    name: Architectural boundary check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash hack/check-tenant-boundary.sh

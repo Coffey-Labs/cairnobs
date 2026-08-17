@@ -11,9 +11,14 @@ described there without flagging it to me first.
 - Distro-agnostic Linux agent: must run identically on RHEL/Debian/Arch/SUSE
   derivatives via a statically-linked musl binary. No glibc runtime deps.
 - Windows support via native ETW/Event Log API, not a WSL shim.
-- AGPLv3 for core + agents. Enterprise module (SSO/multi-tenancy/compliance)
-  lives in a separate `enterprise/` directory under a commercial license stub
-  — keep the boundary clean from day one, don't let AGPL code import from it.
+- **AGPLv3 for the entire project, no exceptions.** The `enterprise/`
+  module (SSO/multi-tenancy/compliance) was under a commercial-license
+  stub from Phase 4 through Phase 5; Phase 6 relicensed it to AGPLv3,
+  matching core — see `/docs/compliance/license-audit-report.md` for the
+  full record and its business-model consequences. `enterprise/` stays a
+  separate directory that core never imports from, but that boundary is
+  now architectural only (keeps core buildable/deployable standalone,
+  keeps tenant resolution server-side), not a licensing wall.
 - Schema-on-write with OTel semantic conventions as the default schema, with
   schema-on-read fallback for unstructured text.
 - Every UI action must correspond to a documented REST/gRPC call. No
@@ -279,8 +284,10 @@ through the *same* `IndexRegistry` the read side already used, and
 routes the write there instead of always into the default index. Unlike
 the ClickHouse side, this needed no "second binary": `IndexRegistry`
 already lives in this AGPL-core binary (Tantivy has no grant system to
-gate a commercially-licensed credential behind, so there was never an
-import-boundary reason to split it out), so read and write share one
+gate a separately-credentialed binary behind, so there was never an
+import-boundary reason to split it out -- true regardless of licensing,
+though at the time of writing `enterprise/` was still commercially
+licensed; both sides are AGPLv3 as of Phase 6), so read and write share one
 registry directly. The periodic Tantivy commit now commits every tenant
 index that's seen a write, not just the default one
 (`IndexRegistry::commit_all`). **The active-tenant gap this same change
@@ -353,10 +360,12 @@ integrity guarantees, written for a prospective enterprise customer's
 security team.
 
 The tenant-isolation, provisioning, SSO, and RBAC-enforcement mechanisms
-live entirely in `enterprise/` (commercial license), confirmed
-explicitly rather than assumed: AGPL core (`/api`, `/alerting`, `/web`)
-stays genuinely single-tenant, with no multi-tenant mechanism present at
-all — `enterprise/` supplies tenant-scoped implementations of core's
+live entirely in `enterprise/` (commercial license at the time this
+section was written; relicensed to AGPLv3 in Phase 6, see that phase's
+section below), confirmed explicitly rather than assumed: core
+(`/api`, `/alerting`, `/web`) stays genuinely single-tenant, with no
+multi-tenant mechanism present at all — `enterprise/` supplies
+tenant-scoped implementations of core's
 already-shipped `querylang/executor.SQLRunner`/`SearchClient` interfaces
 rather than core growing tenant awareness. Query-compiler-level "compile
 time" enforcement, as originally proposed, turned out not to be
@@ -447,6 +456,56 @@ Non-goals for this phase (same discipline as every phase so far):
   very large result sets, no chart types beyond the five built
   (time-series, bar, single-stat, heatmap, top-N) — real, disclosed
   future work, not oversights.
+
+## What "done" looks like for Phase 6
+
+**Status: shipped.** A full license-compliance audit and remediation
+pass across the entire monorepo. Full report:
+`/docs/compliance/license-audit-report.md`;
+machine-readable inventory: `/docs/compliance/license-inventory.{csv,json}`
+(776 rows, 502 unique dependencies across Rust/Go/npm plus Docker base
+images and vendored assets); ongoing policy:
+`/docs/compliance/license-policy.md`, now enforced in CI
+(`.github/workflows/license-compliance.yml` — this repo's first CI
+workflow file).
+
+Every dependency was inventoried and classified; 774 of 776 rows
+resolved cleanly to AGPLv3-compatible with real citations, not guesses
+(see the audit report for the reasoning on each non-obvious case —
+dual-licensed crates, MPL-2.0, a license-detector false negative on
+`segmentio/asm`); `enterprise/` relicensed to AGPLv3 throughout the
+repo, with the deliberate business-model consequence recorded (anyone,
+including competitors, can now legally self-host or fork those
+features); confirmed no license-gating/entitlement logic ever existed to
+remove; a root `LICENSE` file added (there wasn't one before this
+phase); CI enforcement wired up and every command verified locally.
+
+**The one real flag — Redpanda's BSL 1.1 license (confirmed against
+primary sources for the pinned v24.2.7, not assumed to still be
+Apache-2.0) — is resolved, not outstanding**: decision recorded
+2026-08-16, accept as-is. Sentry's own use (internal Kafka-protocol
+transport, no resale of broker access) sits within BSL's Additional Use
+Grant; the harder question — whether a third party self-hosting Sentry
+"as a service" using the bundled `docker-compose.yml` could trip BSL's
+anti-resale restriction on Redpanda specifically — was judged unlikely
+given Sentry's ingest pipeline creates fixed internal topics, not
+per-end-user ones, and was accepted as a disclosed, known risk rather
+than triggering a swap to Apache Kafka (real resource-footprint cost) or
+dropping the bundled broker image (rougher local dev experience). See
+the audit report's Redpanda section for the full reasoning, the other
+two options that were considered and not chosen, and the condition under
+which this should be revisited (an official hosted/managed Sentry
+offering, which would make the third-party-SaaS scenario Sentry's own
+rather than a hypothetical one).
+
+Non-goals for this phase: replacing permissively-licensed dependencies
+with copyleft ones (explicitly out of scope per the phase's own brief);
+per-file SPDX license headers across the monorepo's several thousand
+source files (a deliberate choice — see the audit report's "Own license
+declarations" section for why root `LICENSE` + manifest fields was
+judged sufficient); redesigning `favicon.svg` (flagged as a leftover
+SvelteKit scaffold asset, not a license blocker — a design task, not a
+compliance one).
 
 ## When in doubt
 Ask before: changing the pinned stack, adding a new external dependency

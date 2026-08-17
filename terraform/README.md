@@ -192,8 +192,10 @@ attribute" above.
   surface) -- meaningfully different auth model (offline operator flags
   today, not a stable REST API a provider could safely drive
   idempotently -- see `/enterprise/README.md`'s "Bootstrapping a tenant"
-  section) and Phase 4 commercial licensing, so this would need its own
-  design pass, not just "add another resource file."
+  section), so this would need its own design pass, not just "add
+  another resource file." (Not a licensing question as of Phase 6 --
+  `enterprise/` is AGPLv3 same as this provider module; the blocker is
+  purely that the underlying API isn't idempotent-safe yet.)
 - Publishing to the real Terraform Registry -- `main.go`'s `Address`
   (`registry.terraform.io/sentry/sentry`) is the address a real
   publication would use, but nothing has actually been published; local

@@ -355,8 +355,9 @@ docker run --rm --network sentry_default -v $(pwd)/api:/src -w /src \
 earlier in Phase 4, once `enterprise/cmd/enterprise-api` needed to
 import it: Go's compiler-enforced `internal/` visibility rule meant a
 separate module like `enterprise/` could never import anything under
-`api/internal/...`, regardless of the AGPL/commercial licensing
-boundary, which only forbids the reverse direction.)
+`api/internal/...`, regardless of the licensing boundary (AGPL/commercial
+at the time this was written; both AGPLv3 as of Phase 6), which only
+forbids the reverse direction.)
 
 Expect all `TestIntegration*` tests to pass, including
 `TestIntegrationDashboardTenantForeignKeyRejectsUnknownTenant` (the
@@ -921,8 +922,10 @@ same registry the read side (§9) already uses -- routing each record's
 write into its own tenant's Tantivy index instead of the single default
 one. No "second binary" was needed here the way ClickHouse needed
 `enterprise-ingest`: Tantivy has no grant system to gate a
-commercially-licensed credential behind, so `IndexRegistry` already
-lives directly in AGPL-core `search`, and read/write just share it.
+separately-credentialed binary behind (commercially licensed at the
+time this was written; AGPLv3 as of Phase 6, though the architectural
+point never depended on that), so `IndexRegistry` already lives directly
+in AGPL-core `search`, and read/write just share it.
 Because Tantivy is an embedded library (no Docker/broker needed to
 exercise real logic), this actually ran in this environment:
 

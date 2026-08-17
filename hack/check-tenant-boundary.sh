@@ -5,9 +5,12 @@
 # every change; both checks exit non-zero (and print the offending lines)
 # on a violation.
 #
-# 1. No AGPL-core Go code imports enterprise/ -- core must stay
-#    genuinely single-tenant with zero multi-tenant mechanism present,
-#    per the licensing-boundary decision confirmed for Phase 4.
+# 1. No core Go code imports enterprise/ -- core must stay genuinely
+#    single-tenant with zero multi-tenant mechanism present. This was
+#    originally also a licensing boundary (enterprise/ was
+#    commercial-licensed through Phase 5); as of Phase 6 both sides are
+#    AGPLv3, so this is now purely architectural -- see
+#    /docs/compliance/license-audit-report.md.
 # 2. tenant.TrustFromValidatedSession is called, in non-test production
 #    code, only from the auth-middleware allowlist below -- everywhere
 #    else is either a mistake or a new call site that needs the same
@@ -22,7 +25,7 @@ fail=0
 echo "Checking: no core Go package imports enterprise/..."
 # Core = every top-level Go module except enterprise/ and hack/ (hack/
 # tooling isn't shipped, and load-test/fixture scripts have no reason to
-# import enterprise/ either, but they're not part of the licensing
+# import enterprise/ either, but they're not part of the architectural
 # boundary claim, so they're excluded rather than asserted about).
 core_hits="$(grep -rn '"github.com/sentry/sentry/enterprise' \
     --include='*.go' \
