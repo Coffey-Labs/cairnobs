@@ -8,12 +8,19 @@ mod service;
 
 pub mod pb {
     tonic::include_proto!("sentry.logs.v1");
+
+    pub mod agent {
+        pub mod v1 {
+            tonic::include_proto!("sentry.agent.v1");
+        }
+    }
 }
 
 use anyhow::{Context, Result};
 use batch::Batcher;
 use clap::Parser;
 use config::Config;
+use pb::agent::v1::{agent_control_client::AgentControlClient, CheckInRequest, DesiredOverride, ReportedConfig};
 use pb::{log_ingest_client::LogIngestClient, LogRecord, Severity};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -85,31 +92,92 @@ pub async fn run_agent(config_path: Option<PathBuf>) -> Result<()> {
     let host = cfg.agent.host.clone().unwrap_or_else(default_hostname);
     let service = cfg.agent.service.clone();
 
-    let (tx, mut rx) = mpsc::channel(1024);
-    let source_handle = tokio::spawn(spawn_source(cfg.source.clone(), tx));
+    // source_cfg is mutable: a remote DesiredOverride's journald_unit
+    // field (see apply_override below) can change it at runtime, which
+    // means aborting and respawning the source task with the new
+    // filter -- source_handle/rx are mutable for the same reason.
+    let mut source_cfg = cfg.source.clone();
+    let (mut source_handle, mut rx) = spawn_source_task(source_cfg.clone());
 
-    let mut client = grpc::connect(&cfg.ingest, &cfg.tls)
+    let channel = grpc::connect(&cfg.ingest, &cfg.tls)
         .await
         .context("connecting to ingest service")?;
+    let mut client = LogIngestClient::new(channel.clone());
+    let mut control_client = AgentControlClient::new(channel);
     tracing::info!(endpoint = %cfg.ingest.endpoint, "connected to ingest service");
 
-    let flush_interval = Duration::from_millis(cfg.batch.flush_interval_ms);
-    let mut batcher = Batcher::new(cfg.batch.max_size, flush_interval);
+    // Effective runtime settings, seeded from local config -- every one
+    // of these is mutable because a remote DesiredOverride can change
+    // it (see apply_override). The local agent.toml is never rewritten;
+    // an override lives only in memory here and reverts to agent.toml's
+    // own values on restart, re-syncing on the next successful CheckIn
+    // (see /docs/agent-management-design.md's merge-semantics section).
+    let mut batch_max_size = cfg.batch.max_size;
+    let mut flush_interval = Duration::from_millis(cfg.batch.flush_interval_ms);
+    let mut heartbeat_enabled = cfg.heartbeat.enabled;
+    let mut heartbeat_interval = cfg.heartbeat.interval;
+    // Empty until the first override is ever applied -- echoed back on
+    // every CheckIn as-is so the server can tell "pending" (an edit
+    // exists this agent hasn't picked up) from "applied."
+    let mut applied_override_version = String::new();
+
+    let mut batcher = Batcher::new(batch_max_size, flush_interval);
     let mut ticker = tokio::time::interval(flush_interval.max(Duration::from_millis(50)));
 
     // Heartbeat's own ticker, independent of the batch flush ticker above
-    // -- it always fires on cfg.heartbeat.interval regardless of
-    // cfg.batch's settings or whether any real log traffic is flowing.
-    // Built unconditionally even when disabled (tokio::time::interval
-    // doesn't fail on construction); the `if cfg.heartbeat.enabled`
-    // select! guard is what actually turns it off, so a disabled
-    // heartbeat costs nothing beyond one idle timer.
-    let mut heartbeat_ticker = tokio::time::interval(cfg.heartbeat.interval.max(Duration::from_millis(50)));
+    // -- it always fires on heartbeat_interval regardless of the batch
+    // settings or whether any real log traffic is flowing. Also drives
+    // CheckIn (see the arm below) unconditionally -- CheckIn keeps
+    // running even when heartbeat_enabled is false, since that's an
+    // agent's only path to ever receive a remote override that
+    // re-enables it; only the heartbeat log record itself is gated on
+    // heartbeat_enabled.
+    let mut heartbeat_ticker = tokio::time::interval(heartbeat_interval.max(Duration::from_millis(50)));
 
     loop {
         tokio::select! {
-            _ = heartbeat_ticker.tick(), if cfg.heartbeat.enabled => {
-                send_heartbeat(&mut client, &host, &service).await;
+            _ = heartbeat_ticker.tick() => {
+                if heartbeat_enabled {
+                    send_heartbeat(&mut client, &host, &service).await;
+                }
+
+                let reported = ReportedConfig {
+                    agent_version: env!("CARGO_PKG_VERSION").to_string(),
+                    source_kind: source_kind_name(&source_cfg),
+                    source_detail: source_detail_summary(&source_cfg),
+                    batch_max_size: batch_max_size as u64,
+                    batch_flush_interval_ms: flush_interval.as_millis() as u64,
+                    heartbeat_enabled,
+                    heartbeat_interval_ms: heartbeat_interval.as_millis() as u64,
+                };
+                match grpc::check_in(&mut control_client, CheckInRequest {
+                    host: host.clone(),
+                    service: service.clone(),
+                    current_config: Some(reported),
+                    applied_override_version: applied_override_version.clone(),
+                }).await {
+                    Ok(resp) => {
+                        if let Some(ov) = resp.has_override.then_some(resp.r#override).flatten() {
+                            if ov.version != applied_override_version {
+                                apply_override(
+                                    &ov,
+                                    &mut batch_max_size, &mut flush_interval,
+                                    &mut heartbeat_enabled, &mut heartbeat_interval,
+                                    &mut batcher, &mut ticker, &mut heartbeat_ticker,
+                                    &mut source_cfg, &mut source_handle, &mut rx,
+                                    &mut client,
+                                ).await;
+                                applied_override_version = ov.version.clone();
+                                tracing::info!(version = %applied_override_version, "applied remote config override");
+                            }
+                        }
+                    }
+                    // A failed check-in is not fatal -- same graceful-
+                    // degradation posture as a failed heartbeat/batch
+                    // flush: an agent management feature being
+                    // unreachable must never stop log collection.
+                    Err(e) => tracing::debug!(error = %e, "check-in failed"),
+                }
             }
             maybe_line = rx.recv() => {
                 let Some(raw) = maybe_line else {
@@ -148,11 +216,111 @@ pub async fn run_agent(config_path: Option<PathBuf>) -> Result<()> {
         }
     }
 
-    if let Some(batch) = batcher.poll_timeout() {
+    // flush_all(), not poll_timeout(): shutdown must send whatever's
+    // buffered unconditionally -- poll_timeout() only drains once
+    // flush_interval has elapsed, so anything buffered more recently
+    // than that would otherwise be silently dropped on every graceful
+    // shutdown that happens to land between flushes. Same reasoning
+    // applies to a config hot-reload replacing this batcher outright
+    // (see apply_override).
+    if let Some(batch) = batcher.flush_all() {
         flush(&mut client, batch).await;
     }
     source_handle.abort();
     Ok(())
+}
+
+/// Applies a newly-received DesiredOverride to the agent's in-memory
+/// runtime state -- see run_agent's CheckIn arm, and
+/// /docs/agent-management-design.md's merge-semantics section for why
+/// this never touches the local agent.toml file. Every field is
+/// independently optional (unset = keep the current value); batch/
+/// heartbeat settings always get their batcher/ticker rebuilt together
+/// when *any* override arrives, for simplicity, rather than tracking
+/// which specific field changed -- this only runs when a human edits an
+/// agent's config from the web UI, not on a hot path, so the extra
+/// timer/allocation churn doesn't matter.
+#[allow(clippy::too_many_arguments)]
+async fn apply_override(
+    ov: &DesiredOverride,
+    batch_max_size: &mut usize,
+    flush_interval: &mut Duration,
+    heartbeat_enabled: &mut bool,
+    heartbeat_interval: &mut Duration,
+    batcher: &mut Batcher,
+    ticker: &mut tokio::time::Interval,
+    heartbeat_ticker: &mut tokio::time::Interval,
+    source_cfg: &mut config::SourceConfig,
+    source_handle: &mut tokio::task::JoinHandle<()>,
+    rx: &mut mpsc::Receiver<source::RawLine>,
+    client: &mut LogIngestClient<Channel>,
+) {
+    if let Some(v) = ov.batch_max_size {
+        *batch_max_size = v as usize;
+    }
+    if let Some(v) = ov.batch_flush_interval_ms {
+        *flush_interval = Duration::from_millis(v);
+    }
+    // Flush whatever the old batcher was holding before replacing it --
+    // a hot-reload must never silently drop buffered-but-not-yet-due
+    // records, same reasoning as shutdown's flush_all() above.
+    if let Some(old) = batcher.flush_all() {
+        flush(client, old).await;
+    }
+    *batcher = Batcher::new(*batch_max_size, *flush_interval);
+    *ticker = tokio::time::interval((*flush_interval).max(Duration::from_millis(50)));
+
+    if let Some(v) = ov.heartbeat_enabled {
+        *heartbeat_enabled = v;
+    }
+    if let Some(v) = ov.heartbeat_interval_ms {
+        *heartbeat_interval = Duration::from_millis(v);
+    }
+    *heartbeat_ticker = tokio::time::interval((*heartbeat_interval).max(Duration::from_millis(50)));
+
+    // Only meaningful (and only ever sent by the server) when this
+    // agent's local source is journald -- ignored otherwise, per
+    // agent_control.proto's DesiredOverride.journald_unit comment.
+    // Changing it means aborting and respawning the source task: unlike
+    // batch/heartbeat, there's no way to change what journald::run is
+    // tailing without restarting that task.
+    if let Some(unit) = &ov.journald_unit {
+        if let config::SourceConfig::Journald { unit: current_unit } = source_cfg {
+            let new_unit = if unit.is_empty() { None } else { Some(unit.clone()) };
+            if *current_unit != new_unit {
+                *source_cfg = config::SourceConfig::Journald { unit: new_unit };
+                source_handle.abort();
+                let (new_handle, new_rx) = spawn_source_task(source_cfg.clone());
+                *source_handle = new_handle;
+                *rx = new_rx;
+                tracing::info!(unit = ?unit, "applied remote journald unit override, restarted source");
+            }
+        }
+    }
+}
+
+fn spawn_source_task(source_cfg: config::SourceConfig) -> (tokio::task::JoinHandle<()>, mpsc::Receiver<source::RawLine>) {
+    let (tx, rx) = mpsc::channel(1024);
+    let handle = tokio::spawn(spawn_source(source_cfg, tx));
+    (handle, rx)
+}
+
+fn source_kind_name(cfg: &config::SourceConfig) -> String {
+    match cfg {
+        config::SourceConfig::Journald { .. } => "journald".to_string(),
+        config::SourceConfig::File { .. } => "file".to_string(),
+        config::SourceConfig::EventLog { .. } => "eventlog".to_string(),
+        config::SourceConfig::Etw { .. } => "etw".to_string(),
+    }
+}
+
+fn source_detail_summary(cfg: &config::SourceConfig) -> String {
+    match cfg {
+        config::SourceConfig::Journald { unit } => unit.clone().unwrap_or_else(|| "(whole journal)".to_string()),
+        config::SourceConfig::File { path, .. } => path.display().to_string(),
+        config::SourceConfig::EventLog { channels } => channels.join(","),
+        config::SourceConfig::Etw { providers } => providers.join(","),
+    }
 }
 
 // `tx` genuinely goes unused in one rare-but-valid combination: Windows

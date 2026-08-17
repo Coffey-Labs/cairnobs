@@ -1,12 +1,18 @@
 use crate::config::{IngestConfig, TlsConfig};
+use crate::pb::agent::v1::{agent_control_client::AgentControlClient, CheckInRequest, CheckInResponse};
 use crate::pb::{log_ingest_client::LogIngestClient, LogRecord, PushBatchRequest};
 use anyhow::{Context, Result};
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 
-/// Establishes an mTLS gRPC channel to the ingest service. Agents never
-/// talk to Redpanda directly — this is the only network egress the agent
-/// has, by design (see /docs/architecture.md).
-pub async fn connect(ingest: &IngestConfig, tls: &TlsConfig) -> Result<LogIngestClient<Channel>> {
+/// Establishes the one mTLS gRPC channel an agent has to ingest —
+/// agents never talk to Redpanda directly, and never accept an inbound
+/// connection either (see /docs/architecture.md and
+/// /docs/agent-management-design.md). Returns the bare `Channel` rather
+/// than a client wrapper so callers can build both `LogIngestClient`
+/// (data plane) and `AgentControlClient` (control plane) from the same
+/// connection — `Channel` is a cheap-to-clone handle, not the socket
+/// itself, so there's no cost to sharing it across two client stubs.
+pub async fn connect(ingest: &IngestConfig, tls: &TlsConfig) -> Result<Channel> {
     let ca = tokio::fs::read(&tls.ca_cert)
         .await
         .with_context(|| format!("reading CA cert at {}", tls.ca_cert.display()))?;
@@ -21,15 +27,13 @@ pub async fn connect(ingest: &IngestConfig, tls: &TlsConfig) -> Result<LogIngest
         .ca_certificate(Certificate::from_pem(ca))
         .identity(Identity::from_pem(cert, key));
 
-    let channel = Channel::from_shared(ingest.endpoint.clone())
+    Channel::from_shared(ingest.endpoint.clone())
         .context("invalid ingest endpoint URL")?
         .tls_config(tls_config)
         .context("configuring mTLS")?
         .connect()
         .await
-        .context("connecting to ingest service")?;
-
-    Ok(LogIngestClient::new(channel))
+        .context("connecting to ingest service")
 }
 
 pub async fn send_batch(
@@ -42,4 +46,12 @@ pub async fn send_batch(
         .await
         .context("PushBatch RPC failed")?;
     Ok(resp.into_inner().accepted)
+}
+
+pub async fn check_in(
+    client: &mut AgentControlClient<Channel>,
+    req: CheckInRequest,
+) -> Result<CheckInResponse> {
+    let resp = client.check_in(req).await.context("CheckIn RPC failed")?;
+    Ok(resp.into_inner())
 }

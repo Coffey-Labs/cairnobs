@@ -473,3 +473,55 @@ export function createNotificationTarget(input: {
 	return alertingRequest('/targets', { method: 'POST', body: JSON.stringify(input) });
 }
 
+// ---- Agent inventory + remote config ----
+// See /docs/agent-management-design.md. An agent only appears here
+// after it's checked in at least once (GET /agents/{host} 404s until
+// then) -- there's no "pre-register a host" step, inventory is purely
+// observed from real check-ins.
+export type ConfigOverride = {
+	batch_max_size?: number;
+	batch_flush_interval_ms?: number;
+	heartbeat_enabled?: boolean;
+	heartbeat_interval_ms?: number;
+	journald_unit?: string;
+};
+
+export type Agent = {
+	id: string;
+	tenant_id: string;
+	host: string;
+	service: string;
+	agent_version: string;
+	source_kind: string;
+	source_detail: string;
+	batch_max_size: number;
+	batch_flush_interval_ms: number;
+	heartbeat_enabled: boolean;
+	heartbeat_interval_ms: number;
+	first_seen_at: string;
+	last_seen_at: string;
+	desired_override?: ConfigOverride;
+	desired_override_version?: string;
+	applied_override_version: string;
+	pending: boolean;
+	updated_by?: string;
+};
+
+export function listAgents(): Promise<Agent[]> {
+	return request<Agent[]>('/agents').then((a) => a ?? []);
+}
+
+export function getAgent(host: string): Promise<Agent> {
+	return request(`/agents/${encodeURIComponent(host)}`);
+}
+
+export function setAgentConfig(host: string, override: ConfigOverride): Promise<Agent> {
+	return request(`/agents/${encodeURIComponent(host)}/config`, {
+		method: 'PUT',
+		body: JSON.stringify(override)
+	});
+}
+
+export function clearAgentConfig(host: string): Promise<void> {
+	return request(`/agents/${encodeURIComponent(host)}/config`, { method: 'DELETE' });
+}

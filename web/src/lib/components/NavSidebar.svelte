@@ -15,6 +15,7 @@
 		{ href: '/dashboards', label: 'Dashboards', icon: '▤' },
 		{ href: '/alerts', label: 'Alerts', icon: '▲' },
 		{ href: '/data-sources', label: 'Data Sources', icon: '◈' },
+		{ href: '/agents', label: 'Agents', icon: '●' },
 		{ href: '/settings', label: 'Settings', icon: '⚙' }
 	];
 

@@ -23,6 +23,26 @@ type Config struct {
 	// as every other optional enterprise integration point in this
 	// codebase (e.g. api's own ENTERPRISE_AUTH_URL).
 	EnterpriseAuthURL string
+	// AgentRegistry enables agent inventory/remote config
+	// (internal/agentregistry, internal/grpcserver.AgentRegistry) when
+	// Postgres.Addr is set -- same "off unless configured" shape as
+	// EnterpriseAuthURL above. Writes into the same sentry_metadata
+	// database api/web already use, via the same shared "sentry" role
+	// every other non-audit table in this schema uses (unlike
+	// audit_log's dedicated restricted role -- agent inventory carries
+	// no tamper-evidence requirement).
+	AgentRegistry AgentRegistryConfig
+}
+
+type AgentRegistryConfig struct {
+	Postgres PostgresConfig
+}
+
+type PostgresConfig struct {
+	Addr     string
+	Database string
+	Username string
+	Password string
 }
 
 type GRPCConfig struct {
@@ -77,6 +97,14 @@ func Load() (Config, error) {
 			Password: getenv("CLICKHOUSE_PASSWORD", ""),
 		},
 		EnterpriseAuthURL: getenv("ENTERPRISE_AUTH_URL", ""),
+		AgentRegistry: AgentRegistryConfig{
+			Postgres: PostgresConfig{
+				Addr:     getenv("AGENT_REGISTRY_POSTGRES_ADDR", ""),
+				Database: getenv("AGENT_REGISTRY_POSTGRES_DATABASE", "sentry_metadata"),
+				Username: getenv("AGENT_REGISTRY_POSTGRES_USERNAME", "sentry"),
+				Password: getenv("AGENT_REGISTRY_POSTGRES_PASSWORD", ""),
+			},
+		},
 	}
 
 	maxSize, err := strconv.Atoi(getenv("CONSUMER_BATCH_MAX_SIZE", "500"))

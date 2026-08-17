@@ -19,6 +19,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/agents"
 	"github.com/sentry/sentry/api/ai/aiapi"
 	"github.com/sentry/sentry/api/ai/grounding"
 	"github.com/sentry/sentry/api/ai/provider/ollama"
@@ -119,6 +120,13 @@ func main() {
 	// canEditDashboard's nil-permissions fallback -- only the "granted"
 	// half of the matrix's "(own/granted)" qualifier is unavailable here.
 	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer, nil)
+	// Same pgPool as dashboards above -- agents reads/writes the table
+	// ingest's internal/agentregistry upserts on every CheckIn RPC (see
+	// /docs/agent-management-design.md). Nothing here requires
+	// AGENT_REGISTRY_POSTGRES_ADDR to be set on ingest; these routes work
+	// unconditionally, they'll just show an empty inventory if ingest
+	// hasn't been configured to record check-ins.
+	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer)
 
 	// One shared mux, CORS applied once around the whole thing -- see
 	// httpserver's doc comment for why this changed from each
@@ -126,6 +134,7 @@ func main() {
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux)
 	dashboardsHandler.RegisterRoutes(mux)
+	agentsHandler.RegisterRoutes(mux)
 
 	// AI routes (Phase 7) are only registered at all when OLLAMA_BASE_URL
 	// is set -- an unconfigured deployment gets a plain 404 on /ai/*
