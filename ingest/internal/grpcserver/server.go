@@ -91,8 +91,31 @@ type TenantResolver interface {
 // simply doesn't get agent inventory/management, exactly like one
 // without ENTERPRISE_AUTH_URL doesn't get tenant-tagged records.
 type AgentRegistry interface {
-	CheckIn(ctx context.Context, tenantID string, info AgentCheckIn) (AgentOverride, error)
+	CheckIn(ctx context.Context, tenantID string, info AgentCheckIn) (CheckInResult, error)
 }
+
+// CheckInResult bundles the two independent things a CheckIn can hand
+// back to an agent -- a persistent config override to converge to, and
+// a one-shot command to act on immediately. Kept as two separate
+// concepts (not folded into one "override" shape) since their delivery
+// semantics differ: Override is re-offered every CheckIn until the
+// agent's applied_override_version matches; Command is cleared the
+// instant it's handed out (see agent_control.proto's CheckInResponse
+// comment).
+type CheckInResult struct {
+	Override AgentOverride
+	// Command is AgentCommandRestart or "" (nothing pending). A plain
+	// string, not the generated proto enum type, so AgentRegistry
+	// implementations don't need to import the gRPC-facing package --
+	// same reasoning as AgentCheckIn/AgentOverride below.
+	Command string
+}
+
+// AgentCommandRestart is the one supported value for
+// CheckInResult.Command / the agents table's pending_command column --
+// see agent_control.proto's AgentCommand enum comment for why STOP/
+// UNINSTALL aren't here yet.
+const AgentCommandRestart = "restart"
 
 // AgentCheckIn is what an agent reports about itself on each CheckIn --
 // a plain-Go mirror of agentv1.ReportedConfig plus the identity/
@@ -250,7 +273,7 @@ func (s *Server) CheckIn(ctx context.Context, req *agentv1.CheckInRequest) (*age
 	}
 
 	cfg := req.GetCurrentConfig()
-	override, err := s.agents.CheckIn(ctx, tenantID, AgentCheckIn{
+	result, err := s.agents.CheckIn(ctx, tenantID, AgentCheckIn{
 		Host:                   req.GetHost(),
 		Service:                req.GetService(),
 		AgentVersion:           cfg.GetAgentVersion(),
@@ -267,20 +290,27 @@ func (s *Server) CheckIn(ctx context.Context, req *agentv1.CheckInRequest) (*age
 		return nil, status.Errorf(codes.Internal, "recording check-in: %v", err)
 	}
 
-	if !override.HasOverride {
-		return &agentv1.CheckInResponse{HasOverride: false}, nil
+	resp := &agentv1.CheckInResponse{HasOverride: result.Override.HasOverride}
+	if result.Override.HasOverride {
+		resp.Override = &agentv1.DesiredOverride{
+			BatchMaxSize:         result.Override.BatchMaxSize,
+			BatchFlushIntervalMs: result.Override.BatchFlushIntervalMS,
+			HeartbeatEnabled:     result.Override.HeartbeatEnabled,
+			HeartbeatIntervalMs:  result.Override.HeartbeatIntervalMS,
+			JournaldUnit:         result.Override.JournaldUnit,
+			Version:              result.Override.Version,
+		}
 	}
-	return &agentv1.CheckInResponse{
-		HasOverride: true,
-		Override: &agentv1.DesiredOverride{
-			BatchMaxSize:         override.BatchMaxSize,
-			BatchFlushIntervalMs: override.BatchFlushIntervalMS,
-			HeartbeatEnabled:     override.HeartbeatEnabled,
-			HeartbeatIntervalMs:  override.HeartbeatIntervalMS,
-			JournaldUnit:         override.JournaldUnit,
-			Version:              override.Version,
-		},
-	}, nil
+	switch result.Command {
+	case AgentCommandRestart:
+		resp.PendingCommand = agentv1.AgentCommand_AGENT_COMMAND_RESTART
+		s.logger.Info("delivering restart command to agent", "host", req.GetHost())
+	case "":
+		// nothing pending
+	default:
+		s.logger.Error("agent registry returned an unknown command, ignoring", "host", req.GetHost(), "command", result.Command)
+	}
+	return resp, nil
 }
 
 // bearerTokenFromContext reads the same "authorization: Bearer <token>"

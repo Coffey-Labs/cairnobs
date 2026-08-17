@@ -21,6 +21,63 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// AgentCommand is a one-shot action, not a persistent desired state like
+// DesiredOverride -- delivered at-most-once (see CheckInResponse's
+// comment). Scoped deliberately narrow: only RESTART exists today.
+// STOP and UNINSTALL are real, disclosed future work, not oversights --
+// both need genuine OS service-manager integration (systemd's
+// Restart=/RestartPreventExitStatus= semantics vs. Windows SCM recovery
+// options are different enough per platform that hand-waving them would
+// be dishonest), which RESTART doesn't: a graceful shutdown followed by
+// a clean process exit, relying on whatever restart policy the host's
+// service manager already has configured -- the same contract systemd/
+// SCM already expect from any well-behaved service.
+type AgentCommand int32
+
+const (
+	AgentCommand_AGENT_COMMAND_UNSPECIFIED AgentCommand = 0
+	AgentCommand_AGENT_COMMAND_RESTART     AgentCommand = 1
+)
+
+// Enum value maps for AgentCommand.
+var (
+	AgentCommand_name = map[int32]string{
+		0: "AGENT_COMMAND_UNSPECIFIED",
+		1: "AGENT_COMMAND_RESTART",
+	}
+	AgentCommand_value = map[string]int32{
+		"AGENT_COMMAND_UNSPECIFIED": 0,
+		"AGENT_COMMAND_RESTART":     1,
+	}
+)
+
+func (x AgentCommand) Enum() *AgentCommand {
+	p := new(AgentCommand)
+	*p = x
+	return p
+}
+
+func (x AgentCommand) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AgentCommand) Descriptor() protoreflect.EnumDescriptor {
+	return file_sentry_agent_v1_agent_control_proto_enumTypes[0].Descriptor()
+}
+
+func (AgentCommand) Type() protoreflect.EnumType {
+	return &file_sentry_agent_v1_agent_control_proto_enumTypes[0]
+}
+
+func (x AgentCommand) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AgentCommand.Descriptor instead.
+func (AgentCommand) EnumDescriptor() ([]byte, []int) {
+	return file_sentry_agent_v1_agent_control_proto_rawDescGZIP(), []int{0}
+}
+
 // ReportedConfig is what an agent tells the platform about itself --
 // read-only, for inventory/visibility. Deliberately excludes tls/ingest
 // endpoint fields: those are never reported and never remotely
@@ -296,10 +353,24 @@ type CheckInResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// False when no override has ever been set for this agent -- it
 	// should be running whatever agent.toml already has, untouched.
-	HasOverride   bool             `protobuf:"varint,1,opt,name=has_override,json=hasOverride,proto3" json:"has_override,omitempty"`
-	Override      *DesiredOverride `protobuf:"bytes,2,opt,name=override,proto3" json:"override,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HasOverride bool             `protobuf:"varint,1,opt,name=has_override,json=hasOverride,proto3" json:"has_override,omitempty"`
+	Override    *DesiredOverride `protobuf:"bytes,2,opt,name=override,proto3" json:"override,omitempty"`
+	// AGENT_COMMAND_UNSPECIFIED when there's nothing to do. Unlike
+	// DesiredOverride, there is no "applied_command_version" echoed back
+	// in CheckInRequest: the server clears a pending command the moment
+	// it hands it out in a response (see
+	// ingest/internal/agentregistry.Registry.CheckIn), not once the agent
+	// confirms execution -- a restarting agent's process is gone before
+	// it could ever send that confirmation. This is an honest at-most-
+	// once delivery, not at-least-once: a command lost to a network
+	// failure between this response and the agent acting on it is simply
+	// lost, same as any fire-and-forget signal. Re-issuing (PUT
+	// /agents/{host}/command again) is the operator's recourse, same as
+	// it would be for a `systemctl restart` that silently failed to reach
+	// its target.
+	PendingCommand AgentCommand `protobuf:"varint,3,opt,name=pending_command,json=pendingCommand,proto3,enum=sentry.agent.v1.AgentCommand" json:"pending_command,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CheckInResponse) Reset() {
@@ -346,6 +417,13 @@ func (x *CheckInResponse) GetOverride() *DesiredOverride {
 	return nil
 }
 
+func (x *CheckInResponse) GetPendingCommand() AgentCommand {
+	if x != nil {
+		return x.PendingCommand
+	}
+	return AgentCommand_AGENT_COMMAND_UNSPECIFIED
+}
+
 var File_sentry_agent_v1_agent_control_proto protoreflect.FileDescriptor
 
 const file_sentry_agent_v1_agent_control_proto_rawDesc = "" +
@@ -376,10 +454,14 @@ const file_sentry_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x18_batch_flush_interval_msB\x14\n" +
 	"\x12_heartbeat_enabledB\x18\n" +
 	"\x16_heartbeat_interval_msB\x10\n" +
-	"\x0e_journald_unit\"r\n" +
+	"\x0e_journald_unit\"\xba\x01\n" +
 	"\x0fCheckInResponse\x12!\n" +
 	"\fhas_override\x18\x01 \x01(\bR\vhasOverride\x12<\n" +
-	"\boverride\x18\x02 \x01(\v2 .sentry.agent.v1.DesiredOverrideR\boverride2\\\n" +
+	"\boverride\x18\x02 \x01(\v2 .sentry.agent.v1.DesiredOverrideR\boverride\x12F\n" +
+	"\x0fpending_command\x18\x03 \x01(\x0e2\x1d.sentry.agent.v1.AgentCommandR\x0ependingCommand*H\n" +
+	"\fAgentCommand\x12\x1d\n" +
+	"\x19AGENT_COMMAND_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15AGENT_COMMAND_RESTART\x10\x012\\\n" +
 	"\fAgentControl\x12L\n" +
 	"\aCheckIn\x12\x1f.sentry.agent.v1.CheckInRequest\x1a .sentry.agent.v1.CheckInResponseB8Z6github.com/sentry/sentry/proto/sentry/agent/v1;agentv1b\x06proto3"
 
@@ -395,23 +477,26 @@ func file_sentry_agent_v1_agent_control_proto_rawDescGZIP() []byte {
 	return file_sentry_agent_v1_agent_control_proto_rawDescData
 }
 
+var file_sentry_agent_v1_agent_control_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_sentry_agent_v1_agent_control_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_sentry_agent_v1_agent_control_proto_goTypes = []any{
-	(*ReportedConfig)(nil),  // 0: sentry.agent.v1.ReportedConfig
-	(*CheckInRequest)(nil),  // 1: sentry.agent.v1.CheckInRequest
-	(*DesiredOverride)(nil), // 2: sentry.agent.v1.DesiredOverride
-	(*CheckInResponse)(nil), // 3: sentry.agent.v1.CheckInResponse
+	(AgentCommand)(0),       // 0: sentry.agent.v1.AgentCommand
+	(*ReportedConfig)(nil),  // 1: sentry.agent.v1.ReportedConfig
+	(*CheckInRequest)(nil),  // 2: sentry.agent.v1.CheckInRequest
+	(*DesiredOverride)(nil), // 3: sentry.agent.v1.DesiredOverride
+	(*CheckInResponse)(nil), // 4: sentry.agent.v1.CheckInResponse
 }
 var file_sentry_agent_v1_agent_control_proto_depIdxs = []int32{
-	0, // 0: sentry.agent.v1.CheckInRequest.current_config:type_name -> sentry.agent.v1.ReportedConfig
-	2, // 1: sentry.agent.v1.CheckInResponse.override:type_name -> sentry.agent.v1.DesiredOverride
-	1, // 2: sentry.agent.v1.AgentControl.CheckIn:input_type -> sentry.agent.v1.CheckInRequest
-	3, // 3: sentry.agent.v1.AgentControl.CheckIn:output_type -> sentry.agent.v1.CheckInResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: sentry.agent.v1.CheckInRequest.current_config:type_name -> sentry.agent.v1.ReportedConfig
+	3, // 1: sentry.agent.v1.CheckInResponse.override:type_name -> sentry.agent.v1.DesiredOverride
+	0, // 2: sentry.agent.v1.CheckInResponse.pending_command:type_name -> sentry.agent.v1.AgentCommand
+	2, // 3: sentry.agent.v1.AgentControl.CheckIn:input_type -> sentry.agent.v1.CheckInRequest
+	4, // 4: sentry.agent.v1.AgentControl.CheckIn:output_type -> sentry.agent.v1.CheckInResponse
+	4, // [4:5] is the sub-list for method output_type
+	3, // [3:4] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_sentry_agent_v1_agent_control_proto_init() }
@@ -425,13 +510,14 @@ func file_sentry_agent_v1_agent_control_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sentry_agent_v1_agent_control_proto_rawDesc), len(file_sentry_agent_v1_agent_control_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_sentry_agent_v1_agent_control_proto_goTypes,
 		DependencyIndexes: file_sentry_agent_v1_agent_control_proto_depIdxs,
+		EnumInfos:         file_sentry_agent_v1_agent_control_proto_enumTypes,
 		MessageInfos:      file_sentry_agent_v1_agent_control_proto_msgTypes,
 	}.Build()
 	File_sentry_agent_v1_agent_control_proto = out.File

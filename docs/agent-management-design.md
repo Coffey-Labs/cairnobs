@@ -13,9 +13,16 @@ different risk profiles. Confirmed up front: this covers inventory,
 config visibility, and remote config *editing* — explicitly **not**
 remote lifecycle commands (restart/stop/uninstall). That's a real
 command-and-control channel across every managed host and deserves its
-own security design (signed commands, strict RBAC, full audit trail)
-before it's built, not something to fold in as a side effect of a
-config-editing feature.
+own security design (strict RBAC, full audit trail) before it's built,
+not something to fold in as a side effect of a config-editing feature.
+
+**Update — restart is now built** (punch-list item 1, see the
+"Lifecycle commands" section below); stop and uninstall remain
+deliberately out of scope, for reasons specific to each. Building
+restart confirmed the "strict RBAC, full audit trail" precondition
+mattered in practice, not just as a stated principle: it's gated at
+`RoleAdmin` (stricter than config editing's `RoleEditor`) and logged
+into the same `audit_log` table Phase 7's AI interactions use.
 
 ## Why this is still pull, not push, on the wire
 
@@ -167,16 +174,84 @@ together. Keep the three in sync by hand.
 Viewing inventory is `RoleViewer` (same bar as viewing a dashboard);
 editing an agent's remote config is `RoleEditor` — treated as an
 operational-tuning action matching alert rules/notification targets,
-not an admin-only capability like user/role management.
+not an admin-only capability like user/role management. Issuing a
+lifecycle command is `RoleAdmin` — stricter, matching the RBAC matrix's
+treatment of similarly consequential actions (e.g. deleting a
+notification target) rather than day-to-day tuning.
+
+## Lifecycle commands (punch-list item 1: restart)
+
+A one-shot action, not a persistent desired state like `DesiredOverride`
+-- `AgentCommand` (proto enum, `agent_control.proto`) is delivered
+**at-most-once**: `ingest/internal/agentregistry.Registry.CheckIn`
+clears `agents.pending_command` in the same transaction that hands it
+to the agent, before the agent has any chance to confirm it executed
+the command. This is a deliberate, disclosed asymmetry from
+`DesiredOverride`'s "keep re-offering until the agent's
+`applied_override_version` matches" semantics: a restarting agent's
+process is gone before it could ever send that confirmation, so waiting
+for one isn't possible. A command lost to a network blip between the
+response and the agent acting on it is simply lost -- re-issuing (`PUT
+/agents/{host}/command` again) is the operator's recourse, the same as
+it would be for a `systemctl restart` that silently failed to reach its
+target.
+
+Only `restart` exists today. `stop` and `uninstall` remain deliberately
+deferred -- both need real OS service-manager integration (systemd's
+`Restart=`/`RestartPreventExitStatus=` semantics vs. Windows SCM
+recovery options differ enough per platform that hand-waving them would
+be dishonest), which `restart` doesn't: the agent does a graceful
+shutdown (flushing whatever's buffered via `Batcher::flush_all`,
+aborting the source task) and then a clean `std::process::exit(0)`,
+relying entirely on whatever restart policy the host's service manager
+already has configured -- the same contract any well-behaved service
+already expects. `api/agents.Store.IssueCommand`/the `agents` table's
+`pending_command` column are written generically enough that adding
+`stop`/`uninstall` later is a real per-platform agent-side
+implementation, not a data-model change.
+
+Logged into the same append-only `audit_log` table as everything else
+privileged in this codebase (`event_type = 'agent_command'`,
+`metadata/migrations/0039`), via `enterprise/internal/audit.
+AgentCommandLogger` (`api/agents.CommandLogger`, nil-by-default in core
+same as every other optional audit hook) -- fail-open, same posture as
+Phase 7's AI-interaction logging: a write failure is logged server-side
+and never turns a legitimate restart into a 500.
+
+**A real bug was found and fixed while verifying this live.** The
+first version of `agentregistry.Registry.CheckIn` tried to read-and-
+clear `pending_command` atomically using a single `INSERT ... ON
+CONFLICT` statement with a sibling read-only CTE referenced only from
+`RETURNING`, on the assumption that Postgres evaluates every part of a
+`WITH` query against the same pre-statement snapshot. That assumption
+is wrong specifically for `FOR UPDATE`: it always locks (and therefore
+reads) the *latest* row version to do its job, including a version
+written earlier in the very same statement -- confirmed empirically
+against a live Postgres (the CTE's `FOR UPDATE` was reading its own
+sibling `UPDATE`'s just-cleared `NULL`, so `pending_command` always
+came back empty even when a command was genuinely pending, and the
+agent never received it). Live verification caught this immediately: a
+restart command showed `pending_command: "restart"` in the API
+response, but the agent never logged receiving it and never exited.
+Fixed by splitting into two real, ordered statements inside one
+explicit transaction (`SELECT ... FOR UPDATE` strictly happens-before
+the clearing `UPDATE`) -- unambiguous, no snapshot-timing subtlety to
+get wrong.
 
 ## Verified live
 
-See the runbook entry (task follow-up) for the full walkthrough: a real
-agent binary, its heartbeat/CheckIn cadence pointed at a live
-`ingest` with `AGENT_REGISTRY_POSTGRES_ADDR` configured, confirming (a)
-the agent appears in `GET /agents` after its first check-in, (b) an
-edit made via `PUT /agents/{host}/config` shows `pending: true`
-immediately and `pending: false` after the agent's next check-in, and
-(c) the edited setting (heartbeat interval) visibly takes effect in the
-agent's own behavior — confirmed by the change in cadence of new
-heartbeat rows landing in ClickHouse.
+A real agent binary, its heartbeat/CheckIn cadence pointed at a live
+`ingest` with `AGENT_REGISTRY_POSTGRES_ADDR` configured, confirming: the
+agent appears in `GET /agents` after its first check-in; an edit made
+via `PUT /agents/{host}/config` shows `pending: true` immediately and
+`pending: false` after the agent's next check-in; the edited setting
+(heartbeat interval) visibly takes effect in the agent's own behavior,
+confirmed by the change in cadence of new heartbeat rows landing in
+ClickHouse; a journald-unit override triggers a real source-task
+restart, reflected in the next reported `source_detail`; and (after the
+bug above was fixed) a restart command issued via `PUT /agents/{host}/
+command` is picked up on the agent's very next check-in, logged
+(`"received remote restart command, shutting down gracefully"`), and
+the process exits cleanly -- `pending_command` confirmed cleared and
+`ps` confirming the process gone.
+

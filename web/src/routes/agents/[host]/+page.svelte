@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getAgent, setAgentConfig, clearAgentConfig, type Agent } from '$lib/api';
+	import { getAgent, setAgentConfig, clearAgentConfig, issueAgentCommand, type Agent } from '$lib/api';
 	import { Badge, Button, Input, Skeleton } from '$lib/components/ui';
 
 	const host = page.params.host!;
@@ -79,6 +79,33 @@
 			saveError = e instanceof Error ? e.message : String(e);
 		} finally {
 			saving = false;
+		}
+	}
+
+	// Two-step arm/confirm rather than a single click -- restart briefly
+	// interrupts log collection for this one host, a higher blast
+	// radius than the config edits above (which never take effect until
+	// the agent's own next check-in, and never disrupt anything by
+	// themselves). Resets if the user navigates the form instead of
+	// confirming.
+	let restartArmed = $state(false);
+	let restarting = $state(false);
+	let restartError = $state('');
+
+	async function restart() {
+		if (!restartArmed) {
+			restartArmed = true;
+			return;
+		}
+		restarting = true;
+		restartError = '';
+		try {
+			agent = await issueAgentCommand(host, 'restart');
+		} catch (e) {
+			restartError = e instanceof Error ? e.message : String(e);
+		} finally {
+			restarting = false;
+			restartArmed = false;
 		}
 	}
 
@@ -162,6 +189,32 @@
 				{/if}
 			</div>
 		</section>
+
+		<section class="lifecycle">
+			<h2>Lifecycle</h2>
+			<p class="hint">
+				Restart tells the agent to shut down gracefully (flushing anything buffered first) and exit -- it relies on the
+				host's own service manager (systemd, Windows SCM) to bring it back up, same as this agent already expects from
+				a normal crash or `systemctl restart`. Delivered on the agent's next check-in; there's no confirmation once
+				it's been handed out, since a restarting agent can't report back before its process exits.
+			</p>
+			{#if agent.command_issued_at}
+				<p class="hint">
+					Last restart issued {relativeTime(agent.command_issued_at)}{agent.command_issued_by
+						? ` by ${agent.command_issued_by}`
+						: ''}.
+				</p>
+			{/if}
+			{#if restartError}<p class="error">Error: {restartError}</p>{/if}
+			<div class="actions">
+				{#if restartArmed}
+					<Button variant="danger" onclick={restart} disabled={restarting}>Confirm restart</Button>
+					<Button variant="secondary" onclick={() => (restartArmed = false)} disabled={restarting}>Cancel</Button>
+				{:else}
+					<Button variant="secondary" onclick={restart}>Restart agent</Button>
+				{/if}
+			</div>
+		</section>
 	{/if}
 </main>
 
@@ -194,6 +247,9 @@
 	}
 	.reported {
 		margin-bottom: var(--space-6);
+	}
+	.lifecycle {
+		margin-top: var(--space-6);
 	}
 	dl {
 		display: grid;

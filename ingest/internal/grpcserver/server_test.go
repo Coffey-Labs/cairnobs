@@ -59,20 +59,23 @@ type fakeAgentRegistry struct {
 	mu        sync.Mutex
 	checkIns  []AgentCheckIn
 	overrides map[string]AgentOverride
+	commands  map[string]string
 	err       error
 }
 
-func (f *fakeAgentRegistry) CheckIn(_ context.Context, tenantID string, info AgentCheckIn) (AgentOverride, error) {
+func (f *fakeAgentRegistry) CheckIn(_ context.Context, tenantID string, info AgentCheckIn) (CheckInResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
-		return AgentOverride{}, f.err
+		return CheckInResult{}, f.err
 	}
 	f.checkIns = append(f.checkIns, info)
-	if f.overrides == nil {
-		return AgentOverride{HasOverride: false}, nil
+	key := tenantID + "/" + info.Host
+	result := CheckInResult{Command: f.commands[key]}
+	if f.overrides != nil {
+		result.Override = f.overrides[key]
 	}
-	return f.overrides[tenantID+"/"+info.Host], nil
+	return result, nil
 }
 
 func newTestServer(p batchProducer) *Server {
@@ -372,5 +375,31 @@ func TestCheckInWithResolverRejectsMissingToken(t *testing.T) {
 	_, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{Host: "web-01", CurrentConfig: &agentv1.ReportedConfig{}})
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("CheckIn() error = %v, want Unauthenticated", err)
+	}
+}
+
+func TestCheckInDeliversPendingRestartCommand(t *testing.T) {
+	reg := &fakeAgentRegistry{commands: map[string]string{"/web-01": AgentCommandRestart}}
+	s := newTestServerWithAgents(reg)
+
+	resp, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{Host: "web-01", CurrentConfig: &agentv1.ReportedConfig{}})
+	if err != nil {
+		t.Fatalf("CheckIn() error = %v", err)
+	}
+	if resp.GetPendingCommand() != agentv1.AgentCommand_AGENT_COMMAND_RESTART {
+		t.Fatalf("PendingCommand = %v, want AGENT_COMMAND_RESTART", resp.GetPendingCommand())
+	}
+}
+
+func TestCheckInNoCommandReportsUnspecified(t *testing.T) {
+	reg := &fakeAgentRegistry{}
+	s := newTestServerWithAgents(reg)
+
+	resp, err := s.CheckIn(context.Background(), &agentv1.CheckInRequest{Host: "web-01", CurrentConfig: &agentv1.ReportedConfig{}})
+	if err != nil {
+		t.Fatalf("CheckIn() error = %v", err)
+	}
+	if resp.GetPendingCommand() != agentv1.AgentCommand_AGENT_COMMAND_UNSPECIFIED {
+		t.Fatalf("PendingCommand = %v, want AGENT_COMMAND_UNSPECIFIED", resp.GetPendingCommand())
 	}
 }

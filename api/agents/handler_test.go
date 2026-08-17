@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -78,8 +79,33 @@ func (f *fakeStore) ClearOverride(_ context.Context, tenantID, host string) erro
 	return nil
 }
 
+func (f *fakeStore) IssueCommand(_ context.Context, tenantID, host, command, issuedBy string) (*Agent, error) {
+	a, ok := f.agents[tenantID+"/"+host]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	a.PendingCommand = command
+	a.CommandIssuedBy = issuedBy
+	cp := *a
+	return &cp, nil
+}
+
+// fakeCommandLogger records LogCommand calls for assertions; nil-safe
+// callers should use a nil *fakeCommandLogger the same way production
+// code treats a nil CommandLogger, but tests that want to assert
+// logging happened construct a real one.
+type fakeCommandLogger struct {
+	entries []CommandLogEntry
+	err     error
+}
+
+func (f *fakeCommandLogger) LogCommand(_ context.Context, entry CommandLogEntry) error {
+	f.entries = append(f.entries, entry)
+	return f.err
+}
+
 func newTestHandler(s *fakeStore) *Handler {
-	return NewHandler(discardLogger(), s, nil)
+	return NewHandler(discardLogger(), s, nil, nil)
 }
 
 func doRequest(t *testing.T, h *Handler, method, path string, body any) *httptest.ResponseRecorder {
@@ -200,12 +226,81 @@ func TestRequireEditorRoleForConfigWrites(t *testing.T) {
 	s := newFakeStore()
 	s.put(Agent{TenantID: "default", Host: "web-01"})
 	authorizer := fakeAuthorizer{role: authz.RoleViewer}
-	h := NewHandler(discardLogger(), s, authorizer)
+	h := NewHandler(discardLogger(), s, authorizer, nil)
 
 	interval := int64(30000)
 	rec := doRequest(t, h, "PUT", "/agents/web-01/config", ConfigOverride{HeartbeatIntervalMS: &interval})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 (Viewer must not be able to edit agent config)", rec.Code)
+	}
+}
+
+func TestHandleIssueCommandRoundTrips(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	logger := &fakeCommandLogger{}
+	h := NewHandler(discardLogger(), s, nil, logger)
+
+	rec := doRequest(t, h, "PUT", "/agents/web-01/command", map[string]string{"command": "restart"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var got Agent
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.PendingCommand != "restart" {
+		t.Fatalf("PendingCommand = %q, want restart", got.PendingCommand)
+	}
+	if len(logger.entries) != 1 || logger.entries[0].Command != "restart" || logger.entries[0].Host != "web-01" {
+		t.Fatalf("unexpected audit log entries: %+v", logger.entries)
+	}
+}
+
+func TestHandleIssueCommandRejectsUnknownCommand(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	h := newTestHandler(s)
+
+	rec := doRequest(t, h, "PUT", "/agents/web-01/command", map[string]string{"command": "uninstall"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (uninstall is not a supported command yet)", rec.Code)
+	}
+}
+
+func TestHandleIssueCommandUnknownHostIsNotFound(t *testing.T) {
+	h := newTestHandler(newFakeStore())
+	rec := doRequest(t, h, "PUT", "/agents/nope/command", map[string]string{"command": "restart"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// TestHandleIssueCommandFailOpenOnLoggerError is the regression test
+// for CommandLogger's documented fail-open posture: an audit-log write
+// failure must not turn a legitimate command issuance into an error
+// response.
+func TestHandleIssueCommandFailOpenOnLoggerError(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	logger := &fakeCommandLogger{err: errors.New("audit db unreachable")}
+	h := NewHandler(discardLogger(), s, nil, logger)
+
+	rec := doRequest(t, h, "PUT", "/agents/web-01/command", map[string]string{"command": "restart"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 even though the audit logger failed", rec.Code)
+	}
+}
+
+func TestRequireAdminRoleForCommands(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	authorizer := fakeAuthorizer{role: authz.RoleEditor}
+	h := NewHandler(discardLogger(), s, authorizer, nil)
+
+	rec := doRequest(t, h, "PUT", "/agents/web-01/command", map[string]string{"command": "restart"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (Editor must not be able to issue lifecycle commands, only Admin+)", rec.Code)
 	}
 }
 

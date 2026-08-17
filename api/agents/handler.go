@@ -18,28 +18,58 @@ type store interface {
 	Get(ctx context.Context, tenantID, host string) (*Agent, error)
 	SetOverride(ctx context.Context, tenantID, host string, override ConfigOverride, updatedBy string) (*Agent, error)
 	ClearOverride(ctx context.Context, tenantID, host string) error
+	IssueCommand(ctx context.Context, tenantID, host, command, issuedBy string) (*Agent, error)
+}
+
+// CommandLogger records an issued lifecycle command into the Phase 4
+// audit trail -- same nil-by-default, fail-open shape as
+// aiapi.InteractionLogger and queryapi.AuditLogger: a single-tenant
+// deployment with no enterprise/ configured just doesn't log these.
+// enterprise/internal/audit supplies the real implementation
+// (event_type = 'agent_command', see
+// metadata/migrations/0039_add_agent_command_event_type.sql) -- this is
+// the one entry point in this package genuinely worth logging even
+// without enterprise/ wired, given "strict RBAC, full audit trail" was
+// the explicit precondition for building lifecycle commands at all (see
+// /docs/agent-management-design.md); it degrades gracefully rather than
+// being required, matching every other optional audit hook in this
+// codebase, but a real deployment should wire it.
+type CommandLogger interface {
+	LogCommand(ctx context.Context, entry CommandLogEntry) error
+}
+
+type CommandLogEntry struct {
+	Host     string
+	Command  string
+	IssuedBy string
 }
 
 type Handler struct {
 	logger     *slog.Logger
 	store      store
 	authorizer authz.Authorizer
+	commands   CommandLogger
 }
 
-func NewHandler(logger *slog.Logger, store store, authorizer authz.Authorizer) *Handler {
-	return &Handler{logger: logger, store: store, authorizer: authorizer}
+// commands may be nil -- see CommandLogger's doc comment.
+func NewHandler(logger *slog.Logger, store store, authorizer authz.Authorizer, commands CommandLogger) *Handler {
+	return &Handler{logger: logger, store: store, authorizer: authorizer, commands: commands}
 }
 
 // RegisterRoutes: viewing inventory is RoleViewer (same bar as viewing
 // a dashboard); editing an agent's remote config is RoleEditor -- an
 // operational-tuning action, not an admin-only one, matching the RBAC
 // matrix's treatment of alert rules/notification targets rather than
-// user/role management.
+// user/role management. Issuing a lifecycle command is RoleAdmin --
+// stricter than config editing, matching the matrix's treatment of
+// similarly consequential actions (e.g. deleting a notification
+// target) rather than day-to-day tuning.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /agents", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleList))
 	mux.HandleFunc("GET /agents/{host}", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleGet))
 	mux.HandleFunc("PUT /agents/{host}/config", authz.RequireRole(h.authorizer, authz.RoleEditor, h.handleSetConfig))
 	mux.HandleFunc("DELETE /agents/{host}/config", authz.RequireRole(h.authorizer, authz.RoleEditor, h.handleClearConfig))
+	mux.HandleFunc("PUT /agents/{host}/command", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleIssueCommand))
 }
 
 // tenantID mirrors dashboards.Handler.tenantID exactly -- resolved from
@@ -103,6 +133,43 @@ func (h *Handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		h.writeStoreErr(w, err, "setting agent config")
 		return
 	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+type issueCommandRequest struct {
+	Command string `json:"command"`
+}
+
+// handleIssueCommand queues a one-shot lifecycle command -- see
+// Store.IssueCommand's doc comment for the delivery/clearing semantics.
+// Logs to CommandLogger fail-open (a write failure is logged server-
+// side and otherwise ignored, same posture as aiapi's interaction
+// logging): audit-trail completeness matters, but it shouldn't be able
+// to turn a legitimate restart request into a 500.
+func (h *Handler) handleIssueCommand(w http.ResponseWriter, r *http.Request) {
+	var req issueCommandRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if !validCommand(req.Command) {
+		writeError(w, http.StatusBadRequest, `command must be "restart"`)
+		return
+	}
+
+	host := r.PathValue("host")
+	issuedBy := h.updatedBy(r)
+	a, err := h.store.IssueCommand(r.Context(), h.tenantID(r), host, req.Command, issuedBy)
+	if err != nil {
+		h.writeStoreErr(w, err, "issuing agent command")
+		return
+	}
+
+	if h.commands != nil {
+		if err := h.commands.LogCommand(r.Context(), CommandLogEntry{Host: host, Command: req.Command, IssuedBy: issuedBy}); err != nil {
+			h.logger.Error("logging agent command to audit trail", "host", host, "command", req.Command, "error", err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, a)
 }
 

@@ -165,7 +165,11 @@ func main() {
 
 	queryHandler := queryapi.NewHandler(logger, registry, search, cfg.QueryTimeout, auditLogger, authorizer)
 	dashboardsHandler := dashboards.NewHandler(logger, dashboards.NewStore(pgPool), authorizer, rbacstore.NewDashboardPermissions(rbac))
-	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer)
+	// Reuses the same audit_writer-role pool/store auditLogger above
+	// writes through -- same append-only audit_log table, new
+	// event_type (see metadata/migrations/0039).
+	commandLogger := audit.NewAgentCommandLogger(audit.NewStore(auditPool), audit.SourceAPI)
+	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer, commandLogger)
 
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux) // also registers GET /healthz

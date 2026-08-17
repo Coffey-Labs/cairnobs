@@ -71,9 +71,39 @@ message DesiredOverride {
   string version = 6;
 }
 
+// AgentCommand is a one-shot action, not a persistent desired state like
+// DesiredOverride -- delivered at-most-once (see CheckInResponse's
+// comment). Scoped deliberately narrow: only RESTART exists today.
+// STOP and UNINSTALL are real, disclosed future work, not oversights --
+// both need genuine OS service-manager integration (systemd's
+// Restart=/RestartPreventExitStatus= semantics vs. Windows SCM recovery
+// options are different enough per platform that hand-waving them would
+// be dishonest), which RESTART doesn't: a graceful shutdown followed by
+// a clean process exit, relying on whatever restart policy the host's
+// service manager already has configured -- the same contract systemd/
+// SCM already expect from any well-behaved service.
+enum AgentCommand {
+  AGENT_COMMAND_UNSPECIFIED = 0;
+  AGENT_COMMAND_RESTART = 1;
+}
+
 message CheckInResponse {
   // False when no override has ever been set for this agent -- it
   // should be running whatever agent.toml already has, untouched.
   bool has_override = 1;
   DesiredOverride override = 2;
+  // AGENT_COMMAND_UNSPECIFIED when there's nothing to do. Unlike
+  // DesiredOverride, there is no "applied_command_version" echoed back
+  // in CheckInRequest: the server clears a pending command the moment
+  // it hands it out in a response (see
+  // ingest/internal/agentregistry.Registry.CheckIn), not once the agent
+  // confirms execution -- a restarting agent's process is gone before
+  // it could ever send that confirmation. This is an honest at-most-
+  // once delivery, not at-least-once: a command lost to a network
+  // failure between this response and the agent acting on it is simply
+  // lost, same as any fire-and-forget signal. Re-issuing (PUT
+  // /agents/{host}/command again) is the operator's recourse, same as
+  // it would be for a `systemctl restart` that silently failed to reach
+  // its target.
+  AgentCommand pending_command = 3;
 }
