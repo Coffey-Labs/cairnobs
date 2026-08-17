@@ -63,7 +63,19 @@ func main() {
 	count := flag.Int("count", 1_000_000, "total number of records to generate")
 	batchSize := flag.Int("batch-size", 1000, "records per PushBatch call")
 	concurrency := flag.Int("concurrency", 16, "concurrent PushBatch calls in flight")
+	timeSpread := flag.Duration("time-spread", 0, "spread record timestamps uniformly at random across [now-spread, now] instead of all landing at ~now -- 0 (default) preserves the original all-at-now behavior the volume benchmark wants; a real duration (e.g. 6h) is for building a demo/exploration dataset with a real time axis")
+	includeFatal := flag.Bool("include-fatal", false, "include a low-frequency FATAL severity in the mix (off by default -- the volume benchmark's severity mix is deliberately unchanged unless asked for)")
 	flag.Parse()
+
+	recordSeverities := severites
+	if *includeFatal {
+		// Triple the existing 6-entry pool and append FATAL once, so it
+		// lands at roughly 1-in-19 -- rare relative to ERROR, matching
+		// how a real incident's FATAL/critical rate compares to its
+		// error rate, not a coin-flip mix.
+		recordSeverities = append(append(append([]logsv1.Severity{}, severites...), severites...), severites...)
+		recordSeverities = append(recordSeverities, logsv1.Severity_SEVERITY_FATAL)
+	}
 
 	tlsConf, err := loadTLSConfig(*caFile, *certFile, *keyFile)
 	if err != nil {
@@ -106,7 +118,7 @@ func main() {
 				}
 				records := make([]*logsv1.LogRecord, n)
 				for i := range records {
-					records[i] = randomRecord()
+					records[i] = randomRecord(recordSeverities, *timeSpread)
 				}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -136,12 +148,16 @@ func main() {
 	fmt.Printf("done: %d records in %s (%.0f records/sec)\n", total, elapsed, float64(total)/elapsed.Seconds())
 }
 
-func randomRecord() *logsv1.LogRecord {
+func randomRecord(recordSeverities []logsv1.Severity, timeSpread time.Duration) *logsv1.LogRecord {
+	ts := time.Now()
+	if timeSpread > 0 {
+		ts = ts.Add(-time.Duration(rand.Int63n(int64(timeSpread))))
+	}
 	return &logsv1.LogRecord{
-		TimestampUnixNano: time.Now().UnixNano(),
+		TimestampUnixNano: ts.UnixNano(),
 		Host:              hosts[rand.Intn(len(hosts))],
 		Service:           services[rand.Intn(len(services))],
-		Severity:          severites[rand.Intn(len(severites))],
+		Severity:          recordSeverities[rand.Intn(len(recordSeverities))],
 		Message:           messages[rand.Intn(len(messages))],
 		Attributes: map[string]string{
 			"status":     fmt.Sprintf("%d", []int{200, 200, 200, 301, 404, 500, 503}[rand.Intn(7)]),
