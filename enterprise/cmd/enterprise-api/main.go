@@ -42,6 +42,9 @@ import (
 	chdriver "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/ai/aiapi"
+	"github.com/sentry/sentry/api/ai/provider/ollama"
+	"github.com/sentry/sentry/api/ai/router"
 	"github.com/sentry/sentry/api/authz"
 	"github.com/sentry/sentry/api/dashboards"
 	"github.com/sentry/sentry/api/httpserver"
@@ -50,11 +53,16 @@ import (
 	"github.com/sentry/sentry/enterprise/internal/apiconfig"
 	"github.com/sentry/sentry/enterprise/internal/audit"
 	"github.com/sentry/sentry/enterprise/internal/chrunner"
+	"github.com/sentry/sentry/enterprise/internal/groundingregistry"
 	"github.com/sentry/sentry/enterprise/internal/rbacstore"
 	"github.com/sentry/sentry/enterprise/internal/searchclient"
 	"github.com/sentry/sentry/enterprise/internal/tenantcrd"
 	"github.com/sentry/sentry/enterprise/internal/tenantprovision"
 )
+
+// groundingRefreshInterval matches api/cmd/api's own constant of the
+// same name and reasoning -- see that file's doc comment.
+const groundingRefreshInterval = time.Minute
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -160,6 +168,27 @@ func main() {
 	mux := http.NewServeMux()
 	queryHandler.RegisterRoutes(mux) // also registers GET /healthz
 	dashboardsHandler.RegisterRoutes(mux)
+
+	// Same "off unless OLLAMA_BASE_URL is set" gate as api/cmd/api --
+	// see that file's doc comment.
+	if cfg.AI.OllamaBaseURL != "" {
+		groundingReg := groundingregistry.New(registry)
+		groundingReg.StartRefreshing(ctx, rbac.ListActiveTenantIDs, groundingRefreshInterval, logger)
+
+		defaultProvider := ollama.New(cfg.AI.OllamaBaseURL, cfg.AI.OllamaModel)
+		aiRouter := router.New(defaultProvider)
+		if cfg.AI.OllamaFastModel != "" && cfg.AI.OllamaFastModel != cfg.AI.OllamaModel {
+			aiRouter.SetOperation(router.OpComplete, ollama.New(cfg.AI.OllamaBaseURL, cfg.AI.OllamaFastModel))
+		}
+
+		// Reuses the same audit_writer-role pool/store auditLogger above
+		// writes through -- same append-only audit_log table, new
+		// event_type (see metadata/migrations/0036).
+		interactionLogger := audit.NewAIInteractionLogger(audit.NewStore(auditPool), audit.SourceAPI)
+		aiHandler := aiapi.NewHandler(logger, aiRouter, groundingReg, authorizer, interactionLogger)
+		aiHandler.RegisterRoutes(mux)
+		logger.Info("ai routes enabled", "ollama_base_url", cfg.AI.OllamaBaseURL, "model", cfg.AI.OllamaModel)
+	}
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,

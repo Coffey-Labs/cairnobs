@@ -13,6 +13,7 @@ search/target/
 /hack/benchmark-fixture/benchmark-fixture
 /hack/alert-load-test/alert-load-test
 /hack/webhook-sink/webhook-sink
+/hack/mock-ollama/mock-ollama
 
 # Node / SvelteKit (web/ has its own more detailed .gitignore too)
 web/node_modules/

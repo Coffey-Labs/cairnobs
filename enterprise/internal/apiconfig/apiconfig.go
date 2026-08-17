@@ -48,6 +48,23 @@ type Config struct {
 	// Deployments with no Kubernetes cluster at all (docker-compose)
 	// never set this.
 	TenantCRDNamespace string
+	// AI gates Phase 7's AI-assisted query features, same shape and same
+	// env var names as api/internal/config.AIConfig -- duplicated rather
+	// than imported (that package is under api/internal/, which Go's
+	// internal/ visibility rule blocks a separate module like this one
+	// from importing at all, the same constraint that already moved
+	// querylang/executor and dashboards out of internal/ in earlier
+	// phases) -- matches this file's own existing pattern of
+	// independently defining every field even where it overlaps with
+	// api/internal/config's (Postgres, SearchGRPCAddr, and so on), not a
+	// new inconsistency introduced here.
+	AI AIConfig
+}
+
+type AIConfig struct {
+	OllamaBaseURL   string
+	OllamaModel     string
+	OllamaFastModel string
 }
 
 type ClickHouseAdminConfig struct {
@@ -83,6 +100,11 @@ func Load() (Config, error) {
 			Database: getenv("POSTGRES_DATABASE", "sentry_metadata"),
 			Username: getenv("POSTGRES_USERNAME", "sentry"),
 			Password: getenv("POSTGRES_PASSWORD", ""),
+		},
+		AI: AIConfig{
+			OllamaBaseURL:   getenv("OLLAMA_BASE_URL", ""),
+			OllamaModel:     getenv("OLLAMA_MODEL", "qwen2.5-coder:7b"),
+			OllamaFastModel: getenv("OLLAMA_FAST_MODEL", "qwen2.5-coder:1.5b"),
 		},
 		AuditWriter: AuditWriterConfig{
 			Username: getenv("AUDIT_WRITER_USERNAME", "audit_writer"),

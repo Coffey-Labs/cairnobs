@@ -13,6 +13,7 @@ package audit
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sentry/sentry/api/ai/aiapi"
 	"github.com/sentry/sentry/api/authz"
 	"github.com/sentry/sentry/api/queryapi"
 )
@@ -137,6 +139,74 @@ func TestQueryAPILoggerRefusesWithoutIdentity(t *testing.T) {
 	err := logger.LogQuery(context.Background(), queryapi.QueryAuditEntry{Query: "stats count", Success: true})
 	if err == nil {
 		t.Fatal("expected LogQuery to refuse writing an entry with no tenant identity in context")
+	}
+}
+
+// TestAIInteractionLoggerWritesAttributedToContextIdentity is
+// AIInteractionLogger's counterpart to TestQueryAPILoggerWritesAttributedToContextIdentity
+// above (Phase 7 task 12) -- same "reads identity from ctx" contract,
+// plus a check that Detail actually round-trips the operation/
+// confidence/accepted/edited fields that don't have dedicated columns.
+func TestAIInteractionLoggerWritesAttributedToContextIdentity(t *testing.T) {
+	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
+	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	cleanupAuditLog(t, adminPool)
+	defer cleanupAuditLog(t, adminPool)
+
+	logger := NewAIInteractionLogger(NewStore(writerPool), SourceAPI)
+	ctx := authz.WithIdentity(context.Background(), authz.Identity{TenantID: "acme", UserID: "22222222-2222-2222-2222-222222222222", Role: authz.RoleViewer})
+
+	err := logger.LogInteraction(ctx, aiapi.InteractionEntry{
+		Operation:  "translate",
+		Input:      "errors in the last hour",
+		Output:     "earliest=-1h severity=ERROR",
+		Confidence: "high",
+		Accepted:   true,
+		Edited:     false,
+		FinalQuery: "earliest=-1h severity=ERROR",
+	})
+	if err != nil {
+		t.Fatalf("LogInteraction: %v", err)
+	}
+
+	var tenantID, userID, eventType, queryText string
+	var detail []byte
+	row := adminPool.QueryRow(context.Background(),
+		`SELECT tenant_id, user_id, event_type, query_text, detail FROM audit_log ORDER BY id DESC LIMIT 1`)
+	if err := row.Scan(&tenantID, &userID, &eventType, &queryText, &detail); err != nil {
+		t.Fatalf("reading back the written row: %v", err)
+	}
+	if tenantID != "acme" || userID != "22222222-2222-2222-2222-222222222222" {
+		t.Fatalf("got tenant_id=%q user_id=%q, want acme/22222222-...", tenantID, userID)
+	}
+	if eventType != "ai_interaction" {
+		t.Fatalf("event_type = %q, want ai_interaction", eventType)
+	}
+	if queryText != "earliest=-1h severity=ERROR" {
+		t.Fatalf("query_text = %q, want the final query", queryText)
+	}
+	var parsed struct {
+		Operation string `json:"operation"`
+		Accepted  bool   `json:"accepted"`
+	}
+	if err := json.Unmarshal(detail, &parsed); err != nil {
+		t.Fatalf("unmarshaling detail: %v", err)
+	}
+	if parsed.Operation != "translate" || !parsed.Accepted {
+		t.Fatalf("detail = %+v, want operation=translate accepted=true", parsed)
+	}
+}
+
+func TestAIInteractionLoggerRefusesWithoutIdentity(t *testing.T) {
+	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
+	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	cleanupAuditLog(t, adminPool)
+	defer cleanupAuditLog(t, adminPool)
+
+	logger := NewAIInteractionLogger(NewStore(writerPool), SourceAPI)
+	err := logger.LogInteraction(context.Background(), aiapi.InteractionEntry{Operation: "fix", Accepted: false})
+	if err == nil {
+		t.Fatal("expected LogInteraction to refuse writing an entry with no tenant identity in context")
 	}
 }
 

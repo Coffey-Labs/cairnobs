@@ -1,5 +1,6 @@
 // Command enterprise-auth is Sentry's SSO/tenant-provisioning/RBAC
-// service (commercial license, not AGPL) -- see
+// service (AGPLv3, same as core -- see
+// /docs/compliance/license-audit-report.md) -- see
 // /docs/phase-4-isolation-design.md and /docs/phase-4-rbac-design.md.
 //
 // Wires session issuance/validation (internal/session), the
