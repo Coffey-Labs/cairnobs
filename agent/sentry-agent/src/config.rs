@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[cfg(not(windows))]
 const DEFAULT_CONFIG_PATH: &str = "/etc/sentry-agent/agent.toml";
@@ -13,6 +14,7 @@ pub struct Config {
     pub agent: AgentConfig,
     pub source: SourceConfig,
     pub batch: BatchConfig,
+    pub heartbeat: HeartbeatConfig,
     pub ingest: IngestConfig,
     pub tls: TlsConfig,
 }
@@ -138,6 +140,100 @@ impl Default for BatchConfig {
             max_size: 500,
             flush_interval_ms: 2000,
         }
+    }
+}
+
+/// Sent independently of `batch` -- a heartbeat is a punctual liveness
+/// signal, not log data, so it bypasses `Batcher` entirely (see
+/// main.rs's `send_heartbeat`) rather than waiting on `max_size`/
+/// `flush_interval_ms` like real records do. This is the operator-facing
+/// "polling resolution" knob: how often this agent proves it's still
+/// alive, which a `condition_type = "absence"` alert rule on the
+/// `sentry.heartbeat` attribute (see /docs/agent-heartbeat-monitoring.md)
+/// turns into "alert when this host goes quiet."
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct HeartbeatConfig {
+    pub enabled: bool,
+    #[serde(deserialize_with = "deserialize_duration")]
+    pub interval: Duration,
+}
+
+impl Default for HeartbeatConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval: Duration::from_secs(60),
+        }
+    }
+}
+
+/// Parses a human-friendly duration string with an explicit unit suffix
+/// -- "30s", "5m", "1h" -- deliberately the same s/m/h vocabulary
+/// `earliest=`/`latest=` use in the query language
+/// (/docs/query-language-reference.md), so the interval you set here and
+/// the window you write in the matching alert rule's query read the same
+/// way. Kept as a small hand-rolled parser rather than pulling in a
+/// duration-parsing crate for this one field -- this is the
+/// statically-linked edge agent every "no glibc runtime deps" constraint
+/// in CLAUDE.md is about keeping lean, and the grammar needed here is a
+/// handful of lines.
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    parse_duration(&s).map_err(serde::de::Error::custom)
+}
+
+fn parse_duration(s: &str) -> Result<Duration, String> {
+    let s = s.trim();
+    let (num, unit) = s.split_at(s.len().saturating_sub(1));
+    let n: u64 = num
+        .parse()
+        .map_err(|_| format!("expected a duration like \"30s\", \"5m\", or \"1h\", got {s:?}"))?;
+    match unit {
+        "s" => Ok(Duration::from_secs(n)),
+        "m" => Ok(Duration::from_secs(n * 60)),
+        "h" => Ok(Duration::from_secs(n * 3600)),
+        _ => Err(format!("expected a time unit of s, m, or h after {n}, got {s:?}")),
+    }
+}
+
+#[cfg(test)]
+mod heartbeat_config_tests {
+    use super::*;
+
+    #[test]
+    fn parses_seconds_minutes_hours() {
+        assert_eq!(parse_duration("30s").unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_duration("5m").unwrap(), Duration::from_secs(300));
+        assert_eq!(parse_duration("2h").unwrap(), Duration::from_secs(7200));
+    }
+
+    #[test]
+    fn rejects_missing_or_unknown_unit() {
+        assert!(parse_duration("30").is_err());
+        assert!(parse_duration("30x").is_err());
+        assert!(parse_duration("").is_err());
+    }
+
+    #[test]
+    fn default_is_60_seconds_and_enabled() {
+        let cfg = HeartbeatConfig::default();
+        assert!(cfg.enabled);
+        assert_eq!(cfg.interval, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn toml_field_parses_via_deserialize() {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            #[serde(default)]
+            heartbeat: HeartbeatConfig,
+        }
+        let w: Wrapper = toml::from_str("[heartbeat]\nenabled = true\ninterval = \"90s\"\n").unwrap();
+        assert_eq!(w.heartbeat.interval, Duration::from_secs(90));
     }
 }
 

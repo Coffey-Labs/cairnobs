@@ -38,6 +38,19 @@ kind = "journald"
 max_size = 500
 flush_interval_ms = 2000
 
+[heartbeat]
+# How often this agent proves it's still alive to the platform, sent as
+# its own record independent of whatever real log traffic is flowing --
+# pair with an "absence" alert rule on the sentry.heartbeat attribute to
+# get paged when a host goes quiet. Accepts a plain number + unit: s
+# (seconds), m (minutes), or h (hours) -- same vocabulary as
+# earliest=/latest= in the query language. See
+# /docs/agent-heartbeat-monitoring.md.
+enabled = true
+interval = "60s"
+# interval = "5m"
+# interval = "1h"
+
 [ingest]
 endpoint = "https://ingest.internal:4317"
 

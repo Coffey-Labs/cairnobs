@@ -26,6 +26,39 @@ func TestParseSimpleFilter(t *testing.T) {
 	}
 }
 
+// TestParseFilterWithHyphenatedValue is a regression test for a real
+// bug in the lexer (isIdentPart excluded '-'): this exact query is
+// /docs/query-language-reference.md's own canonical unquoted example
+// and used to fail with "unexpected MINUS after query".
+func TestParseFilterWithHyphenatedValue(t *testing.T) {
+	q, err := Parse(`host!=host-03`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	cmp, ok := q.Base.Terms[0].(ast.Comparison)
+	if !ok {
+		t.Fatalf("expected Comparison, got %T", q.Base.Terms[0])
+	}
+	if cmp.Field != "host" || cmp.Op != "!=" || cmp.Value != "host-03" {
+		t.Fatalf("unexpected comparison: %+v", cmp)
+	}
+}
+
+// TestParseNegativeTimeExprStillWorks guards against the hyphenated-
+// identifier fix above accidentally swallowing the leading sign
+// earliest=/latest= depend on -- a leading '-' must stay its own token.
+func TestParseNegativeTimeExprStillWorks(t *testing.T) {
+	q, err := Parse(`earliest=-1h`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	earliest := q.Base.Terms[0].(ast.TimeBound)
+	if earliest.Kind != "earliest" || !earliest.Expr.IsRelative || earliest.Expr.RelativeSign != -1 ||
+		earliest.Expr.RelativeN != 1 || earliest.Expr.RelativeUnit != "h" {
+		t.Fatalf("unexpected earliest: %+v", earliest)
+	}
+}
+
 func TestParseFullPipeline(t *testing.T) {
 	q, err := Parse(`service=api | where status>=500 | stats count(*) as errors by host | sort -errors`)
 	if err != nil {

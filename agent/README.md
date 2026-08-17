@@ -135,6 +135,24 @@ See `config/agent.example.toml` for all fields.
 ./sentry-agent --config /path/to/agent.toml
 ```
 
+## Heartbeat and unavailability alerting
+
+Every agent sends a small, independent "still alive" record on its own
+schedule (`[heartbeat]` in the config, default every 60s), separate from
+whatever real log traffic is flowing — see `config/agent.example.toml`.
+This isn't a new wire protocol: it's an ordinary record through the same
+`PushBatch` RPC and mTLS identity every log line uses, tagged with a
+`sentry.heartbeat=true` attribute so it's easy to filter for and doesn't
+show up as noise in normal log views. Set `interval` to a plain number
+plus `s`/`m`/`h` (matches the query language's own `earliest=`/`latest=`
+units); `enabled = false` turns it off entirely.
+
+The platform has no separate "agent status" concept — an agent going
+quiet is just the absence of its heartbeat records, which the existing
+alerting engine already detects natively via an `absence`-condition
+alert rule. See `/docs/agent-heartbeat-monitoring.md` for the exact rule
+to create.
+
 ## Running as a Windows service
 
 "A native Windows service, not a WSL wrapper" means implementing the Win32

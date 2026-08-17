@@ -232,7 +232,13 @@ func isIdentStart(c rune) bool {
 }
 
 // Identifiers allow dots (e.g. winevt.event_id, a real attribute key
-// shape from Phase 1) and digits after the first character.
+// shape from Phase 1), digits, and internal hyphens (e.g. host-03,
+// api-service -- real, common bare-word values with no need for
+// quoting) after the first character. A leading hyphen is deliberately
+// NOT part of isIdentStart -- Minus has to stay its own token there so
+// `earliest=-1h` and `sort -count`'s leading sign still lex correctly;
+// this only affects a hyphen once a token has already started with a
+// real identifier character.
 func isIdentPart(c rune) bool {
-	return isIdentStart(c) || isDigit(c) || c == '.' || c == '_'
+	return isIdentStart(c) || isDigit(c) || c == '.' || c == '_' || c == '-'
 }

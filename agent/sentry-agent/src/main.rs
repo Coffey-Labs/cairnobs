@@ -97,8 +97,20 @@ pub async fn run_agent(config_path: Option<PathBuf>) -> Result<()> {
     let mut batcher = Batcher::new(cfg.batch.max_size, flush_interval);
     let mut ticker = tokio::time::interval(flush_interval.max(Duration::from_millis(50)));
 
+    // Heartbeat's own ticker, independent of the batch flush ticker above
+    // -- it always fires on cfg.heartbeat.interval regardless of
+    // cfg.batch's settings or whether any real log traffic is flowing.
+    // Built unconditionally even when disabled (tokio::time::interval
+    // doesn't fail on construction); the `if cfg.heartbeat.enabled`
+    // select! guard is what actually turns it off, so a disabled
+    // heartbeat costs nothing beyond one idle timer.
+    let mut heartbeat_ticker = tokio::time::interval(cfg.heartbeat.interval.max(Duration::from_millis(50)));
+
     loop {
         tokio::select! {
+            _ = heartbeat_ticker.tick(), if cfg.heartbeat.enabled => {
+                send_heartbeat(&mut client, &host, &service).await;
+            }
             maybe_line = rx.recv() => {
                 let Some(raw) = maybe_line else {
                     tracing::warn!("source exited, flushing remaining batch and shutting down");
@@ -189,6 +201,40 @@ async fn spawn_source(source: config::SourceConfig, tx: source::LineSender) {
     if let Err(e) = result {
         tracing::error!(error = %e, "log source exited with error");
     }
+}
+
+/// Sends a single synthetic record through the same `PushBatch` RPC and
+/// mTLS identity as real log data -- no new proto message, no new ingest
+/// code, no new ClickHouse schema. Bypasses `Batcher` (see the heartbeat
+/// ticker's own comment above): a heartbeat that got queued behind
+/// `batch.max_size` or `batch.flush_interval_ms` would defeat the point
+/// of a punctual "still alive" signal. Distinguished from a real log
+/// record purely by the `sentry.heartbeat` attribute -- `service` stays
+/// the agent's real configured service so it doesn't pollute
+/// service-based dashboards/faceting with a fake value. See
+/// /docs/agent-heartbeat-monitoring.md for how an absence alert rule
+/// turns a run of missed heartbeats into a notification.
+async fn send_heartbeat(client: &mut LogIngestClient<Channel>, host: &str, service: &str) {
+    let record = LogRecord {
+        timestamp_unix_nano: now_unix_nanos(),
+        host: host.to_string(),
+        service: service.to_string(),
+        severity: Severity::Info as i32,
+        message: "agent heartbeat".to_string(),
+        attributes: std::collections::HashMap::from([("sentry.heartbeat".to_string(), "true".to_string())]),
+        record_id: String::new(),
+    };
+    match grpc::send_batch(client, format!("heartbeat-{}", batch_id()), vec![record]).await {
+        Ok(_) => tracing::debug!(host, "heartbeat sent"),
+        Err(e) => tracing::warn!(error = %e, host, "heartbeat send failed"),
+    }
+}
+
+fn now_unix_nanos() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as i64)
+        .unwrap_or(0)
 }
 
 async fn flush(client: &mut LogIngestClient<Channel>, batch: Vec<LogRecord>) {
