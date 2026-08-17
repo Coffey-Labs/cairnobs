@@ -38,6 +38,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdDashboards(args[1:], stdout, stderr)
 	case "alerts":
 		return cmdAlerts(args[1:], stdout, stderr)
+	case "agents":
+		return cmdAgents(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
@@ -59,6 +61,12 @@ Usage:
   sentryctl dashboards permissions grant <dashboard-id> <user-id> viewer|editor [--api <url>]
   sentryctl dashboards permissions revoke <dashboard-id> <user-id> [--api <url>]
   sentryctl alerts list|get <id>|apply <file> [--alerting-api <url>]
+  sentryctl agents list|get <host> [--api <url>]
+  sentryctl agents config get <host>|clear <host> [--api <url>]
+  sentryctl agents config set <host> [--batch-max-size N] [--batch-flush-interval-ms N]
+                              [--heartbeat-enabled true|false] [--heartbeat-interval-ms N]
+                              [--journald-unit UNIT] [--api <url>]
+  sentryctl agents restart <host> [--yes] [--api <url>]
 
 Commands:
   ping        Checks that the api service is reachable via GET /healthz.
@@ -79,6 +87,14 @@ Commands:
   alerts      list/get/apply against alerting's rule CRUD endpoints.
               "apply <file>" creates a rule from a JSON file with the
               same shape POST /rules accepts.
+  agents      Agent inventory, remote config, and lifecycle commands
+              (see /docs/agent-management-design.md). "config set" reads
+              the agent's current effective config first and PUTs back
+              the complete merged override -- only the fields you pass
+              change, everything else carries forward unchanged, same
+              as the web UI's edit form. "restart" briefly interrupts
+              log collection on that host and prompts for confirmation
+              unless --yes is given.
 
 --api defaults to $SENTRYCTL_API_URL, or `+defaultAPIURL+` if unset.
 --alerting-api defaults to $SENTRYCTL_ALERTING_API_URL, or `+defaultAlertingURL+` if unset.

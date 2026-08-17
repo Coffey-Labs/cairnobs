@@ -110,6 +110,27 @@ func httpMutateNoBody(method, baseURL, path, token, body, successMsg string, std
 	return 0
 }
 
+// httpPutJSON PUTs body (already-encoded JSON) to path and prints the
+// pretty-printed JSON response -- same shape as httpPostFileJSON, but
+// for callers that construct the body themselves rather than reading it
+// from a file (agents config set, agents restart).
+func httpPutJSON(baseURL, path, token, body string, stdout, stderr io.Writer) int {
+	req, err := http.NewRequest(http.MethodPut, baseURL+path, strings.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(stderr, "building request: %v\n", err)
+		return 1
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setAuth(req, token)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(stderr, "request failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	return printJSONResponse(resp, stdout, stderr)
+}
+
 func printJSONResponse(resp *http.Response, stdout, stderr io.Writer) int {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

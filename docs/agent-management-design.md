@@ -255,3 +255,59 @@ command` is picked up on the agent's very next check-in, logged
 the process exits cleanly -- `pending_command` confirmed cleared and
 `ps` confirming the process gone.
 
+## CLI surface (punch-list item 3)
+
+`sentryctl agents` (`cli/cmd/sentryctl/cmd_agents.go`), same list/get
+shape as `dashboards`/`alerts`, plus a `config` sub-subcommand
+(mirroring `dashboards permissions`) since an override has its own
+get/set/clear lifecycle distinct from the agent resource itself:
+
+```
+sentryctl agents list|get <host>
+sentryctl agents config get <host>|clear <host>
+sentryctl agents config set <host> [--batch-max-size N] [--batch-flush-interval-ms N]
+                            [--heartbeat-enabled true|false] [--heartbeat-interval-ms N]
+                            [--journald-unit UNIT]
+sentryctl agents restart <host> [--yes]
+```
+
+`config set` is the one command with real logic beyond a thin HTTP
+wrapper: since `PUT /agents/{host}/config` replaces the whole stored
+override (not a per-field patch), the command fetches the agent's
+current effective config first and merges only the flags actually
+passed on top of it -- whatever's already overridden stays overridden,
+whatever isn't falls back to the agent's reported value -- exactly
+mirroring `web/src/routes/agents/[host]/+page.svelte`'s edit form logic
+in Go instead of Svelte. `restart` requires explicit confirmation
+(interactive y/N, or `--yes` for scripted use) and refuses outright on
+a non-interactive stdin without `--yes`, the same posture
+`cmd_query.go`'s `--nl`/`--execute` already established for anything
+that can actually change what's running.
+
+**Verified live**, including the merge logic specifically (the part
+most likely to have a real bug): `config set --heartbeat-interval-ms
+20000` on an agent with no existing override correctly carried forward
+its reported `batch_max_size`/`batch_flush_interval_ms`/
+`heartbeat_enabled`; a second `config set --batch-max-size 750` call
+correctly carried forward the *first* call's `heartbeat_interval_ms:
+20000` override rather than resetting it to the reported `5000` --
+confirming the read-current-then-merge step actually reads the
+override, not just the reported baseline. `config clear` and `restart
+--yes` both round-tripped against the live stack; the restart was
+picked up by the real agent process on its next check-in, logged, and
+the process exited cleanly, closing the loop from a single CLI command
+all the way to real process behavior.
+
+## Punch list: complete
+
+All three items from `/docs/agent-heartbeat-monitoring.md`'s original
+punch list are done: lifecycle commands (restart), fleet-wide alerting
+(via the existing raw-SQL escape hatch, no engine changes), and this
+CLI surface. Real, disclosed remaining gaps, not oversights: `stop`/
+`uninstall` lifecycle commands (need genuine per-platform OS service-
+manager integration), true per-host multi-row alerting from one rule
+(needs the alerting engine's own per-group state tracking, a Phase 3
+non-goal for the whole engine, not agent-specific), and a scripted
+rule-per-host generator (a real alternative to the fleet-wide aggregate
+check, not built since it's tooling that could live under this same CLI
+surface if ever wanted).
