@@ -87,6 +87,34 @@ type AuditWriterConfig struct {
 	Password string
 }
 
+// devOnlyCredential/devOnlyAuditWriterCredential are docker-compose.yml's
+// zero-config defaults -- see api/internal/config.Config.
+// DevCredentialWarnings for the full reasoning (duplicated here per
+// this repo's no-shared-code-between-services convention).
+const (
+	devOnlyCredential            = "sentry-dev-only"
+	devOnlyAuditWriterCredential = "audit-writer-dev-only"
+)
+
+// DevCredentialWarnings reports which configured credentials still
+// equal their literal dev-only defaults -- cmd/enterprise-api/main.go
+// logs each one loudly at startup. A warning, not a startup-refusing
+// error: local dev's zero-config docker-compose.yml path legitimately
+// leaves these at their default values.
+func (c Config) DevCredentialWarnings() []string {
+	var warnings []string
+	if c.ClickHouseAdmin.Password == devOnlyCredential {
+		warnings = append(warnings, "CLICKHOUSE_ADMIN_PASSWORD is still the default dev-only value -- set a real password before this is reachable outside local dev")
+	}
+	if c.Postgres.Password == devOnlyCredential {
+		warnings = append(warnings, "POSTGRES_PASSWORD is still the default dev-only value -- set a real password before this is reachable outside local dev")
+	}
+	if c.AuditWriter.Password == devOnlyAuditWriterCredential {
+		warnings = append(warnings, "AUDIT_WRITER_PASSWORD is still the default dev-only value -- set a real password before this is reachable outside local dev")
+	}
+	return warnings
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPListenAddr: getenv("HTTP_LISTEN_ADDR", ":8083"),

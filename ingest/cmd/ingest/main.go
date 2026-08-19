@@ -69,6 +69,9 @@ func main() {
 		logger.Error("loading config", "error", err)
 		os.Exit(1)
 	}
+	for _, w := range cfg.DevCredentialWarnings() {
+		logger.Warn(w)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

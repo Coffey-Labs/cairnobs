@@ -14,6 +14,18 @@ export const alertingBase = import.meta.env.VITE_ALERTING_API_BASE_URL ?? 'http:
 // disabled, no broken links.
 export const enterpriseAuthBase = import.meta.env.VITE_ENTERPRISE_AUTH_BASE_URL as string | undefined;
 
+// Local login (see api/localauth's package doc comment). Baked in at
+// build time same as the base URLs above -- requestFrom/alertingRequest
+// below only send `credentials: 'include'` when this is true, since
+// api's/alerting's own CORS stays the permissive wildcard-friendly
+// WithCORS (no Access-Control-Allow-Credentials) unless the deployment
+// set LOCAL_AUTH_ENABLED server-side too -- browsers categorically
+// refuse to combine a credentialed fetch with a wildcard
+// Access-Control-Allow-Origin, so sending credentials unconditionally
+// would break every plain `docker compose up` local-dev deployment,
+// which never sets either of these.
+export const localAuthEnabled = import.meta.env.VITE_LOCAL_AUTH_ENABLED === 'true';
+
 export type Language = '' | 'sql' | 'spl';
 
 // warnings (Phase 7) is populated by the shared costguard package's
@@ -59,6 +71,7 @@ class ApiError extends Error {}
 async function requestFrom<T>(base: string, path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${base}${path}`, {
 		headers: { 'Content-Type': 'application/json' },
+		...(localAuthEnabled ? { credentials: 'include' as RequestCredentials } : {}),
 		...init
 	});
 	if (!res.ok) {
@@ -393,6 +406,74 @@ export function injectTimeRange(query: string, earliest: string, latest: string)
 	return `${clauses.join(' ')} ${query}`;
 }
 
+// --- local login (single-tenant mode, see api/localauth) --------------
+
+export type LocalSession = { user_id: string; tenant_id: string; username: string; role: string };
+
+export function login(username: string, password: string): Promise<LocalSession & { token: string }> {
+	return request('/auth/login', {
+		method: 'POST',
+		credentials: 'include',
+		body: JSON.stringify({ username, password })
+	});
+}
+
+export function logout(): Promise<void> {
+	return request('/auth/logout', { method: 'POST', credentials: 'include' });
+}
+
+// getLocalSession is three-state, not a boolean -- +layout.ts's route
+// guard needs to tell "not logged in" (null, redirect to /login) apart
+// from "this deployment doesn't have local auth turned on at all"
+// ('disabled', let the request through) -- GET /auth/session is only
+// ever registered server-side when LOCAL_AUTH_ENABLED is set (see
+// api/localauth.Handler.RegisterRoutes' doc comment), so a 404 here
+// means the latter, same "absence is a normal deployment shape" posture
+// getAuthFeatures/getCurrentSession above already use for enterprise
+// auth. Always sends credentials regardless of the module-level
+// localAuthEnabled flag -- this is the one call the route guard makes
+// unconditionally to *discover* whether local auth is on, so it can't
+// rely on that flag being true first.
+export async function getLocalSession(): Promise<LocalSession | 'disabled' | null> {
+	try {
+		const res = await fetch(`${apiBase}/auth/session`, { credentials: 'include' });
+		if (res.status === 404) return 'disabled';
+		if (!res.ok) return null;
+		return await res.json();
+	} catch {
+		return null;
+	}
+}
+
+export type LocalUser = { id: string; username: string; role: string; created_at: string };
+
+export function listUsers(): Promise<LocalUser[]> {
+	return request<LocalUser[]>('/auth/users', { credentials: 'include' }).then((u) => u ?? []);
+}
+
+export function createUser(username: string, password: string, role: string): Promise<LocalUser> {
+	return request('/auth/users', {
+		method: 'POST',
+		credentials: 'include',
+		body: JSON.stringify({ username, password, role })
+	});
+}
+
+export function deleteUser(id: string): Promise<void> {
+	return request(`/auth/users/${id}`, { method: 'DELETE', credentials: 'include' });
+}
+
+// resetPassword's response only carries `password` when the caller
+// didn't supply one -- see api/localauth/handler.go's
+// resetPasswordResponse doc comment.
+export function resetPassword(id: string, newPassword?: string): Promise<{ password?: string }> {
+	return request(`/auth/users/${id}/reset-password`, {
+		method: 'POST',
+		credentials: 'include',
+		body: JSON.stringify(newPassword ? { password: newPassword } : {})
+	});
+}
+
 // --- alerting ---------------------------------------------------------
 
 export type ConditionType = 'threshold' | 'absence';
@@ -484,6 +565,7 @@ export type ConfigOverride = {
 	heartbeat_enabled?: boolean;
 	heartbeat_interval_ms?: number;
 	journald_unit?: string;
+	extra_file_paths?: string[];
 };
 
 export type Agent = {
@@ -544,4 +626,86 @@ export function issueAgentCommand(host: string, command: 'restart'): Promise<Age
 		method: 'PUT',
 		body: JSON.stringify({ command })
 	});
+}
+
+// ---- Host CPU/memory/disk metrics ----
+// No new REST endpoints -- a metrics sample is an ordinary log record
+// (see agent/README.md's "Host CPU/memory/disk metrics" section and
+// agent/sentry-agent/src/main.rs's send_metrics), tagged
+// `sentry.metrics=true`, fetched through the same POST /query every
+// other page already uses via runQuery(). Only ever set on one agent
+// process per physical host, so `stats count by host` over this tag
+// naturally lists real hosts, not every fragmented per-source agent
+// identity `/agents` shows (see the deployment notes on why several
+// agent processes can share one physical host under different
+// `[agent] host` values).
+
+export type HostSummary = { host: string; sampleCount: number };
+
+export async function listMetricsHosts(): Promise<HostSummary[]> {
+	const result = await runQuery('sentry.metrics=true | stats count by host', 'spl');
+	const hostIdx = result.columns.indexOf('host');
+	const countIdx = result.columns.indexOf('count');
+	return result.rows.map((r) => ({ host: String(r[hostIdx]), sampleCount: Number(r[countIdx]) }));
+}
+
+export type HostMetrics = {
+	host: string;
+	timestamp: string;
+	cpuPercent: number;
+	memUsedBytes: number;
+	memTotalBytes: number;
+	diskUsedBytes: number;
+	diskTotalBytes: number;
+	// Static-or-slow-changing context (see agent/src/metrics.rs's
+	// Metrics doc comment) -- sent on the same record specifically so a
+	// viewer never has to correlate two different samples to make sense
+	// of the utilization numbers above (is 21% CPU busy or idle depends
+	// on core count; is this usage normal depends on uptime).
+	cpuCores: number;
+	osName: string;
+	kernelVersion: string;
+	arch: string;
+	uptimeSeconds: number;
+	ipv4Addresses: string[];
+	ipv6Addresses: string[];
+};
+
+// Reads straight out of the record's `attributes` object (already
+// returned in full on every query result row) rather than trying to
+// project attribute-derived fields as top-level query-language columns
+// -- simpler, and doesn't depend on `fields` supporting synthetic
+// attribute columns the same way filtering does.
+export async function getHostMetrics(host: string): Promise<HostMetrics | null> {
+	const result = await runQuery(
+		`host="${host}" sentry.metrics=true | sort -timestamp | head 1`,
+		'spl'
+	);
+	if (result.rows.length === 0) return null;
+	const row = result.rows[0];
+	const timestampIdx = result.columns.indexOf('timestamp');
+	const attributesIdx = result.columns.indexOf('attributes');
+	const attrs = (row[attributesIdx] ?? {}) as Record<string, string>;
+	const num = (key: string) => Number(attrs[key] ?? 0);
+	// Comma-joined by the agent (see agent/src/main.rs's send_metrics) --
+	// split back into a list here, filtering out the empty string a
+	// host with no addresses of a given family produces (''.split(',')
+	// is [''], not [], so the filter is load-bearing, not defensive).
+	const addrList = (key: string) => (attrs[key] ?? '').split(',').filter((a) => a !== '');
+	return {
+		host,
+		timestamp: String(row[timestampIdx]),
+		cpuPercent: num('cpu_percent'),
+		memUsedBytes: num('mem_used_bytes'),
+		memTotalBytes: num('mem_total_bytes'),
+		diskUsedBytes: num('disk_used_bytes'),
+		diskTotalBytes: num('disk_total_bytes'),
+		cpuCores: num('cpu_cores'),
+		osName: attrs['os_name'] ?? 'unknown',
+		kernelVersion: attrs['kernel_version'] ?? 'unknown',
+		arch: attrs['arch'] ?? 'unknown',
+		uptimeSeconds: num('uptime_seconds'),
+		ipv4Addresses: addrList('ipv4_addresses'),
+		ipv6Addresses: addrList('ipv6_addresses')
+	};
 }

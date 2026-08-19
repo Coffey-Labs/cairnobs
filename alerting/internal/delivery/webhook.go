@@ -162,6 +162,17 @@ func (w *Worker) attempt(ctx context.Context, c claimedDelivery) {
 		return
 	}
 
+	// Re-validated here, not just at target-creation time
+	// (httpapi.handleCreateTarget already checks this too): a hostname
+	// that resolved to a public IP when the target was created can be
+	// repointed at an internal/metadata address later via DNS rebinding,
+	// and this is the point that actually issues the outbound request --
+	// see notifystore.ValidateWebhookURL's doc comment.
+	if err := notifystore.ValidateWebhookURL(target.WebhookURL); err != nil {
+		w.fail(ctx, c, 0, fmt.Sprintf("webhook_url no longer valid: %v", err))
+		return
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.WebhookURL, bytes.NewReader(c.payload))
 	if err != nil {
 		w.fail(ctx, c, 0, fmt.Sprintf("building request: %v", err))

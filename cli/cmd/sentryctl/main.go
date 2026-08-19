@@ -40,6 +40,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdAlerts(args[1:], stdout, stderr)
 	case "agents":
 		return cmdAgents(args[1:], stdout, stderr)
+	case "users":
+		return cmdUsers(args[1:], os.Stdin, stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
@@ -67,6 +69,11 @@ Usage:
                               [--heartbeat-enabled true|false] [--heartbeat-interval-ms N]
                               [--journald-unit UNIT] [--api <url>]
   sentryctl agents restart <host> [--yes] [--api <url>]
+  sentryctl users login <username> [--password <pw>] [--api <url>]
+  sentryctl users list [--api <url>]
+  sentryctl users create <username> [--password <pw>] [--role viewer|editor|admin|owner] [--api <url>]
+  sentryctl users delete <id> [--api <url>]
+  sentryctl users reset-password <id> [--password <pw>] [--api <url>]
 
 Commands:
   ping        Checks that the api service is reachable via GET /healthz.
@@ -95,6 +102,17 @@ Commands:
               as the web UI's edit form. "restart" briefly interrupts
               log collection on that host and prompts for confirmation
               unless --yes is given.
+  users       Local username/password login and user management (see
+              api/localauth -- only meaningful on a deployment with
+              LOCAL_AUTH_ENABLED set; a 404 on any of these means it
+              isn't). "login" is the only command that works with no
+              $SENTRYCTL_TOKEN set yet -- it prints just the raw token
+              to stdout: `+"`export SENTRYCTL_TOKEN=$(sentryctl users login admin)`"+`.
+              --password (on any users subcommand) is read from stdin
+              if omitted -- same shell-history/ps caveat as typing a
+              credential in any flag, prefer piping it in.
+              "create"/"list"/"delete"/"reset-password" require an
+              owner-role token (see RegisterRoutes in api/localauth).
 
 --api defaults to $SENTRYCTL_API_URL, or `+defaultAPIURL+` if unset.
 --alerting-api defaults to $SENTRYCTL_ALERTING_API_URL, or `+defaultAlertingURL+` if unset.

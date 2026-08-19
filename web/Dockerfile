@@ -22,9 +22,16 @@ COPY . .
 ARG VITE_API_BASE_URL=http://localhost:8080
 ARG VITE_ALERTING_API_BASE_URL=http://localhost:8081
 ARG VITE_ENTERPRISE_AUTH_BASE_URL
+# Off by default -- local dev's plain WithCORS (wildcard
+# Access-Control-Allow-Origin) can't be combined with a credentialed
+# fetch at all, so api.ts must not send cookies unless the deployment
+# actually turned local auth on server-side too (LOCAL_AUTH_ENABLED).
+# See api.ts's requestFrom/alertingRequest doc comment.
+ARG VITE_LOCAL_AUTH_ENABLED=false
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_ALERTING_API_BASE_URL=${VITE_ALERTING_API_BASE_URL}
 ENV VITE_ENTERPRISE_AUTH_BASE_URL=${VITE_ENTERPRISE_AUTH_BASE_URL}
+ENV VITE_LOCAL_AUTH_ENABLED=${VITE_LOCAL_AUTH_ENABLED}
 RUN npm run build
 
 # Not distroless: serving a static SPA needs *some* HTTP server, and

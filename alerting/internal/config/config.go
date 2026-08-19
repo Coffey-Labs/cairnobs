@@ -16,6 +16,11 @@ type Config struct {
 	APIServiceToken   string // RoleService credential presented to /api's POST /query -- see queryclient.New's doc comment
 	CORSAllowedOrigin string
 	Evaluator         EvaluatorConfig
+	// LocalAuthEnabled gates alerting's own session-required middleware
+	// (see internal/sessioncheck) -- same env var name as api's
+	// LOCAL_AUTH_ENABLED, one consistent on/off switch across both
+	// services for a single-tenant deployment turning local login on.
+	LocalAuthEnabled bool
 }
 
 type PostgresConfig struct {
@@ -41,6 +46,25 @@ type EvaluatorConfig struct {
 	ClaimBatchSize int
 	WorkerPoolSize int
 	QueryTimeout   time.Duration // per-evaluation POST /query timeout
+}
+
+// devOnlyCredential is docker-compose.yml's zero-config default for
+// every Postgres/ClickHouse password in this repo -- see
+// api/internal/config.Config.DevCredentialWarnings for the full
+// reasoning (duplicated here per this repo's no-shared-code-between-
+// services convention).
+const devOnlyCredential = "sentry-dev-only"
+
+// DevCredentialWarnings reports whether the configured Postgres
+// credential still equals the literal dev-only default --
+// cmd/alerting/main.go logs it loudly at startup. A warning, not a
+// startup-refusing error: local dev's zero-config docker-compose.yml
+// path legitimately leaves it at this value.
+func (c Config) DevCredentialWarnings() []string {
+	if c.Postgres.Password == devOnlyCredential {
+		return []string{"POSTGRES_PASSWORD is still the default dev-only value -- set a real password before this is reachable outside local dev"}
+	}
+	return nil
 }
 
 func Load() (Config, error) {
@@ -89,6 +113,12 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("EVALUATOR_QUERY_TIMEOUT_SECONDS: %w", err)
 	}
 	cfg.Evaluator.QueryTimeout = time.Duration(queryTimeoutSec) * time.Second
+
+	localAuthEnabled, err := strconv.ParseBool(getenv("LOCAL_AUTH_ENABLED", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("LOCAL_AUTH_ENABLED: %w", err)
+	}
+	cfg.LocalAuthEnabled = localAuthEnabled
 
 	return cfg, nil
 }

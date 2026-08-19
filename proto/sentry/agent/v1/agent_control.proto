@@ -69,6 +69,17 @@ message DesiredOverride {
   // CheckInRequest.applied_override_version once applied -- it never
   // interprets the value itself.
   string version = 6;
+  // Extra file paths this agent should tail in addition to whatever its
+  // local [source] already is -- never a replacement for the primary
+  // source (an agent whose local source is journald can still be told
+  // to also tail a file, and vice versa). Unlike every field above,
+  // there's no real "unset" state for a list: the web UI/CLI always
+  // resubmit the complete desired list on every edit (same "PUT
+  // replaces the whole override" convention every other field already
+  // follows -- see api/agents/handler.go's handleSetConfig), so an
+  // empty list unambiguously means "no extra paths right now," not
+  // "don't touch this."
+  repeated string extra_file_paths = 7;
 }
 
 // AgentCommand is a one-shot action, not a persistent desired state like

@@ -26,6 +26,13 @@
 	let heartbeatEnabled = $state(true);
 	let heartbeatIntervalMs = $state('0');
 	let journaldUnit = $state('');
+	// Extra file paths to tail in addition to the agent's primary
+	// source -- unlike every field above, there's no "effective value"
+	// to fall back to when no override exists yet (this is purely a
+	// remote-override concept, agent.toml has no equivalent field), so
+	// an agent with no override starts with an empty list, not
+	// something derived from `agent`.
+	let extraFilePaths = $state<string[]>([]);
 
 	function resetForm(a: Agent) {
 		const o = a.desired_override;
@@ -34,6 +41,15 @@
 		heartbeatEnabled = o?.heartbeat_enabled ?? a.heartbeat_enabled;
 		heartbeatIntervalMs = String(o?.heartbeat_interval_ms ?? a.heartbeat_interval_ms);
 		journaldUnit = o?.journald_unit ?? '';
+		extraFilePaths = o?.extra_file_paths ? [...o.extra_file_paths] : [];
+	}
+
+	function addExtraFilePath() {
+		extraFilePaths = [...extraFilePaths, ''];
+	}
+
+	function removeExtraFilePath(index: number) {
+		extraFilePaths = extraFilePaths.filter((_, i) => i !== index);
 	}
 
 	async function load() {
@@ -59,7 +75,8 @@
 				batch_flush_interval_ms: Number(batchFlushIntervalMs),
 				heartbeat_enabled: heartbeatEnabled,
 				heartbeat_interval_ms: Number(heartbeatIntervalMs),
-				...(agent?.source_kind === 'journald' ? { journald_unit: journaldUnit } : {})
+				...(agent?.source_kind === 'journald' ? { journald_unit: journaldUnit } : {}),
+				extra_file_paths: extraFilePaths.map((p) => p.trim()).filter((p) => p !== '')
 			});
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : String(e);
@@ -179,6 +196,20 @@
 					<Input id="journald-unit" placeholder="(empty = whole journal)" bind:value={journaldUnit} />
 				</div>
 			{/if}
+			<div class="field extra-paths">
+				<span class="field-label">Additional log paths</span>
+				<p class="hint">
+					Extra files this agent should tail alongside its primary source above -- never a replacement for it. Applied
+					the same way as every other field here, on the agent's next check-in.
+				</p>
+				{#each extraFilePaths as _, i}
+					<div class="path-row">
+						<Input placeholder="/var/log/example.log" bind:value={extraFilePaths[i]} />
+						<Button variant="secondary" onclick={() => removeExtraFilePath(i)}>Remove</Button>
+					</div>
+				{/each}
+				<Button variant="secondary" onclick={addExtraFilePath}>Add path</Button>
+			</div>
 
 			{#if saveError}<p class="error">Error: {saveError}</p>{/if}
 
@@ -275,6 +306,9 @@
 		margin-bottom: var(--space-3);
 		max-width: 20rem;
 	}
+	.field.extra-paths {
+		max-width: none;
+	}
 	.field label {
 		font-size: var(--text-sm);
 		color: var(--color-text-muted);
@@ -284,6 +318,22 @@
 		align-items: center;
 		gap: var(--space-2);
 		color: var(--color-text);
+	}
+	.field-label {
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
+	}
+	.field .hint {
+		margin-bottom: var(--space-2);
+	}
+	.path-row {
+		display: flex;
+		gap: var(--space-2);
+		align-items: center;
+		margin-bottom: var(--space-2);
+	}
+	.path-row :global(input) {
+		flex: 1;
 	}
 	.actions {
 		display: flex;

@@ -259,6 +259,24 @@ func defaultAggAlias(a ast.AggCall) string {
 // SQL parser -- same tradeoffs as the Phase 0/1 version this replaces.
 var disallowedKeyword = regexp.MustCompile(`(?i)\b(insert|update|delete|alter|drop|truncate|create|grant|revoke|attach|detach|rename|kill|optimize|system|set|exchange|watch)\b`)
 
+// disallowedTableFunction blocks ClickHouse's built-in table functions
+// that reach outside ClickHouse itself -- a keyword blocklist for
+// mutating statements (above) doesn't touch these at all, since
+// `SELECT * FROM url(...)` is a perfectly ordinary read-only SELECT as
+// far as validateSelectOnly's other checks are concerned. Every
+// function here lets a SELECT-only, RoleViewer-gated query make
+// ClickHouse itself issue an outbound request or read a local file on
+// the caller's behalf -- cloud-metadata SSRF via url(), a proxy into
+// other internal ClickHouse/MySQL/Postgres instances via
+// remote()/remoteSecure()/mysql()/postgresql(), and local/object-storage
+// file reads via file()/hdfs()/s3()/azureBlobStorage()/deltaLake()/
+// iceberg()/hudi(). Same word-boundary-regex tradeoff as
+// disallowedKeyword above: this is a blocklist, not a real SQL parser,
+// so it can't be the only control -- see the ClickHouse-grant-level
+// hardening this should be paired with (table-function usage revoked
+// for the role api's raw-SQL path connects as).
+var disallowedTableFunction = regexp.MustCompile(`(?i)\b(url|remote|remoteSecure|mysql|postgresql|s3|s3Cluster|hdfs|hdfsCluster|file|odbc|jdbc|executable|cluster|clusterAllReplicas|azureBlobStorage|deltaLake|iceberg|hudi|redis|mongodb)\s*\(`)
+
 func validateSelectOnly(sql string) error {
 	trimmed := strings.TrimSpace(sql)
 	if trimmed == "" {
@@ -280,6 +298,9 @@ func validateSelectOnly(sql string) error {
 
 	if disallowedKeyword.MatchString(trimmed) {
 		return fmt.Errorf("query contains a disallowed keyword")
+	}
+	if disallowedTableFunction.MatchString(trimmed) {
+		return fmt.Errorf("query contains a disallowed table function")
 	}
 
 	return nil

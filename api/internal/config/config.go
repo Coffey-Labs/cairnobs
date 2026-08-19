@@ -18,6 +18,32 @@ type Config struct {
 	CORSAllowedOrigin string
 	EnterpriseAuthURL string
 	AI                AIConfig
+	LocalAuth         LocalAuthConfig
+}
+
+// LocalAuthConfig gates single-tenant mode's local username/password
+// login (see api/localauth) -- off unless Enabled, same "off unless
+// configured" convention as EnterpriseAuthURL/AI.OllamaBaseURL. Only
+// meaningful when EnterpriseAuthURL is empty -- a deployment with real
+// SSO configured has no use for a second, local auth mechanism, and
+// main.go's authorizer selection treats EnterpriseAuthURL as taking
+// priority if both were somehow set.
+type LocalAuthConfig struct {
+	Enabled bool
+	// SessionTTL is deliberately long (30 days default) compared to
+	// enterprise/'s session TTL -- there's no SSO round-trip here to
+	// silently refresh a session against, so a short TTL would just mean
+	// re-entering a password often on a self-hosted single-operator tool.
+	SessionTTL time.Duration
+	// CookieDomain empty means a host-only cookie (fine for local dev,
+	// where web/api are both localhost:<port>). Set to e.g.
+	// ".sentry.example.com" in production so the cookie is also sent to
+	// api.sentry.example.com/alerting.sentry.example.com.
+	CookieDomain string
+	// CookieSecure defaults true (never sent over plain HTTP) --
+	// deliberately opt-out via LOCAL_AUTH_COOKIE_SECURE=false, only
+	// useful to test the login flow locally over http://localhost.
+	CookieSecure bool
 }
 
 // AIConfig gates Phase 7's AI-assisted query features (Track A/B) --
@@ -48,6 +74,33 @@ type PostgresConfig struct {
 	Database string
 	Username string
 	Password string
+}
+
+// devOnlyCredential is docker-compose.yml's zero-config default for
+// every Postgres/ClickHouse password in this repo -- genuinely fine for
+// local dev (that's the whole point of a zero-config default), but a
+// real deployment that skips docker-compose.override.yml would
+// otherwise go live with a password anyone can read straight off
+// GitHub. See DevCredentialWarnings.
+const devOnlyCredential = "sentry-dev-only"
+
+// DevCredentialWarnings reports which configured credentials still
+// equal docker-compose.yml's literal dev-only default -- cmd/api/main.go
+// logs each one loudly at startup. Deliberately a warning, not a
+// startup-refusing error: local dev's documented zero-config path is
+// exactly "run docker-compose.yml with no override," which legitimately
+// leaves every password at this literal value, so hard-failing here
+// would break that path rather than only catching real deployments that
+// forgot to override it.
+func (c Config) DevCredentialWarnings() []string {
+	var warnings []string
+	if c.ClickHouse.Password == devOnlyCredential {
+		warnings = append(warnings, "CLICKHOUSE_PASSWORD is still the default dev-only value -- set a real password via docker-compose.override.yml (or your deployment's equivalent) before this is reachable outside local dev")
+	}
+	if c.Postgres.Password == devOnlyCredential {
+		warnings = append(warnings, "POSTGRES_PASSWORD is still the default dev-only value -- set a real password via docker-compose.override.yml (or your deployment's equivalent) before this is reachable outside local dev")
+	}
+	return warnings
 }
 
 func Load() (Config, error) {
@@ -97,6 +150,25 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("QUERY_TIMEOUT_SECONDS: %w", err)
 	}
 	cfg.QueryTimeout = time.Duration(timeoutSec) * time.Second
+
+	localAuthEnabled, err := strconv.ParseBool(getenv("LOCAL_AUTH_ENABLED", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("LOCAL_AUTH_ENABLED: %w", err)
+	}
+	sessionTTLHours, err := strconv.Atoi(getenv("LOCAL_SESSION_TTL_HOURS", "720")) // 30 days
+	if err != nil {
+		return Config{}, fmt.Errorf("LOCAL_SESSION_TTL_HOURS: %w", err)
+	}
+	cookieSecure, err := strconv.ParseBool(getenv("LOCAL_AUTH_COOKIE_SECURE", "true"))
+	if err != nil {
+		return Config{}, fmt.Errorf("LOCAL_AUTH_COOKIE_SECURE: %w", err)
+	}
+	cfg.LocalAuth = LocalAuthConfig{
+		Enabled:      localAuthEnabled,
+		SessionTTL:   time.Duration(sessionTTLHours) * time.Hour,
+		CookieDomain: getenv("SESSION_COOKIE_DOMAIN", ""),
+		CookieSecure: cookieSecure,
+	}
 
 	return cfg, nil
 }

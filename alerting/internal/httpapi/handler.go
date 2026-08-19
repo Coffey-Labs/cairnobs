@@ -151,6 +151,10 @@ func (h *Handler) handleCreateTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "webhook_url must not be empty")
 		return
 	}
+	if err := notifystore.ValidateWebhookURL(target.WebhookURL); err != nil {
+		writeError(w, http.StatusBadRequest, "webhook_url: "+err.Error())
+		return
+	}
 	if err := h.targets.Create(r.Context(), &target); err != nil {
 		h.logger.Error("creating notification target", "error", err)
 		writeError(w, http.StatusInternalServerError, "creating notification target failed")

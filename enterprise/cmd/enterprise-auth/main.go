@@ -56,6 +56,9 @@ func main() {
 		logger.Error("loading config", "error", err)
 		os.Exit(1)
 	}
+	for _, w := range cfg.DevCredentialWarnings() {
+		logger.Warn(w)
+	}
 
 	// -mint-service-token issues a RoleService credential and prints it
 	// to stdout, then exits -- an operator bootstrap step (run once,

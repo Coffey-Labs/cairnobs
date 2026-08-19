@@ -7,7 +7,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,6 +32,7 @@ import (
 	"github.com/sentry/sentry/api/dashboards"
 	"github.com/sentry/sentry/api/httpserver"
 	"github.com/sentry/sentry/api/internal/config"
+	"github.com/sentry/sentry/api/localauth"
 	"github.com/sentry/sentry/api/queryapi"
 	"github.com/sentry/sentry/api/querylang/executor"
 	"github.com/sentry/sentry/api/searchclient"
@@ -48,6 +53,9 @@ func main() {
 		logger.Error("loading config", "error", err)
 		os.Exit(1)
 	}
+	for _, w := range cfg.DevCredentialWarnings() {
+		logger.Warn(w)
+	}
 
 	// -healthcheck: a self-check mode for Docker's HEALTHCHECK, not a
 	// flag anyone runs by hand. The api image is distroless (no shell,
@@ -58,6 +66,13 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
 		os.Exit(runHealthcheck(cfg.HTTPListenAddr))
 	}
+
+	// -seed-admin: a one-shot action, not part of the normal server
+	// startup path -- mirrors enterprise-api's -provision-tenant shape
+	// (declare, flag.Parse(), short-circuit before the rest of main's
+	// dependencies matter to it). See runSeedAdmin's doc comment.
+	seedAdmin := flag.Bool("seed-admin", false, "create the default local-auth admin user with a random password if none exists, print it once, and exit")
+	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -101,12 +116,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *seedAdmin {
+		os.Exit(runSeedAdmin(ctx, logger, os.Stdout, localauth.NewStore(pgPool)))
+	}
+
 	// authorizer is nil (RequireRole* becomes a no-op) unless
-	// ENTERPRISE_AUTH_URL is configured -- matches Phase 0-3 behavior
-	// for a single-tenant deployment with no enterprise/ deployed.
+	// ENTERPRISE_AUTH_URL or LOCAL_AUTH_ENABLED is configured -- matches
+	// Phase 0-3 behavior for a single-tenant deployment with neither
+	// enterprise/ nor local login turned on. EnterpriseAuthURL wins if
+	// both were somehow set -- a deployment with real SSO configured has
+	// no use for a second, local auth mechanism (see LocalAuthConfig's
+	// doc comment).
 	var authorizer authz.Authorizer
-	if cfg.EnterpriseAuthURL != "" {
+	var localAuthStore *localauth.Store
+	switch {
+	case cfg.EnterpriseAuthURL != "":
 		authorizer = authz.NewHTTPAuthorizer(cfg.EnterpriseAuthURL)
+	case cfg.LocalAuth.Enabled:
+		localAuthStore = localauth.NewStore(pgPool)
+		authorizer = localauth.NewAuthorizer(localAuthStore)
 	}
 
 	sqlRunner := executor.NewChRunner(conn)
@@ -139,6 +167,18 @@ func main() {
 	dashboardsHandler.RegisterRoutes(mux)
 	agentsHandler.RegisterRoutes(mux)
 
+	// Only registered when local auth is actually enabled -- see
+	// localauth.Handler.RegisterRoutes' doc comment for why a disabled
+	// deployment gets a plain 404 on /auth/* rather than a dedicated
+	// "feature off" response.
+	if localAuthStore != nil {
+		localauthHandler := localauth.NewHandler(logger, localAuthStore, authorizer, cfg.LocalAuth.SessionTTL, localauth.CookieConfig{
+			Domain: cfg.LocalAuth.CookieDomain,
+			Secure: cfg.LocalAuth.CookieSecure,
+		})
+		localauthHandler.RegisterRoutes(mux)
+	}
+
 	// AI routes (Phase 7) are only registered at all when OLLAMA_BASE_URL
 	// is set -- an unconfigured deployment gets a plain 404 on /ai/*
 	// rather than every request failing against an unreachable
@@ -165,9 +205,19 @@ func main() {
 		logger.Info("ai routes enabled", "ollama_base_url", cfg.AI.OllamaBaseURL, "model", cfg.AI.OllamaModel)
 	}
 
+	// Once an authorizer is live, requests carry a session cookie/bearer
+	// token that must survive a cross-origin browser fetch --
+	// WithCredentialedCORS is WithCORS's sibling for exactly that (see
+	// httpserver/cors.go). This also fixes a latent gap: previously,
+	// enterprise mode applied plain WithCORS here despite needing
+	// cookies too.
+	corsHandler := httpserver.WithCORS(mux, cfg.CORSAllowedOrigin)
+	if authorizer != nil {
+		corsHandler = httpserver.WithCredentialedCORS(mux, cfg.CORSAllowedOrigin)
+	}
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,
-		Handler: httpserver.WithCORS(mux, cfg.CORSAllowedOrigin),
+		Handler: corsHandler,
 	}
 
 	errCh := make(chan error, 1)
@@ -189,6 +239,48 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// runSeedAdmin is the operator action that bootstraps local login on a
+// fresh deployment: idempotent (a no-op if any local user already
+// exists, safe to run on every deploy per the runbook), so there's no
+// separate "has this already run" flag to track. The generated
+// password is printed to stdout exactly once and never stored in
+// plaintext anywhere -- losing it means resetting it
+// (POST /auth/users/{id}/reset-password), not recovering it.
+func runSeedAdmin(ctx context.Context, logger *slog.Logger, stdout io.Writer, store *localauth.Store) int {
+	n, err := store.CountLocalUsers(ctx)
+	if err != nil {
+		logger.Error("counting local users", "error", err)
+		return 1
+	}
+	if n > 0 {
+		fmt.Fprintln(stdout, "admin already provisioned, skipping")
+		return 0
+	}
+
+	buf := make([]byte, 20)
+	if _, err := rand.Read(buf); err != nil {
+		logger.Error("generating random password", "error", err)
+		return 1
+	}
+	password := base64.RawURLEncoding.EncodeToString(buf)
+
+	hash, err := localauth.HashPassword(password)
+	if err != nil {
+		logger.Error("hashing password", "error", err)
+		return 1
+	}
+	if _, err := store.CreateUser(ctx, "admin", hash, authz.RoleOwner); err != nil {
+		logger.Error("creating admin user", "error", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "created default admin user:")
+	fmt.Fprintln(stdout, "  username: admin")
+	fmt.Fprintf(stdout, "  password: %s\n", password)
+	fmt.Fprintln(stdout, "this password will not be shown again -- save it now.")
+	return 0
 }
 
 // runHealthcheck GETs its own /healthz and returns an exit code, for

@@ -35,11 +35,12 @@ func validCommand(c string) bool {
 // grpcserver.TenantIDHeaderKey, enterprise/internal/apiconfig.AIConfig).
 // Keep the three in sync by hand.
 type ConfigOverride struct {
-	BatchMaxSize         *int64  `json:"batch_max_size,omitempty"`
-	BatchFlushIntervalMS *int64  `json:"batch_flush_interval_ms,omitempty"`
-	HeartbeatEnabled     *bool   `json:"heartbeat_enabled,omitempty"`
-	HeartbeatIntervalMS  *int64  `json:"heartbeat_interval_ms,omitempty"`
-	JournaldUnit         *string `json:"journald_unit,omitempty"`
+	BatchMaxSize         *int64   `json:"batch_max_size,omitempty"`
+	BatchFlushIntervalMS *int64   `json:"batch_flush_interval_ms,omitempty"`
+	HeartbeatEnabled     *bool    `json:"heartbeat_enabled,omitempty"`
+	HeartbeatIntervalMS  *int64   `json:"heartbeat_interval_ms,omitempty"`
+	JournaldUnit         *string  `json:"journald_unit,omitempty"`
+	ExtraFilePaths       []string `json:"extra_file_paths,omitempty"`
 }
 
 type Agent struct {

@@ -34,11 +34,12 @@ const defaultTenantID = "default"
 // across a module boundary rather than couple two independently
 // deployable services' builds together. Keep the two in sync by hand.
 type overrideFields struct {
-	BatchMaxSize         *uint64 `json:"batch_max_size,omitempty"`
-	BatchFlushIntervalMS *uint64 `json:"batch_flush_interval_ms,omitempty"`
-	HeartbeatEnabled     *bool   `json:"heartbeat_enabled,omitempty"`
-	HeartbeatIntervalMS  *uint64 `json:"heartbeat_interval_ms,omitempty"`
-	JournaldUnit         *string `json:"journald_unit,omitempty"`
+	BatchMaxSize         *uint64  `json:"batch_max_size,omitempty"`
+	BatchFlushIntervalMS *uint64  `json:"batch_flush_interval_ms,omitempty"`
+	HeartbeatEnabled     *bool    `json:"heartbeat_enabled,omitempty"`
+	HeartbeatIntervalMS  *uint64  `json:"heartbeat_interval_ms,omitempty"`
+	JournaldUnit         *string  `json:"journald_unit,omitempty"`
+	ExtraFilePaths       []string `json:"extra_file_paths,omitempty"`
 }
 
 type Registry struct {
@@ -146,6 +147,7 @@ func (r *Registry) CheckIn(ctx context.Context, tenantID string, info grpcserver
 		HeartbeatEnabled:     fields.HeartbeatEnabled,
 		HeartbeatIntervalMS:  fields.HeartbeatIntervalMS,
 		JournaldUnit:         fields.JournaldUnit,
+		ExtraFilePaths:       fields.ExtraFilePaths,
 		Version:              *desiredVersion,
 	}
 	return result, nil

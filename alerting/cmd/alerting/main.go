@@ -29,6 +29,7 @@ import (
 	"github.com/sentry/sentry/alerting/internal/notifystore"
 	"github.com/sentry/sentry/alerting/internal/queryclient"
 	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/sentry/sentry/alerting/internal/sessioncheck"
 )
 
 func main() {
@@ -38,6 +39,9 @@ func main() {
 	if err != nil {
 		logger.Error("loading config", "error", err)
 		os.Exit(1)
+	}
+	for _, w := range cfg.DevCredentialWarnings() {
+		logger.Warn(w)
 	}
 
 	// -healthcheck: self-check mode for Docker's HEALTHCHECK, mirrors
@@ -71,9 +75,23 @@ func main() {
 	handler := httpapi.NewHandler(logger, rules, targets, rules)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
+
+	// Local login (see /docs -- deployment runbook, and
+	// api/localauth's package doc comment for the full feature):
+	// alerting has no per-route role plumbing of its own, so this is one
+	// blanket "must have a valid session" gate in front of the whole
+	// mux, same shape CORS already wraps it in below. /healthz stays
+	// reachable regardless -- see sessioncheck.RequireSession's doc
+	// comment.
+	var gatedMux http.Handler = mux
+	corsFn := httpserver.WithCORS
+	if cfg.LocalAuthEnabled {
+		gatedMux = sessioncheck.RequireSession(sessioncheck.NewChecker(pgPool), mux)
+		corsFn = httpserver.WithCredentialedCORS
+	}
 	srv := &http.Server{
 		Addr:    cfg.HTTPListenAddr,
-		Handler: httpserver.WithCORS(mux, cfg.CORSAllowedOrigin),
+		Handler: corsFn(gatedMux, cfg.CORSAllowedOrigin),
 	}
 
 	eval := evaluator.New(rules, targets, qc, cfg.Evaluator.QueryTimeout, cfg.Evaluator.ClaimBatchSize, cfg.Evaluator.WorkerPoolSize, logger)

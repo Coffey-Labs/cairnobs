@@ -37,6 +37,36 @@ type Config struct {
 	CORSAllowedOrigin string
 }
 
+// devOnlyCredential is docker-compose.yml's zero-config default for
+// every Postgres/ClickHouse password in this repo -- see
+// api/internal/config.Config.DevCredentialWarnings for the full
+// reasoning (duplicated here per this repo's no-shared-code-between-
+// services convention). enterprise-auth also has its own dev-only
+// literal for ENTERPRISE_SESSION_SIGNING_KEY, checked alongside it below
+// -- per the threat model doc, this is "the single highest-value secret
+// in the enterprise deployment," since compromising it lets an attacker
+// forge any identity, including the RoleService credential.
+const (
+	devOnlyCredential = "sentry-dev-only"
+	devOnlySigningKey = "sentry-dev-only-session-signing-key-32bytes+"
+)
+
+// DevCredentialWarnings reports which configured secrets still equal
+// their literal dev-only defaults -- cmd/enterprise-*/main.go logs each
+// one loudly at startup. A warning, not a startup-refusing error: local
+// dev's zero-config docker-compose.yml path legitimately leaves these
+// at their default values.
+func (c Config) DevCredentialWarnings() []string {
+	var warnings []string
+	if c.Postgres.Password == devOnlyCredential {
+		warnings = append(warnings, "POSTGRES_PASSWORD is still the default dev-only value -- set a real password before this is reachable outside local dev")
+	}
+	if string(c.SessionSigningKey) == devOnlySigningKey {
+		warnings = append(warnings, "ENTERPRISE_SESSION_SIGNING_KEY is still the default dev-only value -- this is the single highest-value secret in an enterprise deployment (compromise lets an attacker forge any identity); set a real, random one before this is reachable outside local dev")
+	}
+	return warnings
+}
+
 type PostgresConfig struct {
 	Addr     string
 	Database string
