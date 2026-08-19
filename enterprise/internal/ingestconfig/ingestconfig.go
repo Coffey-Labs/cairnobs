@@ -49,6 +49,25 @@ type BatchConfig struct {
 	FlushIntervalMS int
 }
 
+// devOnlyCredential is docker-compose.yml's zero-config default for
+// every Postgres/ClickHouse password in this repo -- see
+// api/internal/config.Config.DevCredentialWarnings for the full
+// reasoning (duplicated here per this repo's no-shared-code-between-
+// services convention).
+const devOnlyCredential = "sentry-dev-only"
+
+// DevCredentialWarnings reports whether the configured Postgres
+// credential still equals the literal dev-only default --
+// cmd/enterprise-ingest/main.go logs it loudly at startup. A warning,
+// not a startup-refusing error: local dev's zero-config
+// docker-compose.yml path legitimately leaves it at this value.
+func (c Config) DevCredentialWarnings() []string {
+	if c.Postgres.Password == devOnlyCredential {
+		return []string{"POSTGRES_PASSWORD is still the default dev-only value -- set a real password before this is reachable outside local dev"}
+	}
+	return nil
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPListenAddr: getenv("HTTP_LISTEN_ADDR", ":8084"),

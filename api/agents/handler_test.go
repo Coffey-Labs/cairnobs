@@ -199,6 +199,116 @@ func TestHandleSetConfigRejectsTooSmallHeartbeatInterval(t *testing.T) {
 	}
 }
 
+func TestHandleSetConfigExtraFilePathsRoundTrips(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	h := newTestHandler(s)
+
+	rec := doRequest(t, h, "PUT", "/agents/web-01/config", ConfigOverride{
+		ExtraFilePaths: []string{"/var/log/nginx/access.log", "/var/log/nginx/error.log"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var got Agent
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.DesiredOverride == nil || len(got.DesiredOverride.ExtraFilePaths) != 2 {
+		t.Fatalf("unexpected override: %+v", got.DesiredOverride)
+	}
+}
+
+func TestHandleSetConfigRejectsRelativeExtraFilePath(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	h := newTestHandler(s)
+
+	rec := doRequest(t, h, "PUT", "/agents/web-01/config", ConfigOverride{
+		ExtraFilePaths: []string{"relative/path.log"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleSetConfigRejectsTooManyExtraFilePaths(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	h := newTestHandler(s)
+
+	paths := make([]string, 21)
+	for i := range paths {
+		paths[i] = "/var/log/x.log"
+	}
+	rec := doRequest(t, h, "PUT", "/agents/web-01/config", ConfigOverride{ExtraFilePaths: paths})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestHandleSetConfigDenylistsSensitivePaths is the regression test for
+// the security-audit finding that a root, unsandboxed agent plus an
+// unrestricted extra_file_paths let any Editor read arbitrary files
+// (e.g. /etc/shadow, SSH keys) and have them shipped into ClickHouse.
+func TestHandleSetConfigDenylistsSensitivePaths(t *testing.T) {
+	denied := []string{
+		"/etc/shadow",
+		"/etc/passwd",
+		"/root/.bash_history",
+		"/home/alice/.ssh/id_rsa",
+		"/home/alice/.ssh/authorized_keys",
+		"/proc/1/environ",
+		"/etc/sentry-agent/client-key.pem",
+		"/opt/app/../../etc/shadow",
+		"/opt/app/id_ed25519",
+	}
+	for _, p := range denied {
+		s := newFakeStore()
+		s.put(Agent{TenantID: "default", Host: "web-01"})
+		h := newTestHandler(s)
+		rec := doRequest(t, h, "PUT", "/agents/web-01/config", ConfigOverride{ExtraFilePaths: []string{p}})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("path %q: status = %d, want 400 (should be denylisted), body=%s", p, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// TestHandleSetConfigExtraFilePathsRequiresAdminToAdd is the regression
+// test for the audit's role-floor fix: adding/changing extra_file_paths
+// needs Admin, not just Editor, since it grants the agent read access to
+// a new file. Purely shrinking or clearing an existing set stays at the
+// Editor floor everything else in this override uses.
+func TestHandleSetConfigExtraFilePathsRequiresAdminToAdd(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	editor := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleEditor}, nil)
+	admin := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleAdmin}, nil)
+
+	rec := doRequest(t, editor, "PUT", "/agents/web-01/config", ConfigOverride{
+		ExtraFilePaths: []string{"/var/log/nginx/access.log"},
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("editor adding a path: status = %d, want 403", rec.Code)
+	}
+
+	rec = doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{
+		ExtraFilePaths: []string{"/var/log/nginx/access.log", "/var/log/nginx/error.log"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin adding paths: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Shrinking back down to one path is a pure removal -- Editor should
+	// be allowed to do this even though they couldn't have added it.
+	rec = doRequest(t, editor, "PUT", "/agents/web-01/config", ConfigOverride{
+		ExtraFilePaths: []string{"/var/log/nginx/access.log"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("editor removing a path: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleSetConfigUnknownHostIsNotFound(t *testing.T) {
 	h := newTestHandler(newFakeStore())
 	interval := int64(30000)

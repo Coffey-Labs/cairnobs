@@ -15,6 +15,7 @@ pub struct Config {
     pub source: SourceConfig,
     pub batch: BatchConfig,
     pub heartbeat: HeartbeatConfig,
+    pub metrics: MetricsConfig,
     pub ingest: IngestConfig,
     pub tls: TlsConfig,
 }
@@ -168,6 +169,31 @@ impl Default for HeartbeatConfig {
     }
 }
 
+/// Off by default -- same "off unless configured" posture as every other
+/// optional feature in this codebase -- since collecting host metrics is
+/// a deliberate per-host decision (see /agent/README.md's Hosts-feature
+/// notes: only one agent process per physical host should have this on,
+/// to avoid duplicate/fragmented metric series when several agent
+/// processes share a host under different `[agent] host` overrides).
+/// Sent independently of `batch`, same reasoning and mechanism as
+/// `HeartbeatConfig` above (see main.rs's `send_metrics`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct MetricsConfig {
+    pub enabled: bool,
+    #[serde(deserialize_with = "deserialize_duration")]
+    pub interval: Duration,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval: Duration::from_secs(60),
+        }
+    }
+}
+
 /// Parses a human-friendly duration string with an explicit unit suffix
 /// -- "30s", "5m", "1h" -- deliberately the same s/m/h vocabulary
 /// `earliest=`/`latest=` use in the query language
@@ -234,6 +260,30 @@ mod heartbeat_config_tests {
         }
         let w: Wrapper = toml::from_str("[heartbeat]\nenabled = true\ninterval = \"90s\"\n").unwrap();
         assert_eq!(w.heartbeat.interval, Duration::from_secs(90));
+    }
+}
+
+#[cfg(test)]
+mod metrics_config_tests {
+    use super::*;
+
+    #[test]
+    fn default_is_60_seconds_and_disabled() {
+        let cfg = MetricsConfig::default();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.interval, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn toml_field_parses_via_deserialize() {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            #[serde(default)]
+            metrics: MetricsConfig,
+        }
+        let w: Wrapper = toml::from_str("[metrics]\nenabled = true\ninterval = \"30s\"\n").unwrap();
+        assert!(w.metrics.enabled);
+        assert_eq!(w.metrics.interval, Duration::from_secs(30));
     }
 }
 

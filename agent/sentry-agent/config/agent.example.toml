@@ -51,6 +51,17 @@ interval = "60s"
 # interval = "5m"
 # interval = "1h"
 
+[metrics]
+# Host CPU/memory/disk usage, sent as its own periodic record the same
+# way heartbeat is (see web/'s "Hosts" nav section). Off by default --
+# unlike heartbeat, this is a deliberate per-host decision: if several
+# sentry-agent processes run on the same physical host (e.g. one per log
+# source), enable this on only ONE of them, or the same host will report
+# multiple conflicting metric series. Linux-only for now. Root disk ("/")
+# only -- not configurable in this release.
+enabled = false
+interval = "60s"
+
 [ingest]
 endpoint = "https://ingest.internal:4317"
 

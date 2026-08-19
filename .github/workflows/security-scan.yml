@@ -1,0 +1,81 @@
+name: Security scan
+
+# Closes a real gap the security audit found: license-compliance.yml
+# (this repo's only other workflow) checks license text, never
+# vulnerabilities -- and agent/deny.toml and search/deny.toml already
+# ship an [advisories] policy that nothing in CI ever invoked. Same
+# matrix-per-language shape as license-compliance.yml, extended to the
+# equivalent vulnerability-scanning tool per ecosystem: cargo-deny's
+# other command for Rust, govulncheck for Go, npm audit for the one
+# npm package. A new dependency with a known vulnerability now fails
+# the build here, not months later when someone happens to re-run this
+# by hand.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  rust-advisories:
+    name: Rust vulnerability check (cargo-deny)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate_dir: [agent, search]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: ${{ matrix.crate_dir }}/Cargo.toml
+          command: check advisories
+
+  go-vulncheck:
+    name: Go vulnerability check (govulncheck)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Same module list as license-compliance.yml's go-licenses job --
+        # see that job's own comment for why cli/hack-webhook-sink/
+        # hack-alert-load-test are excluded (no third-party dependencies
+        # at audit time).
+        module_dir:
+          - api
+          - ingest
+          - alerting
+          - enterprise
+          - deploy/operator
+          - terraform
+          - proto
+          - hack/benchmark-fixture
+          - hack/windows-fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module_dir }}/go.mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Check for known vulnerabilities
+        working-directory: ${{ matrix.module_dir }}
+        run: govulncheck ./...
+
+  npm-audit:
+    name: npm vulnerability check (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: web
+        run: npm ci
+      - name: Audit production dependencies
+        working-directory: web
+        # --omit=dev, not the deprecated --production: this deliberately
+        # only gates the runtime bundle a real deployment actually
+        # ships. The one known finding in web's full dependency tree
+        # today (a `cookie` advisory) lives entirely in the SvelteKit
+        # build toolchain, not the production bundle -- fixing it needs
+        # a deliberate, tested major-version bump, not an automated
+        # `audit fix --force`, so it's out of scope for this gate.
+        run: npm audit --omit=dev

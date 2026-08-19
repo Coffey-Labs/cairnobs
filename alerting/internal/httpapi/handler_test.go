@@ -231,9 +231,26 @@ func TestCreateTargetRejectsInvalidKind(t *testing.T) {
 
 func TestCreateSlackTarget(t *testing.T) {
 	mux := newTestMux(newFakeRuleStore(), newFakeTargetStore(), &fakeDeliveryReader{})
-	rec := doRequest(t, mux, http.MethodPost, "/targets", `{"name": "oncall", "kind": "slack", "webhook_url": "https://hooks.slack.com/services/x"}`)
+	// A literal public IP, not a real hostname like hooks.slack.com --
+	// ValidateWebhookURL (see notifystore/ssrf.go) now resolves the
+	// target host and rejects internal/metadata addresses, so this test
+	// stays deterministic without depending on live DNS; ssrf_test.go
+	// covers the validation logic itself in depth.
+	rec := doRequest(t, mux, http.MethodPost, "/targets", `{"name": "oncall", "kind": "slack", "webhook_url": "https://8.8.8.8/services/x"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateTargetRejectsSSRFWebhookURL is the regression test for the
+// security-audit finding that target creation performed no URL
+// validation at all -- any authenticated user could point a webhook at
+// an internal or cloud-metadata address.
+func TestCreateTargetRejectsSSRFWebhookURL(t *testing.T) {
+	mux := newTestMux(newFakeRuleStore(), newFakeTargetStore(), &fakeDeliveryReader{})
+	rec := doRequest(t, mux, http.MethodPost, "/targets", `{"name": "x", "kind": "webhook", "webhook_url": "http://169.254.169.254/latest/meta-data/"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
 	}
 }
 

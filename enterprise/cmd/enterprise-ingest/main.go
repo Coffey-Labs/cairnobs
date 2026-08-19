@@ -59,6 +59,9 @@ func main() {
 		logger.Error("loading config", "error", err)
 		os.Exit(1)
 	}
+	for _, w := range cfg.DevCredentialWarnings() {
+		logger.Warn(w)
+	}
 
 	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
 		os.Exit(runHealthcheck(cfg.HTTPListenAddr))

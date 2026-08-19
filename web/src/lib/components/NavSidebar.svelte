@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getCurrentSession, enterpriseAuthBase, type CurrentSession } from '$lib/api';
+	import {
+		getCurrentSession,
+		enterpriseAuthBase,
+		localAuthEnabled,
+		getLocalSession,
+		logout,
+		type CurrentSession,
+		type LocalSession
+	} from '$lib/api';
 	import { getTheme, setTheme, type Theme } from '$lib/theme.svelte';
 	import { getDensity, toggleDensity } from '$lib/density.svelte';
 
@@ -16,6 +24,7 @@
 		{ href: '/alerts', label: 'Alerts', icon: '▲' },
 		{ href: '/data-sources', label: 'Data Sources', icon: '◈' },
 		{ href: '/agents', label: 'Agents', icon: '●' },
+		{ href: '/hosts', label: 'Hosts', icon: '▣' },
 		{ href: '/settings', label: 'Settings', icon: '⚙' }
 	];
 
@@ -28,6 +37,22 @@
 	$effect(() => {
 		getCurrentSession().then((s) => (session = s));
 	});
+
+	let localSession: LocalSession | null = $state(null);
+	$effect(() => {
+		if (!localAuthEnabled) return;
+		getLocalSession().then((s) => (localSession = s === 'disabled' ? null : s));
+	});
+
+	let loggingOut = $state(false);
+	async function handleLogout() {
+		loggingOut = true;
+		try {
+			await logout();
+		} finally {
+			window.location.href = '/login';
+		}
+	}
 
 	const themeOptions: { value: Theme; label: string }[] = [
 		{ value: 'dark', label: 'Dark' },
@@ -59,6 +84,17 @@
 			{:else}
 				<a class="switch signin" href="{enterpriseAuthBase}/auth/oidc/login">Sign in</a>
 			{/if}
+		</div>
+	{:else if localAuthEnabled && localSession}
+		<div class="tenant">
+			<div class="tenant-pill">
+				<span class="dot" aria-hidden="true"></span>
+				<span class="tenant-name">{localSession.username}</span>
+				<span class="role">{localSession.role}</span>
+			</div>
+			<button type="button" class="switch logout-btn" onclick={handleLogout} disabled={loggingOut}>
+				{loggingOut ? 'Signing out…' : 'Log out'}
+			</button>
 		</div>
 	{/if}
 
@@ -176,6 +212,18 @@
 	}
 	.switch:hover {
 		color: var(--color-accent);
+	}
+	.logout-btn {
+		background: none;
+		border: none;
+		font-family: var(--font-ui);
+		width: 100%;
+		text-align: left;
+		cursor: pointer;
+	}
+	.logout-btn:disabled {
+		cursor: default;
+		opacity: 0.6;
 	}
 	.switch.signin {
 		display: block;

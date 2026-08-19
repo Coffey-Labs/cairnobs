@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/sentry/sentry/api/authz"
 )
@@ -128,6 +131,30 @@ func (h *Handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// extra_file_paths is a materially different capability than the
+	// rest of this override: every other field tunes an already-running
+	// source, but this one tells the agent (which runs as root, with no
+	// filesystem sandboxing today -- see the security audit) to read and
+	// ship an arbitrary local file. RoleEditor is the right bar for
+	// "adjust batch size," not for "grant read access to any file on the
+	// host" -- so a request that actually *changes* the set of extra
+	// paths (adds or edits one -- shrinking or clearing never needs
+	// this, since that only removes capability) requires RoleAdmin,
+	// checked here rather than by splitting /agents/{host}/config into
+	// two routes with two RegisterRoutes role floors, which would break
+	// the "PUT replaces the whole override" contract every field here
+	// otherwise shares.
+	// A nil authorizer means no RBAC is configured at all (Phase 0-3
+	// default-open behavior) -- consistent with RequireRole's own
+	// no-op-when-nil posture, this extra gate only applies once an
+	// authorizer resolves a real Identity to check.
+	if identity, ok := authz.IdentityFromContext(r.Context()); ok && !identity.Role.Satisfies(authz.RoleAdmin) {
+		if changesExtraFilePaths(h.currentExtraFilePaths(r.Context(), h.tenantID(r), r.PathValue("host")), override.ExtraFilePaths) {
+			writeError(w, http.StatusForbidden, "extra_file_paths requires the admin role")
+			return
+		}
+	}
+
 	a, err := h.store.SetOverride(r.Context(), h.tenantID(r), r.PathValue("host"), override, h.updatedBy(r))
 	if err != nil {
 		h.writeStoreErr(w, err, "setting agent config")
@@ -202,7 +229,95 @@ func validateOverride(o ConfigOverride) error {
 	if o.HeartbeatIntervalMS != nil && *o.HeartbeatIntervalMS < 5000 {
 		return errors.New("heartbeat_interval_ms must be at least 5000 (5s)")
 	}
+	if len(o.ExtraFilePaths) > 20 {
+		return errors.New("extra_file_paths: at most 20 paths")
+	}
+	for _, p := range o.ExtraFilePaths {
+		if err := validateExtraFilePath(p); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// extraFilePathDenylistPrefixes blocks whole directory trees that are
+// never legitimate log-file locations but very commonly hold sensitive
+// material an agent (which runs as root, unsandboxed, on every host
+// this deployment has been checked against -- see the security audit)
+// can otherwise read: OS credential/config storage, home directories,
+// and kernel/process pseudo-filesystems.
+var extraFilePathDenylistPrefixes = []string{"/etc/", "/root/", "/home/", "/proc/", "/sys/", "/boot/"}
+
+// extraFilePathDenylistSubstrings catches credential material that can
+// live outside the directories above too (e.g. a service account's
+// SSH/cloud-credential directory under an app's own working directory,
+// not necessarily /home or /root).
+var extraFilePathDenylistSubstrings = []string{"/.ssh/", "/.gnupg/", "/.aws/", "/.kube/"}
+
+// extraFilePathDenylistSuffixes catches specific high-value filenames by
+// name, regardless of directory -- named here because the audit that
+// motivated this check demonstrated /etc/shadow and an SSH private key
+// specifically, and this covers both even outside the prefix-denylisted
+// directories above (e.g. a private key accidentally copied to /opt).
+var extraFilePathDenylistSuffixes = []string{"-key.pem", "id_rsa", "id_ecdsa", "id_ed25519", "id_dsa", "/shadow", "/gshadow"}
+
+func validateExtraFilePath(p string) error {
+	if p == "" || !strings.HasPrefix(p, "/") {
+		return errors.New("extra_file_paths: each path must be a non-empty absolute path")
+	}
+	if strings.Contains(p, "..") {
+		return errors.New(`extra_file_paths: path must not contain ".."`)
+	}
+	if cleaned := path.Clean(p); cleaned != p {
+		return fmt.Errorf("extra_file_paths: %q must be in canonical form (e.g. %q)", p, cleaned)
+	}
+	for _, prefix := range extraFilePathDenylistPrefixes {
+		if p == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(p, prefix) {
+			return fmt.Errorf("extra_file_paths: %q is not an allowed path (under denylisted %s)", p, prefix)
+		}
+	}
+	for _, substr := range extraFilePathDenylistSubstrings {
+		if strings.Contains(p, substr) {
+			return fmt.Errorf("extra_file_paths: %q is not an allowed path", p)
+		}
+	}
+	for _, suffix := range extraFilePathDenylistSuffixes {
+		if strings.HasSuffix(p, suffix) {
+			return fmt.Errorf("extra_file_paths: %q is not an allowed path", p)
+		}
+	}
+	return nil
+}
+
+// currentExtraFilePaths reads back the agent's already-stored override
+// (empty/nil if the agent or override doesn't exist yet) so
+// handleSetConfig can tell an addition/change apart from a pure
+// shrink-or-clear -- see changesExtraFilePaths.
+func (h *Handler) currentExtraFilePaths(ctx context.Context, tenantID, host string) []string {
+	a, err := h.store.Get(ctx, tenantID, host)
+	if err != nil || a.DesiredOverride == nil {
+		return nil
+	}
+	return a.DesiredOverride.ExtraFilePaths
+}
+
+// changesExtraFilePaths reports whether desired introduces any path not
+// already present in current -- an addition or an edit, either of which
+// grants the agent read access to something it couldn't read before.
+// Removing paths (desired is a subset of current) is never a capability
+// grant, so that alone never requires the stricter role handleSetConfig
+// applies around this.
+func changesExtraFilePaths(current, desired []string) bool {
+	existing := make(map[string]struct{}, len(current))
+	for _, p := range current {
+		existing[p] = struct{}{}
+	}
+	for _, p := range desired {
+		if _, ok := existing[p]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) writeStoreErr(w http.ResponseWriter, err error, action string) {

@@ -153,6 +153,30 @@ alerting engine already detects natively via an `absence`-condition
 alert rule. See `/docs/agent-heartbeat-monitoring.md` for the exact rule
 to create.
 
+## Host CPU/memory/disk metrics
+
+Same shape as heartbeat, same reasoning: `[metrics]` in the config
+(`enabled = false` by default) sends a periodic record — CPU%, memory
+used/total, disk used/total for `/` — tagged `sentry.metrics=true`, with
+the individual numbers as their own attributes (`cpu_percent`,
+`mem_used_bytes`, `mem_total_bytes`, `disk_used_bytes`,
+`disk_total_bytes`), queryable directly (e.g. `cpu_percent > 80`) since
+the query language transparently maps any non-standard field name to
+`attributes['field']` with automatic numeric casting. Powers the web
+UI's "Hosts" nav section. Linux-only for now (`src/metrics.rs`) — reads
+`/proc/stat`/`/proc/meminfo` and shells out to `df`, no new
+dependencies, same "shell out to a boring, ubiquitous tool" precedent
+`journalctl` already sets.
+
+**Enable this on only one agent process per physical host.** It's
+common for one host to run several `sentry-agent` processes (one per
+log source, each needing its own `[agent] host` value to work around
+the `agents` table's `UNIQUE (tenant_id, host)` constraint — see
+`/docs/agent-management-design.md`) — turning `[metrics]` on for more
+than one of them reports the same physical machine as multiple
+different "hosts" with conflicting metric series. Pick the one process
+using that host's real, unoverridden hostname.
+
 ## Running as a Windows service
 
 "A native Windows service, not a WSL wrapper" means implementing the Win32

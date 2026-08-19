@@ -147,7 +147,12 @@ type AgentOverride struct {
 	HeartbeatEnabled     *bool
 	HeartbeatIntervalMS  *uint64
 	JournaldUnit         *string
-	Version              string
+	// Extra file paths this agent should tail in addition to its local
+	// [source] -- see agent_control.proto's DesiredOverride.
+	// extra_file_paths comment for why this has no "unset" state the
+	// way the pointer fields above do.
+	ExtraFilePaths []string
+	Version        string
 }
 
 func New(logger *slog.Logger, grpcCfg config.GRPCConfig, tlsCfg config.TLSConfig, p batchProducer, resolver TenantResolver, agents AgentRegistry) *Server {
@@ -298,6 +303,7 @@ func (s *Server) CheckIn(ctx context.Context, req *agentv1.CheckInRequest) (*age
 			HeartbeatEnabled:     result.Override.HeartbeatEnabled,
 			HeartbeatIntervalMs:  result.Override.HeartbeatIntervalMS,
 			JournaldUnit:         result.Override.JournaldUnit,
+			ExtraFilePaths:       result.Override.ExtraFilePaths,
 			Version:              result.Override.Version,
 		}
 	}

@@ -115,7 +115,18 @@ func httpMutateNoBody(method, baseURL, path, token, body, successMsg string, std
 // for callers that construct the body themselves rather than reading it
 // from a file (agents config set, agents restart).
 func httpPutJSON(baseURL, path, token, body string, stdout, stderr io.Writer) int {
-	req, err := http.NewRequest(http.MethodPut, baseURL+path, strings.NewReader(body))
+	return httpSendJSON(http.MethodPut, baseURL, path, token, body, stdout, stderr)
+}
+
+// httpPostJSON is httpPutJSON's POST sibling -- for callers creating a
+// resource from a body they built themselves rather than reading it
+// from a file (users create, users reset-password).
+func httpPostJSON(baseURL, path, token, body string, stdout, stderr io.Writer) int {
+	return httpSendJSON(http.MethodPost, baseURL, path, token, body, stdout, stderr)
+}
+
+func httpSendJSON(method, baseURL, path, token, body string, stdout, stderr io.Writer) int {
+	req, err := http.NewRequest(method, baseURL+path, strings.NewReader(body))
 	if err != nil {
 		fmt.Fprintf(stderr, "building request: %v\n", err)
 		return 1

@@ -272,9 +272,20 @@ type DesiredOverride struct {
 	// agent's only obligation is to echo it back as
 	// CheckInRequest.applied_override_version once applied -- it never
 	// interprets the value itself.
-	Version       string `protobuf:"bytes,6,opt,name=version,proto3" json:"version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Version string `protobuf:"bytes,6,opt,name=version,proto3" json:"version,omitempty"`
+	// Extra file paths this agent should tail in addition to whatever its
+	// local [source] already is -- never a replacement for the primary
+	// source (an agent whose local source is journald can still be told
+	// to also tail a file, and vice versa). Unlike every field above,
+	// there's no real "unset" state for a list: the web UI/CLI always
+	// resubmit the complete desired list on every edit (same "PUT
+	// replaces the whole override" convention every other field already
+	// follows -- see api/agents/handler.go's handleSetConfig), so an
+	// empty list unambiguously means "no extra paths right now," not
+	// "don't touch this."
+	ExtraFilePaths []string `protobuf:"bytes,7,rep,name=extra_file_paths,json=extraFilePaths,proto3" json:"extra_file_paths,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DesiredOverride) Reset() {
@@ -347,6 +358,13 @@ func (x *DesiredOverride) GetVersion() string {
 		return x.Version
 	}
 	return ""
+}
+
+func (x *DesiredOverride) GetExtraFilePaths() []string {
+	if x != nil {
+		return x.ExtraFilePaths
+	}
+	return nil
 }
 
 type CheckInResponse struct {
@@ -442,14 +460,15 @@ const file_sentry_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x18\n" +
 	"\aservice\x18\x02 \x01(\tR\aservice\x12F\n" +
 	"\x0ecurrent_config\x18\x03 \x01(\v2\x1f.sentry.agent.v1.ReportedConfigR\rcurrentConfig\x128\n" +
-	"\x18applied_override_version\x18\x04 \x01(\tR\x16appliedOverrideVersion\"\x98\x03\n" +
+	"\x18applied_override_version\x18\x04 \x01(\tR\x16appliedOverrideVersion\"\xc2\x03\n" +
 	"\x0fDesiredOverride\x12)\n" +
 	"\x0ebatch_max_size\x18\x01 \x01(\x04H\x00R\fbatchMaxSize\x88\x01\x01\x12:\n" +
 	"\x17batch_flush_interval_ms\x18\x02 \x01(\x04H\x01R\x14batchFlushIntervalMs\x88\x01\x01\x120\n" +
 	"\x11heartbeat_enabled\x18\x03 \x01(\bH\x02R\x10heartbeatEnabled\x88\x01\x01\x127\n" +
 	"\x15heartbeat_interval_ms\x18\x04 \x01(\x04H\x03R\x13heartbeatIntervalMs\x88\x01\x01\x12(\n" +
 	"\rjournald_unit\x18\x05 \x01(\tH\x04R\fjournaldUnit\x88\x01\x01\x12\x18\n" +
-	"\aversion\x18\x06 \x01(\tR\aversionB\x11\n" +
+	"\aversion\x18\x06 \x01(\tR\aversion\x12(\n" +
+	"\x10extra_file_paths\x18\a \x03(\tR\x0eextraFilePathsB\x11\n" +
 	"\x0f_batch_max_sizeB\x1a\n" +
 	"\x18_batch_flush_interval_msB\x14\n" +
 	"\x12_heartbeat_enabledB\x18\n" +
