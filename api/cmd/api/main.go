@@ -33,6 +33,7 @@ import (
 	"github.com/sentry/sentry/api/httpserver"
 	"github.com/sentry/sentry/api/internal/config"
 	"github.com/sentry/sentry/api/localauth"
+	"github.com/sentry/sentry/api/logretention"
 	"github.com/sentry/sentry/api/queryapi"
 	"github.com/sentry/sentry/api/querylang/executor"
 	"github.com/sentry/sentry/api/searchclient"
@@ -159,6 +160,12 @@ func main() {
 	// queryHandler's/aiHandler's nil audit loggers above.
 	agentsHandler := agents.NewHandler(logger, agents.NewStore(pgPool), authorizer, nil)
 
+	// Same conn sqlRunner above already wraps -- logretention issues its
+	// own purpose-built statements against the `logs` table directly
+	// rather than going through sqlRunner's SELECT-only RunSQL (see
+	// logretention.Store's doc comment).
+	logRetentionHandler := logretention.NewHandler(logger, logretention.NewStore(conn), authorizer)
+
 	// One shared mux, CORS applied once around the whole thing -- see
 	// httpserver's doc comment for why this changed from each
 	// handler wrapping itself individually.
@@ -166,6 +173,7 @@ func main() {
 	queryHandler.RegisterRoutes(mux)
 	dashboardsHandler.RegisterRoutes(mux)
 	agentsHandler.RegisterRoutes(mux)
+	logRetentionHandler.RegisterRoutes(mux)
 
 	// Only registered when local auth is actually enabled -- see
 	// localauth.Handler.RegisterRoutes' doc comment for why a disabled

@@ -482,6 +482,22 @@ export function setUserRole(id: string, role: string): Promise<LocalUser> {
 	});
 }
 
+// --- log retention (owner/admin only, see api/logretention) -----------
+
+export type LogRetentionPreview = { count: number; cutoff: string };
+export type LogRetentionDeleteResult = { deleted_count: number; cutoff: string };
+
+export function previewLogDeletion(olderThanHours: number): Promise<LogRetentionPreview> {
+	return request(`/logs/retention/preview?older_than_hours=${olderThanHours}`, { credentials: 'include' });
+}
+
+export function deleteLogsOlderThan(olderThanHours: number): Promise<LogRetentionDeleteResult> {
+	return request(`/logs/retention?older_than_hours=${olderThanHours}`, {
+		method: 'DELETE',
+		credentials: 'include'
+	});
+}
+
 // --- alerting ---------------------------------------------------------
 
 export type ConditionType = 'threshold' | 'absence';
