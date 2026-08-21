@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -50,8 +51,21 @@ func (f fakeAuthorizer) Authorize(*http.Request) (authz.Identity, error) {
 	return authz.Identity{TenantID: "default", UserID: "u1", Role: f.role}, nil
 }
 
+// fakeFloor stands in for AgentRetentionStore -- hasFloor false (the
+// zero value) means no agent has log_retention_days configured, same
+// as every existing test in this file assumed before the floor existed.
+type fakeFloor struct {
+	days     int
+	hasFloor bool
+	err      error
+}
+
+func (f fakeFloor) MaxRetentionDays(context.Context) (int, bool, error) {
+	return f.days, f.hasFloor, f.err
+}
+
 func newTestHandler(s *fakeStore, role authz.Role) *Handler {
-	return NewHandler(discardLogger(), s, fakeAuthorizer{role: role})
+	return NewHandler(discardLogger(), s, fakeFloor{}, fakeAuthorizer{role: role})
 }
 
 func doRequest(t *testing.T, h *Handler, method, path string) *httptest.ResponseRecorder {
@@ -193,7 +207,7 @@ func TestViewerAndEditorAreForbiddenFromRetentionRoutes(t *testing.T) {
 
 func TestRetentionRoutesRequireAuth(t *testing.T) {
 	s := &fakeStore{}
-	h := NewHandler(discardLogger(), s, nil)
+	h := NewHandler(discardLogger(), s, fakeFloor{}, nil)
 
 	// A nil authorizer is Phase 0-3's default-open behavior (see
 	// authz.RequireRole's doc comment) -- confirm that posture applies
@@ -204,4 +218,82 @@ func TestRetentionRoutesRequireAuth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status with nil authorizer = %d, want 200 (default-open, matches RequireRole elsewhere)", rec.Code)
 	}
+}
+
+// TestAdminBlockedByRetentionFloor is the core regression test for the
+// owner-only override: an agent configured with a 90-day retention
+// floor must block an admin's attempt to delete anything newer than
+// that, on both preview and delete.
+func TestAdminBlockedByRetentionFloor(t *testing.T) {
+	s := &fakeStore{count: 100}
+	h := NewHandler(discardLogger(), s, fakeFloor{days: 90, hasFloor: true}, fakeAuthorizer{role: authz.RoleAdmin})
+
+	// 30 days is newer than the 90-day floor -- must be blocked.
+	preview := doRequest(t, h, "GET", "/logs/retention/preview?older_than_hours="+hoursForDays(30))
+	if preview.Code != http.StatusForbidden {
+		t.Fatalf("preview at 30d against a 90d floor: status = %d, want 403, body=%s", preview.Code, preview.Body.String())
+	}
+	del := doRequest(t, h, "DELETE", "/logs/retention?older_than_hours="+hoursForDays(30))
+	if del.Code != http.StatusForbidden {
+		t.Fatalf("delete at 30d against a 90d floor: status = %d, want 403, body=%s", del.Code, del.Body.String())
+	}
+	if len(s.countedWith) != 0 || len(s.deletedWith) != 0 {
+		t.Error("a blocked request must never reach the store at all")
+	}
+}
+
+// TestAdminAllowedBeyondRetentionFloor confirms the floor only blocks
+// requests that would actually reach into the protected window -- a
+// request older than the floor itself is unaffected by it.
+func TestAdminAllowedBeyondRetentionFloor(t *testing.T) {
+	s := &fakeStore{count: 5}
+	h := NewHandler(discardLogger(), s, fakeFloor{days: 90, hasFloor: true}, fakeAuthorizer{role: authz.RoleAdmin})
+
+	// 120 days is older than the 90-day floor -- must be allowed.
+	del := doRequest(t, h, "DELETE", "/logs/retention?older_than_hours="+hoursForDays(120))
+	if del.Code != http.StatusOK {
+		t.Fatalf("delete at 120d against a 90d floor: status = %d, want 200, body=%s", del.Code, del.Body.String())
+	}
+}
+
+// TestOwnerBypassesRetentionFloor confirms the whole point of the
+// feature: an owner can still delete within a configured retention
+// window that blocks everyone else.
+func TestOwnerBypassesRetentionFloor(t *testing.T) {
+	s := &fakeStore{count: 100}
+	h := NewHandler(discardLogger(), s, fakeFloor{days: 90, hasFloor: true}, fakeAuthorizer{role: authz.RoleOwner})
+
+	del := doRequest(t, h, "DELETE", "/logs/retention?older_than_hours="+hoursForDays(1))
+	if del.Code != http.StatusOK {
+		t.Fatalf("owner deleting within the floor: status = %d, want 200, body=%s", del.Code, del.Body.String())
+	}
+}
+
+// TestNoConfiguredFloorNeverBlocksAdmin confirms the default, common
+// case (no agent has log_retention_days set) behaves exactly as before
+// this feature existed -- fakeFloor{} (hasFloor: false) is what every
+// other test in this file already relies on, this just makes the
+// no-floor-configured case explicit.
+func TestNoConfiguredFloorNeverBlocksAdmin(t *testing.T) {
+	s := &fakeStore{count: 9}
+	h := NewHandler(discardLogger(), s, fakeFloor{hasFloor: false}, fakeAuthorizer{role: authz.RoleAdmin})
+
+	del := doRequest(t, h, "DELETE", "/logs/retention?older_than_hours=1")
+	if del.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 with no configured floor", del.Code)
+	}
+}
+
+func TestRetentionFloorCheckPropagatesStoreErrors(t *testing.T) {
+	s := &fakeStore{}
+	h := NewHandler(discardLogger(), s, fakeFloor{err: errors.New("postgres unreachable")}, fakeAuthorizer{role: authz.RoleAdmin})
+
+	rec := doRequest(t, h, "GET", "/logs/retention/preview?older_than_hours=24")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+}
+
+func hoursForDays(days int) string {
+	return strconv.Itoa(days * 24)
 }

@@ -3,6 +3,7 @@ package logretention
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -19,6 +20,13 @@ type store interface {
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) error
 }
 
+// retentionFloor is the narrow interface backing the owner-only
+// override check -- *AgentRetentionStore (agent_floor.go) is the
+// production implementation.
+type retentionFloor interface {
+	MaxRetentionDays(ctx context.Context) (int, bool, error)
+}
+
 // maxOlderThanHours bounds the age a caller can specify -- 10 years is
 // far beyond any real retention window this feature exists for, and
 // exists only to reject an obviously-wrong input (e.g. a stray extra
@@ -28,11 +36,12 @@ const maxOlderThanHours = 10 * 365 * 24
 type Handler struct {
 	logger     *slog.Logger
 	store      store
+	floor      retentionFloor
 	authorizer authz.Authorizer
 }
 
-func NewHandler(logger *slog.Logger, store store, authorizer authz.Authorizer) *Handler {
-	return &Handler{logger: logger, store: store, authorizer: authorizer}
+func NewHandler(logger *slog.Logger, store store, floor retentionFloor, authorizer authz.Authorizer) *Handler {
+	return &Handler{logger: logger, store: store, floor: floor, authorizer: authorizer}
 }
 
 // RegisterRoutes: both routes are RoleAdmin -- RoleOwner satisfies it
@@ -58,6 +67,37 @@ func parseOlderThanHours(r *http.Request) (int, bool) {
 	return hours, true
 }
 
+// checkRetentionFloor enforces api/agents.ConfigOverride.LogRetentionDays
+// as a hard floor against anyone but an owner: if any agent has a
+// configured retention, the largest one across all agents is the
+// earliest boundary a non-owner may delete up to. An owner always
+// bypasses this (identity.Role == RoleOwner short-circuits before ever
+// querying the floor) -- "owner and admin" gates the routes themselves
+// (RegisterRoutes), but this narrows what admin specifically can do
+// once inside them, the same shape handleSetConfig's own
+// log_retention_days gate uses on the agents side. A nil identity (no
+// authorizer configured at all, Phase 0-3 default-open) skips this
+// too, consistent with every other RBAC check in this codebase being a
+// no-op when there's no RBAC to begin with.
+func (h *Handler) checkRetentionFloor(ctx context.Context, cutoff time.Time) (string, error) {
+	identity, ok := authz.IdentityFromContext(ctx)
+	if !ok || identity.Role == authz.RoleOwner {
+		return "", nil
+	}
+	maxDays, hasFloor, err := h.floor.MaxRetentionDays(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !hasFloor {
+		return "", nil
+	}
+	protectedBoundary := time.Now().UTC().Add(-time.Duration(maxDays) * 24 * time.Hour)
+	if cutoff.After(protectedBoundary) {
+		return fmt.Sprintf("a configured log retention policy protects logs newer than %d days; only an owner can override this", maxDays), nil
+	}
+	return "", nil
+}
+
 type previewResponse struct {
 	Count  uint64    `json:"count"`
 	Cutoff time.Time `json:"cutoff"`
@@ -70,6 +110,15 @@ func (h *Handler) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+
+	if msg, err := h.checkRetentionFloor(r.Context(), cutoff); err != nil {
+		h.logger.Error("checking log retention floor", "error", err)
+		writeError(w, http.StatusInternalServerError, "checking retention policy failed")
+		return
+	} else if msg != "" {
+		writeError(w, http.StatusForbidden, msg)
+		return
+	}
 
 	count, err := h.store.CountOlderThan(r.Context(), cutoff)
 	if err != nil {
@@ -100,6 +149,15 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+
+	if msg, err := h.checkRetentionFloor(r.Context(), cutoff); err != nil {
+		h.logger.Error("checking log retention floor", "error", err)
+		writeError(w, http.StatusInternalServerError, "checking retention policy failed")
+		return
+	} else if msg != "" {
+		writeError(w, http.StatusForbidden, msg)
+		return
+	}
 
 	count, err := h.store.CountOlderThan(r.Context(), cutoff)
 	if err != nil {

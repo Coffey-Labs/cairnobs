@@ -590,6 +590,11 @@ export type ConfigOverride = {
 	heartbeat_interval_ms?: number;
 	journald_unit?: string;
 	extra_file_paths?: string[];
+	// log_retention_days is owner-only to change (see api/agents/handler.go's
+	// changesLogRetentionDays) -- it's a central policy tag api/logretention
+	// reads as a protective floor, not something the agent process itself
+	// ever sees or applies.
+	log_retention_days?: number;
 };
 
 export type Agent = {
