@@ -5,11 +5,13 @@
 		localAuthEnabled,
 		getLocalSession,
 		getCurrentSession,
+		listRetentionHosts,
 		previewLogDeletion,
 		deleteLogsOlderThan,
 		type AuthFeatures,
 		type LocalSession,
 		type CurrentSession,
+		type RetentionHost,
 		type LogRetentionPreview,
 		type LogRetentionDeleteResult
 	} from '$lib/api';
@@ -68,7 +70,10 @@
 		return !localAuthEnabled;
 	});
 
-	// --- log retention deletion ---
+	// --- log retention deletion -- host-scoped, not wholesale: a caller
+	// picks which hosts to target from what listRetentionHosts reports for
+	// the chosen age, same "select specific agents, not delete everything"
+	// requirement api/logretention's own parseHosts enforces server-side. ---
 	const retentionOptions: { label: string; hours: number }[] = [
 		{ label: '7 days', hours: 24 * 7 },
 		{ label: '30 days', hours: 24 * 30 },
@@ -77,18 +82,67 @@
 		{ label: '365 days', hours: 24 * 365 }
 	];
 	let retentionHours = $state(retentionOptions[1].hours);
+
+	let hostsLoading = $state(false);
+	let hosts = $state<RetentionHost[]>([]);
+	let hostsError = $state('');
+	let selectedHosts = $state<Set<string>>(new Set());
+
 	let previewing = $state(false);
 	let preview = $state<LogRetentionPreview | null>(null);
 	let deleting = $state(false);
 	let deleteResult = $state<LogRetentionDeleteResult | null>(null);
 	let retentionError = $state('');
 
+	// Reloads whenever retentionHours changes (including on mount, since
+	// $effect runs once immediately too) -- selection/preview/result all
+	// reset because they were scoped to the previous age's host list.
+	async function loadHosts(hours: number) {
+		hostsLoading = true;
+		hostsError = '';
+		preview = null;
+		deleteResult = null;
+		selectedHosts = new Set();
+		try {
+			const result = await listRetentionHosts(hours);
+			hosts = result.hosts;
+		} catch (e) {
+			hostsError = e instanceof Error ? e.message : String(e);
+			hosts = [];
+		} finally {
+			hostsLoading = false;
+		}
+	}
+	$effect(() => {
+		loadHosts(retentionHours);
+	});
+
+	function toggleHost(host: string) {
+		const next = new Set(selectedHosts);
+		if (next.has(host)) next.delete(host);
+		else next.add(host);
+		selectedHosts = next;
+		preview = null;
+		deleteResult = null;
+	}
+
+	function selectAllHosts() {
+		selectedHosts = new Set(hosts.map((h) => h.host));
+		preview = null;
+	}
+
+	function selectNoHosts() {
+		selectedHosts = new Set();
+		preview = null;
+	}
+
 	async function handlePreview() {
+		if (selectedHosts.size === 0) return;
 		previewing = true;
 		retentionError = '';
 		deleteResult = null;
 		try {
-			preview = await previewLogDeletion(retentionHours);
+			preview = await previewLogDeletion(retentionHours, [...selectedHosts]);
 		} catch (e) {
 			retentionError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -105,8 +159,16 @@
 		deleting = true;
 		retentionError = '';
 		try {
-			deleteResult = await deleteLogsOlderThan(retentionHours);
+			// preview.hosts, not [...selectedHosts] -- already excludes any
+			// host the preview found protected, so this never re-asks for a
+			// host the response just said would be skipped.
+			const result = await deleteLogsOlderThan(retentionHours, preview.hosts);
 			preview = null;
+			// loadHosts resets deleteResult as part of its "fresh state" load
+			// (stale counts/now-empty hosts shouldn't linger), so it runs
+			// before deleteResult is set here, not after.
+			await loadHosts(retentionHours);
+			deleteResult = result;
 		} catch (e) {
 			retentionError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -182,34 +244,87 @@
 		<section>
 			<h2>Log retention</h2>
 			<p class="note">
-				Permanently delete log records older than a chosen age. Visible to owners and admins only.
+				Permanently delete log records from specific hosts, older than a chosen age. Visible to owners and
+				admins only.
 			</p>
 
 			<div class="retention-controls">
-				<select bind:value={retentionHours} disabled={previewing || deleting}>
+				<select bind:value={retentionHours} disabled={hostsLoading || previewing || deleting}>
 					{#each retentionOptions as opt (opt.hours)}
 						<option value={opt.hours}>Older than {opt.label}</option>
 					{/each}
 				</select>
-				<button type="button" onclick={handlePreview} disabled={previewing || deleting}>
-					{previewing ? 'Checking…' : 'Delete logs…'}
-				</button>
 			</div>
+
+			{#if hostsError}<p class="error">{hostsError}</p>{/if}
+
+			{#if hostsLoading}
+				<p class="muted">Loading hosts…</p>
+			{:else if hosts.length === 0}
+				<p class="note">No hosts have logs older than this.</p>
+			{:else}
+				<div class="host-picker">
+					<div class="host-picker-actions">
+						<button type="button" class="link" onclick={selectAllHosts} disabled={deleting}>Select all</button>
+						<button type="button" class="link" onclick={selectNoHosts} disabled={deleting}>Select none</button>
+					</div>
+					<ul class="host-list">
+						{#each hosts as h (h.host)}
+							<li>
+								<label>
+									<input
+										type="checkbox"
+										checked={selectedHosts.has(h.host)}
+										disabled={deleting}
+										onchange={() => toggleHost(h.host)}
+									/>
+									<span class="host-name">{h.host}</span>
+									<span class="host-count">{h.count.toLocaleString()} records</span>
+									{#if h.protected_days != null}
+										<span class="protected-badge">protected {h.protected_days}d</span>
+									{/if}
+								</label>
+							</li>
+						{/each}
+					</ul>
+					<button type="button" onclick={handlePreview} disabled={selectedHosts.size === 0 || previewing || deleting}>
+						{previewing
+							? 'Checking…'
+							: `Delete logs from ${selectedHosts.size} host${selectedHosts.size === 1 ? '' : 's'}…`}
+					</button>
+				</div>
+			{/if}
 
 			{#if retentionError}<p class="error">{retentionError}</p>{/if}
 
 			{#if preview}
 				<div class="confirm-panel">
-					<p>
-						This will <strong>permanently delete {preview.count.toLocaleString()}</strong>
-						log record{preview.count === 1 ? '' : 's'} older than {formatCutoff(preview.cutoff)}.
-						This cannot be undone.
-					</p>
+					{#if preview.hosts.length > 0}
+						<p>
+							This will <strong>permanently delete {preview.count.toLocaleString()}</strong>
+							log record{preview.count === 1 ? '' : 's'} older than {formatCutoff(preview.cutoff)} from
+							{preview.hosts.length} host{preview.hosts.length === 1 ? '' : 's'} ({preview.hosts.join(', ')}).
+							This cannot be undone.
+						</p>
+					{:else}
+						<p>Every selected host is protected by a retention policy -- nothing to delete.</p>
+					{/if}
+					{#if preview.blocked_hosts?.length}
+						<p class="note">
+							Protected by a retention policy, skipped: {preview.blocked_hosts
+								.map((b) => `${b.host} (${b.protected_days}d)`)
+								.join(', ')}.
+						</p>
+					{/if}
 					<div class="confirm-actions">
-						<button type="button" onclick={cancelPreview} disabled={deleting}>Cancel</button>
-						<button type="button" class="danger" onclick={confirmDelete} disabled={deleting}>
-							{deleting ? 'Deleting…' : 'Yes, delete permanently'}
+						<button type="button" onclick={cancelPreview} disabled={deleting}>
+							{preview.hosts.length > 0 ? 'Cancel' : 'Close'}
 						</button>
+						{#if preview.hosts.length > 0}
+							<button type="button" class="danger" onclick={confirmDelete} disabled={deleting}>
+								{deleting ? 'Deleting…' : 'Yes, delete permanently'}
+							</button>
+						{/if}
 					</div>
 				</div>
 			{/if}
@@ -218,7 +333,13 @@
 				<p class="note">
 					Deleted {deleteResult.deleted_count.toLocaleString()} log record{deleteResult.deleted_count === 1
 						? ''
-						: 's'} older than {formatCutoff(deleteResult.cutoff)}.
+						: 's'} older than {formatCutoff(deleteResult.cutoff)}
+					{#if deleteResult.deleted_hosts.length}from {deleteResult.deleted_hosts.join(', ')}{/if}.
+					{#if deleteResult.blocked_hosts?.length}
+						Skipped (protected): {deleteResult.blocked_hosts
+							.map((b) => `${b.host} (${b.protected_days}d)`)
+							.join(', ')}.
+					{/if}
 				</p>
 			{/if}
 		</section>
@@ -338,21 +459,83 @@
 		border-radius: var(--radius-sm);
 		padding: var(--space-2) var(--space-3);
 	}
-	.retention-controls button {
+	.host-picker {
+		margin-top: var(--space-3);
+		padding: var(--space-3);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+	}
+	.host-picker-actions {
+		display: flex;
+		gap: var(--space-3);
+		margin-bottom: var(--space-2);
+	}
+	.link {
+		background: none;
+		border: none;
+		padding: 0;
+		color: var(--color-accent);
+		font-family: var(--font-ui);
+		font-size: var(--text-xs);
+		cursor: pointer;
+	}
+	.link:disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+	.host-list {
+		list-style: none;
+		margin: 0 0 var(--space-3);
+		padding: 0;
+		max-height: 14rem;
+		overflow-y: auto;
+	}
+	.host-list li {
+		border-bottom: 1px solid var(--color-border);
+	}
+	.host-list li:last-child {
+		border-bottom: none;
+	}
+	.host-list label {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-1);
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+	.host-name {
+		font-family: var(--font-mono);
+		color: var(--color-text);
+	}
+	.host-count {
+		color: var(--color-text-muted);
+		font-size: var(--text-xs);
+	}
+	.protected-badge {
+		margin-left: auto;
+		font-size: var(--text-xs);
+		color: var(--color-text-muted);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 0.05rem 0.4rem;
+	}
+	.host-picker > button {
 		padding: var(--space-2) var(--space-4);
 		font-family: var(--font-ui);
 		font-size: var(--text-sm);
 		font-weight: var(--font-weight-medium);
 		color: var(--color-text);
-		background: var(--color-surface);
+		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
-	.retention-controls button:hover {
+	.host-picker > button:hover:not(:disabled) {
 		border-color: var(--color-border-strong);
 	}
-	.retention-controls button:disabled {
+	.host-picker > button:disabled {
 		cursor: default;
 		opacity: 0.6;
 	}
