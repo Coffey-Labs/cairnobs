@@ -483,40 +483,47 @@ export function setUserRole(id: string, role: string): Promise<LocalUser> {
 }
 
 // --- log retention (owner/admin only, see api/logretention) -----------
-// Deletion is host-scoped, not wholesale: a caller must name which
-// hosts' logs to target (listRetentionHosts is how the UI discovers
-// what to offer), and api/logretention never treats an omitted host
-// list as "every host."
+// Deletion is scoped to specific (host, service) targets, not wholesale
+// -- a caller must name which agents' *and* which log types' logs to
+// target (listRetentionHosts is how the UI discovers what to offer,
+// grouped by host with each host's services underneath), and
+// api/logretention never treats an omitted target list as "everything."
 
-export type BlockedHost = { host: string; protected_days: number };
-export type RetentionHost = { host: string; count: number; protected_days?: number };
+export type HostService = { host: string; service: string };
+export type BlockedTarget = { host: string; service: string; protected_days: number };
+export type RetentionService = { service: string; count: number; protected_days?: number };
+export type RetentionHost = { host: string; protected_days?: number; services: RetentionService[] };
 export type RetentionHostsResult = { hosts: RetentionHost[]; cutoff: string };
-export type LogRetentionPreview = { count: number; cutoff: string; hosts: string[]; blocked_hosts?: BlockedHost[] };
+export type LogRetentionPreview = {
+	count: number;
+	cutoff: string;
+	targets: HostService[];
+	blocked_targets?: BlockedTarget[];
+};
 export type LogRetentionDeleteResult = {
 	deleted_count: number;
 	cutoff: string;
-	deleted_hosts: string[];
-	blocked_hosts?: BlockedHost[];
+	deleted_targets: HostService[];
+	blocked_targets?: BlockedTarget[];
 };
-
-function hostsQuery(hosts: string[]): string {
-	return hosts.map((h) => `host=${encodeURIComponent(h)}`).join('&');
-}
 
 export function listRetentionHosts(olderThanHours: number): Promise<RetentionHostsResult> {
 	return request(`/logs/retention/hosts?older_than_hours=${olderThanHours}`, { credentials: 'include' });
 }
 
-export function previewLogDeletion(olderThanHours: number, hosts: string[]): Promise<LogRetentionPreview> {
-	return request(`/logs/retention/preview?older_than_hours=${olderThanHours}&${hostsQuery(hosts)}`, {
-		credentials: 'include'
+export function previewLogDeletion(olderThanHours: number, targets: HostService[]): Promise<LogRetentionPreview> {
+	return request('/logs/retention/preview', {
+		method: 'POST',
+		credentials: 'include',
+		body: JSON.stringify({ older_than_hours: olderThanHours, targets })
 	});
 }
 
-export function deleteLogsOlderThan(olderThanHours: number, hosts: string[]): Promise<LogRetentionDeleteResult> {
-	return request(`/logs/retention?older_than_hours=${olderThanHours}&${hostsQuery(hosts)}`, {
-		method: 'DELETE',
-		credentials: 'include'
+export function deleteLogsOlderThan(olderThanHours: number, targets: HostService[]): Promise<LogRetentionDeleteResult> {
+	return request('/logs/retention/delete', {
+		method: 'POST',
+		credentials: 'include',
+		body: JSON.stringify({ older_than_hours: olderThanHours, targets })
 	});
 }
 
@@ -617,6 +624,11 @@ export type ConfigOverride = {
 	// reads as a protective floor, not something the agent process itself
 	// ever sees or applies.
 	log_retention_days?: number;
+	// service_log_retention_days is log_retention_days' per-service
+	// refinement, also owner-only -- a service present here overrides
+	// log_retention_days for that service only; every other service on
+	// this host still falls back to log_retention_days.
+	service_log_retention_days?: Record<string, number>;
 };
 
 export type Agent = {

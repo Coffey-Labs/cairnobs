@@ -376,6 +376,72 @@ func TestHandleSetConfigRejectsInvalidLogRetentionDays(t *testing.T) {
 	}
 }
 
+// TestHandleSetConfigServiceLogRetentionDaysRequiresOwner mirrors
+// TestHandleSetConfigLogRetentionDaysRequiresOwner exactly -- the
+// per-service map has the same owner-only, no-safe-direction gate as
+// the single host-level value.
+func TestHandleSetConfigServiceLogRetentionDaysRequiresOwner(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	admin := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleAdmin}, nil)
+	owner := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleOwner}, nil)
+
+	rec := doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{
+		ServiceLogRetentionDays: map[string]int{"smtp": 365},
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin setting service_log_retention_days: status = %d, want 403", rec.Code)
+	}
+
+	rec = doRequest(t, owner, "PUT", "/agents/web-01/config", ConfigOverride{
+		ServiceLogRetentionDays: map[string]int{"smtp": 365},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner setting service_log_retention_days: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var got Agent
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.DesiredOverride == nil || got.DesiredOverride.ServiceLogRetentionDays["smtp"] != 365 {
+		t.Fatalf("stored override = %+v, want service_log_retention_days[smtp]=365", got.DesiredOverride)
+	}
+
+	// Changing the value of an existing entry is gated the same as
+	// adding a new one.
+	rec = doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{
+		ServiceLogRetentionDays: map[string]int{"smtp": 30},
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin changing service_log_retention_days: status = %d, want 403", rec.Code)
+	}
+
+	// Clearing it (omitting the field) is gated too.
+	rec = doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin clearing service_log_retention_days: status = %d, want 403", rec.Code)
+	}
+}
+
+func TestHandleSetConfigRejectsInvalidServiceLogRetentionDays(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	owner := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleOwner}, nil)
+
+	cases := []map[string]int{
+		{"smtp": 0},
+		{"smtp": -1},
+		{"smtp": 3651},
+		{"": 30},
+	}
+	for _, days := range cases {
+		rec := doRequest(t, owner, "PUT", "/agents/web-01/config", ConfigOverride{ServiceLogRetentionDays: days})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("service_log_retention_days=%v: status = %d, want 400", days, rec.Code)
+		}
+	}
+}
+
 func TestHandleSetConfigUnknownHostIsNotFound(t *testing.T) {
 	h := newTestHandler(newFakeStore())
 	interval := int64(30000)

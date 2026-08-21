@@ -11,20 +11,22 @@ import (
 	"github.com/sentry/sentry/api/authz"
 )
 
+const maxBodyBytes = 1 << 20 // 1 MiB, same cap as localauth/dashboards/agents
+
 // store is the narrow interface Handler depends on -- *Store (store.go)
 // is the production implementation; tests use a fake, same pattern as
 // agents.store/dashboards.store.
 type store interface {
-	HostsOlderThan(ctx context.Context, cutoff time.Time) ([]HostCount, error)
-	CountOlderThan(ctx context.Context, cutoff time.Time, hosts []string) (uint64, error)
-	DeleteOlderThan(ctx context.Context, cutoff time.Time, hosts []string) error
+	TargetsOlderThan(ctx context.Context, cutoff time.Time) ([]TargetCount, error)
+	CountOlderThan(ctx context.Context, cutoff time.Time, targets []HostService) (uint64, error)
+	DeleteOlderThan(ctx context.Context, cutoff time.Time, targets []HostService) error
 }
 
 // retentionFloor is the narrow interface backing the owner-only
 // override check -- *AgentRetentionStore (agent_floor.go) is the
 // production implementation.
 type retentionFloor interface {
-	RetentionDaysByHost(ctx context.Context) (map[string]int, error)
+	FloorsByHost(ctx context.Context) (map[string]HostFloor, error)
 }
 
 // maxOlderThanHours bounds the age a caller can specify -- 10 years is
@@ -33,11 +35,12 @@ type retentionFloor interface {
 // digit) with a clear 400 rather than silently accepting it.
 const maxOlderThanHours = 10 * 365 * 24
 
-// maxHosts caps how many host filters one request can carry -- 1000 is
-// far beyond any real fleet this deployment's homelab/small-scale
-// target implies, and exists only to reject a pathological/malformed
-// request rather than to meaningfully restrict real usage.
-const maxHosts = 1000
+// maxTargets caps how many (host, service) pairs one request can
+// carry -- 2000 is far beyond any real fleet this deployment's
+// homelab/small-scale target implies, and exists only to reject a
+// pathological/malformed request rather than to meaningfully restrict
+// real usage.
+const maxTargets = 2000
 
 type Handler struct {
 	logger     *slog.Logger
@@ -56,17 +59,19 @@ func NewHandler(logger *slog.Logger, store store, floor retentionFloor, authoriz
 // deleting log data is at least as consequential as the RBAC matrix's
 // other RoleAdmin-floor actions (e.g. issuing an agent restart
 // command, api/agents/handler.go), so it gets the same floor rather
-// than a stricter RoleOwner-only one.
+// than a stricter RoleOwner-only one. preview/delete are POST, not
+// GET/DELETE-with-query-params, because a request now carries a list
+// of (host, service) pairs -- a JSON body is the natural shape for
+// that, not a repeated compound query param.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /logs/retention/hosts", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleHosts))
-	mux.HandleFunc("GET /logs/retention/preview", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handlePreview))
-	mux.HandleFunc("DELETE /logs/retention", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleDelete))
+	mux.HandleFunc("POST /logs/retention/preview", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handlePreview))
+	mux.HandleFunc("POST /logs/retention/delete", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleDelete))
 }
 
 // parseOlderThanHours reads and validates the older_than_hours query
-// param shared by all three routes -- a caller must ask for at least 1
-// hour (an accidental empty/zero value must never mean "delete
-// everything").
+// param GET /logs/retention/hosts uses -- preview/delete take the same
+// value from their JSON body instead (see deletionRequest).
 func parseOlderThanHours(r *http.Request) (int, bool) {
 	hours, err := strconv.Atoi(r.URL.Query().Get("older_than_hours"))
 	if err != nil || hours < 1 || hours > maxOlderThanHours {
@@ -75,72 +80,96 @@ func parseOlderThanHours(r *http.Request) (int, bool) {
 	return hours, true
 }
 
-// parseHosts reads the repeated host query param shared by preview and
-// delete -- deliberately required (at least one), never "omitted means
-// every host": the whole point of this parameter existing is letting a
-// caller target specific agents' logs instead of wholesale deleting
-// everything, so there is no implicit "all hosts" shortcut here. GET
-// /logs/retention/hosts is how a caller discovers what to pass.
-// Duplicates are silently deduped; an empty host value is rejected
-// outright rather than silently dropped, since a caller sending "" almost
-// certainly has a client-side bug worth surfacing.
-func parseHosts(r *http.Request) ([]string, bool) {
-	raw := r.URL.Query()["host"]
-	seen := make(map[string]struct{}, len(raw))
-	var hosts []string
-	for _, host := range raw {
-		if host == "" {
-			return nil, false
-		}
-		if _, dup := seen[host]; dup {
-			continue
-		}
-		seen[host] = struct{}{}
-		hosts = append(hosts, host)
-	}
-	if len(hosts) == 0 || len(hosts) > maxHosts {
-		return nil, false
-	}
-	return hosts, true
+// deletionRequest is the JSON body preview and delete both take --
+// targets is deliberately required and never empty: there is no
+// "omitted means every host/service" shortcut anywhere in this
+// package, matching the feature's whole point (select what you mean to
+// act on, never wholesale-delete by accident).
+type deletionRequest struct {
+	OlderThanHours int           `json:"older_than_hours"`
+	Targets        []HostService `json:"targets"`
 }
 
-// blockedHost is one entry in a preview/delete response's blocked_hosts
-// list -- a host the caller asked about that a configured retention
-// floor (api/agents.ConfigOverride.LogRetentionDays) protects from
-// anyone but an owner.
-type blockedHost struct {
+// parseTargets validates and normalizes a decoded request's targets:
+// deduped, every host and service non-empty, count within maxTargets.
+func parseTargets(targets []HostService) ([]HostService, bool) {
+	seen := make(map[HostService]struct{}, len(targets))
+	var out []HostService
+	for _, t := range targets {
+		if t.Host == "" || t.Service == "" {
+			return nil, false
+		}
+		if _, dup := seen[t]; dup {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	if len(out) == 0 || len(out) > maxTargets {
+		return nil, false
+	}
+	return out, true
+}
+
+func decodeDeletionRequest(w http.ResponseWriter, r *http.Request) (deletionRequest, bool) {
+	var req deletionRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return deletionRequest{}, false
+	}
+	if req.OlderThanHours < 1 || req.OlderThanHours > maxOlderThanHours {
+		writeError(w, http.StatusBadRequest, "older_than_hours must be a positive integer")
+		return deletionRequest{}, false
+	}
+	targets, ok := parseTargets(req.Targets)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "targets must name at least one non-empty host/service pair")
+		return deletionRequest{}, false
+	}
+	req.Targets = targets
+	return req, true
+}
+
+// blockedTarget is one entry in a preview/delete response's
+// blocked_targets list -- a (host, service) the caller asked about
+// that a configured retention floor (api/agents.ConfigOverride.
+// LogRetentionDays / ServiceLogRetentionDays) protects from anyone but
+// an owner.
+type blockedTarget struct {
 	Host          string `json:"host"`
+	Service       string `json:"service"`
 	ProtectedDays int    `json:"protected_days"`
 }
 
-// partitionHosts splits hosts into allowed (this caller may act on
+// partitionTargets splits targets into allowed (this caller may act on
 // them) and blocked (a configured floor protects them from anyone but
-// an owner, and this caller isn't one) -- role-scoped rather than a
-// single all-or-nothing check, so a floor on one host never blocks
-// acting on other hosts requested in the same call. An owner always
+// an owner, and this caller isn't one) -- per-target rather than a
+// single all-or-nothing check, so a floor on one target never blocks
+// acting on other targets requested in the same call. An owner always
 // gets everything back as allowed, no query needed.
-func (h *Handler) partitionHosts(ctx context.Context, role authz.Role, hosts []string, cutoff time.Time) ([]string, []blockedHost, error) {
+func (h *Handler) partitionTargets(ctx context.Context, role authz.Role, targets []HostService, cutoff time.Time) ([]HostService, []blockedTarget, error) {
 	if role == authz.RoleOwner {
-		return hosts, nil, nil
+		return targets, nil, nil
 	}
-	floors, err := h.floor.RetentionDaysByHost(ctx)
+	floors, err := h.floor.FloorsByHost(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	now := time.Now().UTC()
-	var allowed []string
-	var blocked []blockedHost
-	for _, host := range hosts {
-		days, hasFloor := floors[host]
+	var allowed []HostService
+	var blocked []blockedTarget
+	for _, t := range targets {
+		days, hasFloor := floors[t.Host].Effective(t.Service)
 		if !hasFloor {
-			allowed = append(allowed, host)
+			allowed = append(allowed, t)
 			continue
 		}
 		protectedBoundary := now.Add(-time.Duration(days) * 24 * time.Hour)
 		if cutoff.After(protectedBoundary) {
-			blocked = append(blocked, blockedHost{Host: host, ProtectedDays: days})
+			blocked = append(blocked, blockedTarget{Host: t.Host, Service: t.Service, ProtectedDays: days})
 		} else {
-			allowed = append(allowed, host)
+			allowed = append(allowed, t)
 		}
 	}
 	return allowed, blocked, nil
@@ -159,10 +188,16 @@ func roleForFloorCheck(ctx context.Context) authz.Role {
 	return identity.Role
 }
 
-type hostEntry struct {
-	Host          string `json:"host"`
+type serviceEntry struct {
+	Service       string `json:"service"`
 	Count         uint64 `json:"count"`
 	ProtectedDays *int   `json:"protected_days,omitempty"`
+}
+
+type hostEntry struct {
+	Host          string         `json:"host"`
+	ProtectedDays *int           `json:"protected_days,omitempty"`
+	Services      []serviceEntry `json:"services"`
 }
 
 type hostsResponse struct {
@@ -170,12 +205,13 @@ type hostsResponse struct {
 	Cutoff time.Time   `json:"cutoff"`
 }
 
-// handleHosts lists every host with at least one log record older than
-// the requested age, annotated with any configured retention floor --
-// informational for every caller regardless of role (RegisterRoutes'
-// RoleAdmin floor already gates who can reach this at all); it's what
-// populates the host picker a caller then selects from for preview/
-// delete, not itself an action that needs partitionHosts.
+// handleHosts lists every (host, service) pair with at least one log
+// record older than the requested age, grouped by host and annotated
+// with any configured retention floor -- informational for every
+// caller regardless of role (RegisterRoutes' RoleAdmin floor already
+// gates who can reach this at all); it's what populates the picker a
+// caller then selects from for preview/delete, not itself an action
+// that needs partitionTargets.
 func (h *Handler) handleHosts(w http.ResponseWriter, r *http.Request) {
 	hours, ok := parseOlderThanHours(r)
 	if !ok {
@@ -184,52 +220,57 @@ func (h *Handler) handleHosts(w http.ResponseWriter, r *http.Request) {
 	}
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 
-	counts, err := h.store.HostsOlderThan(r.Context(), cutoff)
+	counts, err := h.store.TargetsOlderThan(r.Context(), cutoff)
 	if err != nil {
-		h.logger.Error("listing hosts for retention preview", "error", err)
+		h.logger.Error("listing targets for retention preview", "error", err)
 		writeError(w, http.StatusInternalServerError, "listing hosts failed")
 		return
 	}
-	floors, err := h.floor.RetentionDaysByHost(r.Context())
+	floors, err := h.floor.FloorsByHost(r.Context())
 	if err != nil {
 		h.logger.Error("reading log retention floors", "error", err)
 		writeError(w, http.StatusInternalServerError, "listing hosts failed")
 		return
 	}
 
-	entries := make([]hostEntry, len(counts))
-	for i, c := range counts {
-		e := hostEntry{Host: c.Host, Count: c.Count}
-		if days, hasFloor := floors[c.Host]; hasFloor {
-			d := days
-			e.ProtectedDays = &d
+	// counts is ordered by host (Store.TargetsOlderThan), so contiguous
+	// rows for the same host can be grouped in one pass.
+	var hosts []hostEntry
+	for _, c := range counts {
+		hf := floors[c.Host]
+		if len(hosts) == 0 || hosts[len(hosts)-1].Host != c.Host {
+			he := hostEntry{Host: c.Host}
+			if hf.DefaultDays != nil {
+				d := *hf.DefaultDays
+				he.ProtectedDays = &d
+			}
+			hosts = append(hosts, he)
 		}
-		entries[i] = e
+		se := serviceEntry{Service: c.Service, Count: c.Count}
+		if days, hasFloor := hf.Effective(c.Service); hasFloor {
+			se.ProtectedDays = &days
+		}
+		hosts[len(hosts)-1].Services = append(hosts[len(hosts)-1].Services, se)
 	}
-	writeJSON(w, http.StatusOK, hostsResponse{Hosts: entries, Cutoff: cutoff})
+
+	writeJSON(w, http.StatusOK, hostsResponse{Hosts: hosts, Cutoff: cutoff})
 }
 
 type previewResponse struct {
-	Count        uint64        `json:"count"`
-	Cutoff       time.Time     `json:"cutoff"`
-	Hosts        []string      `json:"hosts"`
-	BlockedHosts []blockedHost `json:"blocked_hosts,omitempty"`
+	Count          uint64          `json:"count"`
+	Cutoff         time.Time       `json:"cutoff"`
+	Targets        []HostService   `json:"targets"`
+	BlockedTargets []blockedTarget `json:"blocked_targets,omitempty"`
 }
 
 func (h *Handler) handlePreview(w http.ResponseWriter, r *http.Request) {
-	hours, ok := parseOlderThanHours(r)
+	req, ok := decodeDeletionRequest(w, r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "older_than_hours must be a positive integer")
 		return
 	}
-	hosts, ok := parseHosts(r)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "at least one host must be specified")
-		return
-	}
-	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+	cutoff := time.Now().UTC().Add(-time.Duration(req.OlderThanHours) * time.Hour)
 
-	allowed, blocked, err := h.partitionHosts(r.Context(), roleForFloorCheck(r.Context()), hosts, cutoff)
+	allowed, blocked, err := h.partitionTargets(r.Context(), roleForFloorCheck(r.Context()), req.Targets, cutoff)
 	if err != nil {
 		h.logger.Error("checking log retention floor", "error", err)
 		writeError(w, http.StatusInternalServerError, "checking retention policy failed")
@@ -245,14 +286,14 @@ func (h *Handler) handlePreview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, previewResponse{Count: count, Cutoff: cutoff, Hosts: allowed, BlockedHosts: blocked})
+	writeJSON(w, http.StatusOK, previewResponse{Count: count, Cutoff: cutoff, Targets: allowed, BlockedTargets: blocked})
 }
 
 type deleteResponse struct {
-	DeletedCount uint64        `json:"deleted_count"`
-	Cutoff       time.Time     `json:"cutoff"`
-	DeletedHosts []string      `json:"deleted_hosts"`
-	BlockedHosts []blockedHost `json:"blocked_hosts,omitempty"`
+	DeletedCount   uint64          `json:"deleted_count"`
+	Cutoff         time.Time       `json:"cutoff"`
+	DeletedTargets []HostService   `json:"deleted_targets"`
+	BlockedTargets []blockedTarget `json:"blocked_targets,omitempty"`
 }
 
 // handleDelete counts immediately before deleting so the response can
@@ -264,19 +305,13 @@ type deleteResponse struct {
 // disclosed margin for an admin-facing summary number, not something
 // anything downstream depends on for correctness.
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
-	hours, ok := parseOlderThanHours(r)
+	req, ok := decodeDeletionRequest(w, r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "older_than_hours must be a positive integer")
 		return
 	}
-	hosts, ok := parseHosts(r)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "at least one host must be specified")
-		return
-	}
-	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+	cutoff := time.Now().UTC().Add(-time.Duration(req.OlderThanHours) * time.Hour)
 
-	allowed, blocked, err := h.partitionHosts(r.Context(), roleForFloorCheck(r.Context()), hosts, cutoff)
+	allowed, blocked, err := h.partitionTargets(r.Context(), roleForFloorCheck(r.Context()), req.Targets, cutoff)
 	if err != nil {
 		h.logger.Error("checking log retention floor", "error", err)
 		writeError(w, http.StatusInternalServerError, "checking retention policy failed")
@@ -300,10 +335,10 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 		identity, _ := authz.IdentityFromContext(r.Context())
 		h.logger.Info("logs deleted by retention age",
-			"deleted_count", count, "cutoff", cutoff, "hosts", allowed, "user_id", identity.UserID, "role", identity.Role)
+			"deleted_count", count, "cutoff", cutoff, "targets", allowed, "user_id", identity.UserID, "role", identity.Role)
 	}
 
-	writeJSON(w, http.StatusOK, deleteResponse{DeletedCount: count, Cutoff: cutoff, DeletedHosts: allowed, BlockedHosts: blocked})
+	writeJSON(w, http.StatusOK, deleteResponse{DeletedCount: count, Cutoff: cutoff, DeletedTargets: allowed, BlockedTargets: blocked})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

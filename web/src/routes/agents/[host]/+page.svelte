@@ -38,6 +38,11 @@
 	// one either. Kept as a string ('' = no override) so the input can be
 	// empty rather than defaulting to some arbitrary number of days.
 	let logRetentionDays = $state('');
+	// Per-service overrides of logRetentionDays -- a service named here
+	// (e.g. "smtp") keeps its own retention floor instead of falling back
+	// to the host default above. Rows with an empty service name are
+	// dropped at save(), same as extraFilePaths drops blank paths.
+	let serviceRetention = $state<{ service: string; days: string }[]>([]);
 
 	function resetForm(a: Agent) {
 		const o = a.desired_override;
@@ -48,6 +53,9 @@
 		journaldUnit = o?.journald_unit ?? '';
 		extraFilePaths = o?.extra_file_paths ? [...o.extra_file_paths] : [];
 		logRetentionDays = o?.log_retention_days != null ? String(o.log_retention_days) : '';
+		serviceRetention = o?.service_log_retention_days
+			? Object.entries(o.service_log_retention_days).map(([service, days]) => ({ service, days: String(days) }))
+			: [];
 	}
 
 	function addExtraFilePath() {
@@ -56,6 +64,14 @@
 
 	function removeExtraFilePath(index: number) {
 		extraFilePaths = extraFilePaths.filter((_, i) => i !== index);
+	}
+
+	function addServiceRetention() {
+		serviceRetention = [...serviceRetention, { service: '', days: '' }];
+	}
+
+	function removeServiceRetention(index: number) {
+		serviceRetention = serviceRetention.filter((_, i) => i !== index);
 	}
 
 	async function load() {
@@ -71,6 +87,22 @@
 		}
 	}
 	load();
+
+	// Always sent, even when empty ({}) -- unlike logRetentionDays'
+	// conditional omit, this mirrors extraFilePaths' unconditional style
+	// (a collection field), so clearing every row genuinely clears the
+	// stored overrides rather than leaving stale ones behind.
+	function buildServiceRetentionMap(): Record<string, number> {
+		const out: Record<string, number> = {};
+		for (const row of serviceRetention) {
+			const service = row.service.trim();
+			const days = String(row.days).trim();
+			if (service !== '' && days !== '') {
+				out[service] = Number(days);
+			}
+		}
+		return out;
+	}
 
 	async function save() {
 		saving = true;
@@ -91,7 +123,8 @@
 				// the moment someone edits this field. batch_max_size etc.
 				// above never hit this because Number(x) doesn't care
 				// whether x is already a number.
-				...(String(logRetentionDays).trim() !== '' ? { log_retention_days: Number(logRetentionDays) } : {})
+				...(String(logRetentionDays).trim() !== '' ? { log_retention_days: Number(logRetentionDays) } : {}),
+				service_log_retention_days: buildServiceRetentionMap()
 			});
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : String(e);
@@ -242,6 +275,23 @@
 				</p>
 			</div>
 
+			<div class="field extra-paths">
+				<span class="field-label">Per-service log retention overrides</span>
+				<p class="hint">
+					Owner only. Keep a specific log type from this host longer (or shorter) than the general retention
+					above -- e.g. protect "smtp" for a year while everything else on this host uses the default. A
+					service not listed here just uses the host default.
+				</p>
+				{#each serviceRetention as _, i}
+					<div class="path-row service-row">
+						<Input placeholder="Service (e.g. smtp)" bind:value={serviceRetention[i].service} />
+						<Input type="number" min="1" max="3650" placeholder="Days" bind:value={serviceRetention[i].days} />
+						<Button variant="secondary" onclick={() => removeServiceRetention(i)}>Remove</Button>
+					</div>
+				{/each}
+				<Button variant="secondary" onclick={addServiceRetention}>Add service override</Button>
+			</div>
+
 			{#if saveError}<p class="error">Error: {saveError}</p>{/if}
 
 			<div class="actions">
@@ -365,6 +415,9 @@
 	}
 	.path-row :global(input) {
 		flex: 1;
+	}
+	.service-row :global(input:last-of-type) {
+		flex: 0 0 6rem;
 	}
 	.actions {
 		display: flex;

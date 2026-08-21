@@ -169,6 +169,17 @@ func (h *Handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// service_log_retention_days requires RoleOwner too, for exactly the
+	// same reason log_retention_days does -- it's the same override-floor
+	// mechanism, just keyed per service instead of once for the whole
+	// host, so it needs the same "any change, not just raising" gate.
+	if identity, ok := authz.IdentityFromContext(r.Context()); ok && !identity.Role.Satisfies(authz.RoleOwner) {
+		if changesServiceLogRetentionDays(h.currentServiceLogRetentionDays(r.Context(), h.tenantID(r), r.PathValue("host")), override.ServiceLogRetentionDays) {
+			writeError(w, http.StatusForbidden, "service_log_retention_days requires the owner role")
+			return
+		}
+	}
+
 	a, err := h.store.SetOverride(r.Context(), h.tenantID(r), r.PathValue("host"), override, h.updatedBy(r))
 	if err != nil {
 		h.writeStoreErr(w, err, "setting agent config")
@@ -258,6 +269,20 @@ func validateOverride(o ConfigOverride) error {
 	// later as "why can no one ever delete logs."
 	if o.LogRetentionDays != nil && (*o.LogRetentionDays < 1 || *o.LogRetentionDays > 3650) {
 		return errors.New("log_retention_days must be between 1 and 3650")
+	}
+	// 200 services is far beyond any real host's log source variety --
+	// exists only to reject a pathological/malformed request, matching
+	// extra_file_paths' own cap-for-sanity-not-realistic-use posture.
+	if len(o.ServiceLogRetentionDays) > 200 {
+		return errors.New("service_log_retention_days: at most 200 services")
+	}
+	for service, days := range o.ServiceLogRetentionDays {
+		if service == "" {
+			return errors.New("service_log_retention_days: service name must not be empty")
+		}
+		if days < 1 || days > 3650 {
+			return fmt.Errorf("service_log_retention_days[%q] must be between 1 and 3650", service)
+		}
 	}
 	return nil
 }
@@ -365,6 +390,30 @@ func changesLogRetentionDays(current, desired *int) bool {
 		return true
 	}
 	return *current != *desired
+}
+
+// currentServiceLogRetentionDays mirrors currentLogRetentionDays exactly.
+func (h *Handler) currentServiceLogRetentionDays(ctx context.Context, tenantID, host string) map[string]int {
+	a, err := h.store.Get(ctx, tenantID, host)
+	if err != nil || a.DesiredOverride == nil {
+		return nil
+	}
+	return a.DesiredOverride.ServiceLogRetentionDays
+}
+
+// changesServiceLogRetentionDays reports whether desired differs from
+// current at all -- a full map comparison, same "no safe direction"
+// posture as changesLogRetentionDays.
+func changesServiceLogRetentionDays(current, desired map[string]int) bool {
+	if len(current) != len(desired) {
+		return true
+	}
+	for service, days := range desired {
+		if cur, ok := current[service]; !ok || cur != days {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) writeStoreErr(w http.ResponseWriter, err error, action string) {
