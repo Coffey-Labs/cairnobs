@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// AgentRetentionStore reads the protective retention floor set on
+// AgentRetentionStore reads the protective retention floors set on
 // agents.ConfigOverride.LogRetentionDays -- a separate, Postgres-backed
 // concern from Store's ClickHouse access above, so it lives in its own
 // file. Deliberately its own narrow query against the same `agents`
@@ -23,24 +23,31 @@ func NewAgentRetentionStore(pool *pgxpool.Pool) *AgentRetentionStore {
 	return &AgentRetentionStore{pool: pool}
 }
 
-// MaxRetentionDays reports the largest log_retention_days configured
-// across any agent's desired_override, if any are set at all -- this is
-// the floor a non-owner's deletion request must not reach into (see
-// Handler.checkRetentionFloor). The second return value is false when
-// no agent has this field configured, distinct from a configured floor
-// of 0 (which validateOverride never allows to be stored in the first
-// place).
-func (s *AgentRetentionStore) MaxRetentionDays(ctx context.Context) (int, bool, error) {
-	var days *int
-	err := s.pool.QueryRow(ctx, `
-		SELECT max((desired_override->>'log_retention_days')::int)
+// RetentionDaysByHost reports the configured log_retention_days for
+// every agent that has one set, keyed by host -- a host absent from
+// this map has no configured floor at all. Per-host rather than a
+// single global maximum: now that deletion is host-scoped
+// (Handler.partitionHosts), a floor on one host must never block
+// deleting another host's logs that happen to be requested in the same
+// call.
+func (s *AgentRetentionStore) RetentionDaysByHost(ctx context.Context) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT host, (desired_override->>'log_retention_days')::int
 		FROM agents
-		WHERE desired_override->>'log_retention_days' IS NOT NULL`).Scan(&days)
+		WHERE desired_override->>'log_retention_days' IS NOT NULL`)
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
-	if days == nil {
-		return 0, false, nil
+	defer rows.Close()
+
+	out := map[string]int{}
+	for rows.Next() {
+		var host string
+		var days int
+		if err := rows.Scan(&host, &days); err != nil {
+			return nil, err
+		}
+		out[host] = days
 	}
-	return *days, true, nil
+	return out, rows.Err()
 }

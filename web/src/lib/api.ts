@@ -483,16 +483,38 @@ export function setUserRole(id: string, role: string): Promise<LocalUser> {
 }
 
 // --- log retention (owner/admin only, see api/logretention) -----------
+// Deletion is host-scoped, not wholesale: a caller must name which
+// hosts' logs to target (listRetentionHosts is how the UI discovers
+// what to offer), and api/logretention never treats an omitted host
+// list as "every host."
 
-export type LogRetentionPreview = { count: number; cutoff: string };
-export type LogRetentionDeleteResult = { deleted_count: number; cutoff: string };
+export type BlockedHost = { host: string; protected_days: number };
+export type RetentionHost = { host: string; count: number; protected_days?: number };
+export type RetentionHostsResult = { hosts: RetentionHost[]; cutoff: string };
+export type LogRetentionPreview = { count: number; cutoff: string; hosts: string[]; blocked_hosts?: BlockedHost[] };
+export type LogRetentionDeleteResult = {
+	deleted_count: number;
+	cutoff: string;
+	deleted_hosts: string[];
+	blocked_hosts?: BlockedHost[];
+};
 
-export function previewLogDeletion(olderThanHours: number): Promise<LogRetentionPreview> {
-	return request(`/logs/retention/preview?older_than_hours=${olderThanHours}`, { credentials: 'include' });
+function hostsQuery(hosts: string[]): string {
+	return hosts.map((h) => `host=${encodeURIComponent(h)}`).join('&');
 }
 
-export function deleteLogsOlderThan(olderThanHours: number): Promise<LogRetentionDeleteResult> {
-	return request(`/logs/retention?older_than_hours=${olderThanHours}`, {
+export function listRetentionHosts(olderThanHours: number): Promise<RetentionHostsResult> {
+	return request(`/logs/retention/hosts?older_than_hours=${olderThanHours}`, { credentials: 'include' });
+}
+
+export function previewLogDeletion(olderThanHours: number, hosts: string[]): Promise<LogRetentionPreview> {
+	return request(`/logs/retention/preview?older_than_hours=${olderThanHours}&${hostsQuery(hosts)}`, {
+		credentials: 'include'
+	});
+}
+
+export function deleteLogsOlderThan(olderThanHours: number, hosts: string[]): Promise<LogRetentionDeleteResult> {
+	return request(`/logs/retention?older_than_hours=${olderThanHours}&${hostsQuery(hosts)}`, {
 		method: 'DELETE',
 		credentials: 'include'
 	});
