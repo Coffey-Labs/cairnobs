@@ -12,6 +12,7 @@
 		type LocalSession,
 		type CurrentSession,
 		type RetentionHost,
+		type HostService,
 		type LogRetentionPreview,
 		type LogRetentionDeleteResult
 	} from '$lib/api';
@@ -70,10 +71,12 @@
 		return !localAuthEnabled;
 	});
 
-	// --- log retention deletion -- host-scoped, not wholesale: a caller
-	// picks which hosts to target from what listRetentionHosts reports for
-	// the chosen age, same "select specific agents, not delete everything"
-	// requirement api/logretention's own parseHosts enforces server-side. ---
+	// --- log retention deletion -- scoped to specific (host, service)
+	// targets, not wholesale: a caller picks which agents' *and* which log
+	// types' logs to target from what listRetentionHosts reports for the
+	// chosen age, same "select specific targets, not delete everything"
+	// requirement api/logretention's own parseTargets enforces
+	// server-side. ---
 	const retentionOptions: { label: string; hours: number }[] = [
 		{ label: '7 days', hours: 24 * 7 },
 		{ label: '30 days', hours: 24 * 30 },
@@ -86,13 +89,27 @@
 	let hostsLoading = $state(false);
 	let hosts = $state<RetentionHost[]>([]);
 	let hostsError = $state('');
-	let selectedHosts = $state<Set<string>>(new Set());
+	// Selection keyed by a composite "host service" string for O(1)
+	// membership checks -- targetKey/targetsFromKeys convert to/from the
+	// {host, service} objects the API actually wants.
+	let selectedTargets = $state<Set<string>>(new Set());
 
 	let previewing = $state(false);
 	let preview = $state<LogRetentionPreview | null>(null);
 	let deleting = $state(false);
 	let deleteResult = $state<LogRetentionDeleteResult | null>(null);
 	let retentionError = $state('');
+
+	function targetKey(host: string, service: string): string {
+		return `${host} ${service}`;
+	}
+
+	function targetsFromKeys(keys: Iterable<string>): HostService[] {
+		return [...keys].map((key) => {
+			const [host, service] = key.split(' ');
+			return { host, service };
+		});
+	}
 
 	// Reloads whenever retentionHours changes (including on mount, since
 	// $effect runs once immediately too) -- selection/preview/result all
@@ -102,7 +119,7 @@
 		hostsError = '';
 		preview = null;
 		deleteResult = null;
-		selectedHosts = new Set();
+		selectedTargets = new Set();
 		try {
 			const result = await listRetentionHosts(hours);
 			hosts = result.hosts;
@@ -117,32 +134,56 @@
 		loadHosts(retentionHours);
 	});
 
-	function toggleHost(host: string) {
-		const next = new Set(selectedHosts);
-		if (next.has(host)) next.delete(host);
-		else next.add(host);
-		selectedHosts = next;
+	function toggleTarget(host: string, service: string) {
+		const key = targetKey(host, service);
+		const next = new Set(selectedTargets);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		selectedTargets = next;
 		preview = null;
 		deleteResult = null;
 	}
 
-	function selectAllHosts() {
-		selectedHosts = new Set(hosts.map((h) => h.host));
+	function isHostFullySelected(host: RetentionHost): boolean {
+		return host.services.length > 0 && host.services.every((s) => selectedTargets.has(targetKey(host.host, s.service)));
+	}
+
+	// Toggles every service under one host together -- selects all of
+	// them if any are currently unselected, otherwise clears all of them.
+	function toggleHostAll(host: RetentionHost) {
+		const next = new Set(selectedTargets);
+		const selectAll = !isHostFullySelected(host);
+		for (const s of host.services) {
+			const key = targetKey(host.host, s.service);
+			if (selectAll) next.add(key);
+			else next.delete(key);
+		}
+		selectedTargets = next;
+		preview = null;
+		deleteResult = null;
+	}
+
+	function selectAllTargets() {
+		const next = new Set<string>();
+		for (const h of hosts) {
+			for (const s of h.services) next.add(targetKey(h.host, s.service));
+		}
+		selectedTargets = next;
 		preview = null;
 	}
 
-	function selectNoHosts() {
-		selectedHosts = new Set();
+	function selectNoTargets() {
+		selectedTargets = new Set();
 		preview = null;
 	}
 
 	async function handlePreview() {
-		if (selectedHosts.size === 0) return;
+		if (selectedTargets.size === 0) return;
 		previewing = true;
 		retentionError = '';
 		deleteResult = null;
 		try {
-			preview = await previewLogDeletion(retentionHours, [...selectedHosts]);
+			preview = await previewLogDeletion(retentionHours, targetsFromKeys(selectedTargets));
 		} catch (e) {
 			retentionError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -159,10 +200,10 @@
 		deleting = true;
 		retentionError = '';
 		try {
-			// preview.hosts, not [...selectedHosts] -- already excludes any
-			// host the preview found protected, so this never re-asks for a
-			// host the response just said would be skipped.
-			const result = await deleteLogsOlderThan(retentionHours, preview.hosts);
+			// preview.targets, not the current selection -- already excludes
+			// any target the preview found protected, so this never re-asks
+			// for a target the response just said would be skipped.
+			const result = await deleteLogsOlderThan(retentionHours, preview.targets);
 			preview = null;
 			// loadHosts resets deleteResult as part of its "fresh state" load
 			// (stale counts/now-empty hosts shouldn't linger), so it runs
@@ -174,6 +215,10 @@
 		} finally {
 			deleting = false;
 		}
+	}
+
+	function formatTarget(t: HostService): string {
+		return `${t.host}/${t.service}`;
 	}
 
 	function formatCutoff(iso: string): string {
@@ -244,8 +289,8 @@
 		<section>
 			<h2>Log retention</h2>
 			<p class="note">
-				Permanently delete log records from specific hosts, older than a chosen age. Visible to owners and
-				admins only.
+				Permanently delete specific log types from specific hosts, older than a chosen age. Visible to
+				owners and admins only.
 			</p>
 
 			<div class="retention-controls">
@@ -265,32 +310,54 @@
 			{:else}
 				<div class="host-picker">
 					<div class="host-picker-actions">
-						<button type="button" class="link" onclick={selectAllHosts} disabled={deleting}>Select all</button>
-						<button type="button" class="link" onclick={selectNoHosts} disabled={deleting}>Select none</button>
+						<button type="button" class="link" onclick={selectAllTargets} disabled={deleting}>Select all</button>
+						<button type="button" class="link" onclick={selectNoTargets} disabled={deleting}>Select none</button>
 					</div>
 					<ul class="host-list">
 						{#each hosts as h (h.host)}
-							<li>
-								<label>
+							<li class="host-group">
+								<label class="host-row">
 									<input
 										type="checkbox"
-										checked={selectedHosts.has(h.host)}
+										checked={isHostFullySelected(h)}
 										disabled={deleting}
-										onchange={() => toggleHost(h.host)}
+										onchange={() => toggleHostAll(h)}
 									/>
 									<span class="host-name">{h.host}</span>
-									<span class="host-count">{h.count.toLocaleString()} records</span>
 									{#if h.protected_days != null}
-										<span class="protected-badge">protected {h.protected_days}d</span>
+										<span class="protected-badge">host default {h.protected_days}d</span>
 									{/if}
 								</label>
+								<ul class="service-list">
+									{#each h.services as s (s.service)}
+										<li>
+											<label>
+												<input
+													type="checkbox"
+													checked={selectedTargets.has(targetKey(h.host, s.service))}
+													disabled={deleting}
+													onchange={() => toggleTarget(h.host, s.service)}
+												/>
+												<span class="service-name">{s.service}</span>
+												<span class="host-count">{s.count.toLocaleString()} records</span>
+												{#if s.protected_days != null}
+													<span class="protected-badge">protected {s.protected_days}d</span>
+												{/if}
+											</label>
+										</li>
+									{/each}
+								</ul>
 							</li>
 						{/each}
 					</ul>
-					<button type="button" onclick={handlePreview} disabled={selectedHosts.size === 0 || previewing || deleting}>
+					<button
+						type="button"
+						onclick={handlePreview}
+						disabled={selectedTargets.size === 0 || previewing || deleting}
+					>
 						{previewing
 							? 'Checking…'
-							: `Delete logs from ${selectedHosts.size} host${selectedHosts.size === 1 ? '' : 's'}…`}
+							: `Delete logs from ${selectedTargets.size} target${selectedTargets.size === 1 ? '' : 's'}…`}
 					</button>
 				</div>
 			{/if}
@@ -299,28 +366,29 @@
 
 			{#if preview}
 				<div class="confirm-panel">
-					{#if preview.hosts.length > 0}
+					{#if preview.targets.length > 0}
 						<p>
 							This will <strong>permanently delete {preview.count.toLocaleString()}</strong>
 							log record{preview.count === 1 ? '' : 's'} older than {formatCutoff(preview.cutoff)} from
-							{preview.hosts.length} host{preview.hosts.length === 1 ? '' : 's'} ({preview.hosts.join(', ')}).
-							This cannot be undone.
+							{preview.targets.length} target{preview.targets.length === 1 ? '' : 's'} ({preview.targets
+								.map(formatTarget)
+								.join(', ')}). This cannot be undone.
 						</p>
 					{:else}
-						<p>Every selected host is protected by a retention policy -- nothing to delete.</p>
+						<p>Every selected target is protected by a retention policy -- nothing to delete.</p>
 					{/if}
-					{#if preview.blocked_hosts?.length}
+					{#if preview.blocked_targets?.length}
 						<p class="note">
-							Protected by a retention policy, skipped: {preview.blocked_hosts
-								.map((b) => `${b.host} (${b.protected_days}d)`)
+							Protected by a retention policy, skipped: {preview.blocked_targets
+								.map((b) => `${formatTarget(b)} (${b.protected_days}d)`)
 								.join(', ')}.
 						</p>
 					{/if}
 					<div class="confirm-actions">
 						<button type="button" onclick={cancelPreview} disabled={deleting}>
-							{preview.hosts.length > 0 ? 'Cancel' : 'Close'}
+							{preview.targets.length > 0 ? 'Cancel' : 'Close'}
 						</button>
-						{#if preview.hosts.length > 0}
+						{#if preview.targets.length > 0}
 							<button type="button" class="danger" onclick={confirmDelete} disabled={deleting}>
 								{deleting ? 'Deleting…' : 'Yes, delete permanently'}
 							</button>
@@ -334,10 +402,12 @@
 					Deleted {deleteResult.deleted_count.toLocaleString()} log record{deleteResult.deleted_count === 1
 						? ''
 						: 's'} older than {formatCutoff(deleteResult.cutoff)}
-					{#if deleteResult.deleted_hosts.length}from {deleteResult.deleted_hosts.join(', ')}{/if}.
-					{#if deleteResult.blocked_hosts?.length}
-						Skipped (protected): {deleteResult.blocked_hosts
-							.map((b) => `${b.host} (${b.protected_days}d)`)
+					{#if deleteResult.deleted_targets.length}from {deleteResult.deleted_targets
+							.map(formatTarget)
+							.join(', ')}{/if}.
+					{#if deleteResult.blocked_targets?.length}
+						Skipped (protected): {deleteResult.blocked_targets
+							.map((b) => `${formatTarget(b)} (${b.protected_days}d)`)
 							.join(', ')}.
 					{/if}
 				</p>
@@ -488,26 +558,44 @@
 		list-style: none;
 		margin: 0 0 var(--space-3);
 		padding: 0;
-		max-height: 14rem;
+		max-height: 20rem;
 		overflow-y: auto;
 	}
-	.host-list li {
+	.host-group {
 		border-bottom: 1px solid var(--color-border);
 	}
-	.host-list li:last-child {
+	.host-group:last-child {
 		border-bottom: none;
 	}
-	.host-list label {
+	.host-row {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-1);
+		font-size: var(--text-sm);
+		font-weight: var(--font-weight-medium);
+		cursor: pointer;
+	}
+	.service-list {
+		list-style: none;
+		margin: 0;
+		padding: 0 0 var(--space-2);
+	}
+	.service-list label {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-1) var(--space-1) var(--space-1) var(--space-5);
 		font-size: var(--text-sm);
 		cursor: pointer;
 	}
 	.host-name {
 		font-family: var(--font-mono);
 		color: var(--color-text);
+	}
+	.service-name {
+		font-family: var(--font-mono);
+		color: var(--color-text-muted);
 	}
 	.host-count {
 		color: var(--color-text-muted);

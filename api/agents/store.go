@@ -53,6 +53,19 @@ type ConfigOverride struct {
 	// an agent" is exactly what it conceptually is, even though nothing
 	// ever ships it to the agent process itself.
 	LogRetentionDays *int `json:"log_retention_days,omitempty"`
+	// ServiceLogRetentionDays is LogRetentionDays' per-service refinement:
+	// this host's `logs` rows are tagged with a `service` value (e.g.
+	// "nginx", "smtp", "ufw" -- see storage/migrations/0001_create_logs_table.sql
+	// and /docs/agent-management-design.md's note that distinct services
+	// on one host come from running separate agent processes, each with
+	// its own agent.toml `service`), and an operator may want to keep one
+	// service's logs longer than the rest of the host's default. A
+	// service present here overrides LogRetentionDays for that service
+	// only; every other service on the host still falls back to
+	// LogRetentionDays (or no floor at all if that's unset too). Same
+	// "never shipped to the agent process, central policy metadata only"
+	// posture as LogRetentionDays -- see logretention.AgentRetentionStore.
+	ServiceLogRetentionDays map[string]int `json:"service_log_retention_days,omitempty"`
 }
 
 type Agent struct {
