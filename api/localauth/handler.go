@@ -23,6 +23,7 @@ type store interface {
 	GetUserByID(ctx context.Context, id string) (*User, error)
 	DeleteUser(ctx context.Context, id string) error
 	SetPasswordHash(ctx context.Context, userID, hash string) error
+	SetRole(ctx context.Context, userID string, role authz.Role) error
 	CreateSession(ctx context.Context, userID, tenantID string, role authz.Role, ttl time.Duration) (string, error)
 	DeleteSessionByHash(ctx context.Context, tokenHash string) error
 }
@@ -93,6 +94,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/users", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleCreateUser))
 	mux.HandleFunc("DELETE /auth/users/{id}", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleDeleteUser))
 	mux.HandleFunc("POST /auth/users/{id}/reset-password", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleResetPassword))
+	mux.HandleFunc("PUT /auth/users/{id}/role", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleSetRole))
 }
 
 type loginRequest struct {
@@ -282,6 +284,38 @@ func (h *Handler) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type setRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// handleSetRole deliberately does not stop an owner from demoting or
+// re-promoting their own account -- same "single-operator prototype
+// deployment knows what it's doing" trust level handleDeleteUser's doc
+// comment already establishes for this package's owner-only endpoints.
+func (h *Handler) handleSetRole(w http.ResponseWriter, r *http.Request) {
+	var req setRoleRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	role := authz.Role(req.Role)
+	if !validRole(role) {
+		writeError(w, http.StatusBadRequest, `role must be "viewer", "editor", "admin", or "owner"`)
+		return
+	}
+
+	if err := h.store.SetRole(r.Context(), r.PathValue("id"), role); err != nil {
+		h.writeStoreErr(w, err, "updating role")
+		return
+	}
+
+	user, err := h.store.GetUserByID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeStoreErr(w, err, "fetching updated user")
+		return
+	}
+	writeJSON(w, http.StatusOK, userResponse{ID: user.ID, Username: user.Username, Role: string(user.Role), CreatedAt: user.CreatedAt})
 }
 
 type resetPasswordRequest struct {

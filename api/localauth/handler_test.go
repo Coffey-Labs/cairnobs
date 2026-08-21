@@ -259,3 +259,171 @@ func TestResetPasswordRevokesExistingSessions(t *testing.T) {
 		t.Fatalf("bob's pre-reset session status = %d, want 401 (reset must revoke existing sessions)", stale.Code)
 	}
 }
+
+func TestResetPasswordAcceptsCallerSuppliedPassword(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	bob := mustCreateUser(t, fs, "bob", "bobspassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	adminLogin := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	adminCookie := sessionCookieFrom(adminLogin)
+
+	reset := doRequest(t, mux, http.MethodPost, "/auth/users/"+bob.ID+"/reset-password", `{"password":"bobs-new-password"}`, adminCookie)
+	if reset.Code != http.StatusOK {
+		t.Fatalf("reset status = %d, want 200; body=%s", reset.Code, reset.Body.String())
+	}
+	var resp resetPasswordResponse
+	if err := json.Unmarshal(reset.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if resp.Password != "" {
+		t.Errorf("expected no password echoed back when the caller supplied one, got %q", resp.Password)
+	}
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"bob","password":"bobs-new-password"}`, nil)
+	if login.Code != http.StatusOK {
+		t.Fatalf("login with caller-supplied password: status = %d, want 200", login.Code)
+	}
+}
+
+func TestOwnerCanReassignRole(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	bob := mustCreateUser(t, fs, "bob", "bobspassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	adminLogin := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	adminCookie := sessionCookieFrom(adminLogin)
+	bobLogin := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"bob","password":"bobspassword"}`, nil)
+	bobCookie := sessionCookieFrom(bobLogin)
+
+	set := doRequest(t, mux, http.MethodPut, "/auth/users/"+bob.ID+"/role", `{"role":"admin"}`, adminCookie)
+	if set.Code != http.StatusOK {
+		t.Fatalf("set role status = %d, want 200; body=%s", set.Code, set.Body.String())
+	}
+	var updated userResponse
+	if err := json.Unmarshal(set.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if updated.Role != "admin" {
+		t.Errorf("role = %q, want admin", updated.Role)
+	}
+
+	stale := doRequest(t, mux, http.MethodGet, "/auth/session", "", bobCookie)
+	if stale.Code != http.StatusUnauthorized {
+		t.Fatalf("bob's pre-reassignment session status = %d, want 401 (role change must revoke existing sessions)", stale.Code)
+	}
+}
+
+// TestOwnerCanReassignEveryRoleTransition exercises every ordered pair
+// of the four roles (viewer/editor/admin/owner), including a role's
+// no-op transition to itself -- "an owner can reassign a role" must
+// hold universally, not just for the one viewer->admin pair
+// TestOwnerCanReassignRole already covers, and in particular must not
+// silently special-case promotion to/from owner.
+func TestOwnerCanReassignEveryRoleTransition(t *testing.T) {
+	allRoles := []authz.Role{authz.RoleViewer, authz.RoleEditor, authz.RoleAdmin, authz.RoleOwner}
+
+	for _, from := range allRoles {
+		for _, to := range allRoles {
+			t.Run(string(from)+"_to_"+string(to), func(t *testing.T) {
+				fs := newFakeStore()
+				mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+				target := mustCreateUser(t, fs, "target", "targetspassword", from)
+				_, mux := newTestHandler(t, fs)
+
+				adminLogin := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+				adminCookie := sessionCookieFrom(adminLogin)
+
+				set := doRequest(t, mux, http.MethodPut, "/auth/users/"+target.ID+"/role", `{"role":"`+string(to)+`"}`, adminCookie)
+				if set.Code != http.StatusOK {
+					t.Fatalf("set role %s -> %s: status = %d, want 200; body=%s", from, to, set.Code, set.Body.String())
+				}
+				var updated userResponse
+				if err := json.Unmarshal(set.Body.Bytes(), &updated); err != nil {
+					t.Fatalf("decoding response: %v", err)
+				}
+				if updated.Role != string(to) {
+					t.Fatalf("role in response = %q, want %q", updated.Role, to)
+				}
+
+				// Confirm it actually took, not just that the handler said
+				// so -- log back in as target and check the session's role.
+				login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"target","password":"targetspassword"}`, nil)
+				if login.Code != http.StatusOK {
+					t.Fatalf("login as target after reassignment: status = %d", login.Code)
+				}
+				var loginResp sessionResponse
+				if err := json.Unmarshal(login.Body.Bytes(), &loginResp); err != nil {
+					t.Fatalf("decoding login response: %v", err)
+				}
+				if loginResp.Role != string(to) {
+					t.Fatalf("role after fresh login = %q, want %q", loginResp.Role, to)
+				}
+			})
+		}
+	}
+}
+
+// TestOwnerCanReassignOwnRole confirms self-reassignment isn't
+// special-cased away -- consistent with handleDeleteUser's documented
+// "single-operator deployment knows what it's doing" trust posture, an
+// owner can demote (or re-promote) themselves same as anyone else.
+func TestOwnerCanReassignOwnRole(t *testing.T) {
+	fs := newFakeStore()
+	admin := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	set := doRequest(t, mux, http.MethodPut, "/auth/users/"+admin.ID+"/role", `{"role":"viewer"}`, cookie)
+	if set.Code != http.StatusOK {
+		t.Fatalf("self role change status = %d, want 200; body=%s", set.Code, set.Body.String())
+	}
+	var updated userResponse
+	if err := json.Unmarshal(set.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if updated.Role != "viewer" {
+		t.Errorf("role = %q, want viewer", updated.Role)
+	}
+
+	// The role change revokes sessions same as any other target -- the
+	// admin's own now-stale cookie must stop working too.
+	stale := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if stale.Code != http.StatusUnauthorized {
+		t.Fatalf("own session after self-reassignment status = %d, want 401", stale.Code)
+	}
+}
+
+func TestSetRoleRejectsInvalidRole(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	bob := mustCreateUser(t, fs, "bob", "bobspassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	adminLogin := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	adminCookie := sessionCookieFrom(adminLogin)
+
+	rec := doRequest(t, mux, http.MethodPut, "/auth/users/"+bob.ID+"/role", `{"role":"superuser"}`, adminCookie)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for an invalid role", rec.Code)
+	}
+}
+
+func TestNonOwnerCannotReassignRole(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "alice", "hunter22", authz.RoleEditor)
+	bob := mustCreateUser(t, fs, "bob", "bobspassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"alice","password":"hunter22"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPut, "/auth/users/"+bob.ID+"/role", `{"role":"admin"}`, cookie)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 for a non-owner reassigning a role", rec.Code)
+	}
+}
