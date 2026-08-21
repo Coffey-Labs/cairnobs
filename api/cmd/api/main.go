@@ -163,8 +163,11 @@ func main() {
 	// Same conn sqlRunner above already wraps -- logretention issues its
 	// own purpose-built statements against the `logs` table directly
 	// rather than going through sqlRunner's SELECT-only RunSQL (see
-	// logretention.Store's doc comment).
-	logRetentionHandler := logretention.NewHandler(logger, logretention.NewStore(conn), authorizer)
+	// logretention.Store's doc comment). Same pgPool as dashboards/agents
+	// above for the owner-only retention floor (logretention.
+	// AgentRetentionStore reads agents.ConfigOverride.LogRetentionDays
+	// out of the same `agents` table agentsHandler manages).
+	logRetentionHandler := logretention.NewHandler(logger, logretention.NewStore(conn), logretention.NewAgentRetentionStore(pgPool), authorizer)
 
 	// One shared mux, CORS applied once around the whole thing -- see
 	// httpserver's doc comment for why this changed from each

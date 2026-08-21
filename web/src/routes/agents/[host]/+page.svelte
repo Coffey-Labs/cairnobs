@@ -33,6 +33,11 @@
 	// an agent with no override starts with an empty list, not
 	// something derived from `agent`.
 	let extraFilePaths = $state<string[]>([]);
+	// Same "no effective value to fall back to" shape as extra_file_paths
+	// -- and like that field, the agent process itself never reads this
+	// one either. Kept as a string ('' = no override) so the input can be
+	// empty rather than defaulting to some arbitrary number of days.
+	let logRetentionDays = $state('');
 
 	function resetForm(a: Agent) {
 		const o = a.desired_override;
@@ -42,6 +47,7 @@
 		heartbeatIntervalMs = String(o?.heartbeat_interval_ms ?? a.heartbeat_interval_ms);
 		journaldUnit = o?.journald_unit ?? '';
 		extraFilePaths = o?.extra_file_paths ? [...o.extra_file_paths] : [];
+		logRetentionDays = o?.log_retention_days != null ? String(o.log_retention_days) : '';
 	}
 
 	function addExtraFilePath() {
@@ -76,7 +82,16 @@
 				heartbeat_enabled: heartbeatEnabled,
 				heartbeat_interval_ms: Number(heartbeatIntervalMs),
 				...(agent?.source_kind === 'journald' ? { journald_unit: journaldUnit } : {}),
-				extra_file_paths: extraFilePaths.map((p) => p.trim()).filter((p) => p !== '')
+				extra_file_paths: extraFilePaths.map((p) => p.trim()).filter((p) => p !== ''),
+				// String(...) first, deliberately -- Input's `value` prop is
+				// declared string, but a type="number" input's bind:value
+				// actually hands back a real JS number once the user has
+				// typed into it (only the initial resetForm-assigned value is
+				// guaranteed to be a string), so a bare .trim() here throws
+				// the moment someone edits this field. batch_max_size etc.
+				// above never hit this because Number(x) doesn't care
+				// whether x is already a number.
+				...(String(logRetentionDays).trim() !== '' ? { log_retention_days: Number(logRetentionDays) } : {})
 			});
 		} catch (e) {
 			saveError = e instanceof Error ? e.message : String(e);
@@ -209,6 +224,22 @@
 					</div>
 				{/each}
 				<Button variant="secondary" onclick={addExtraFilePath}>Add path</Button>
+			</div>
+
+			<div class="field">
+				<label for="log-retention-days">Log retention (days)</label>
+				<Input
+					id="log-retention-days"
+					type="number"
+					min="1"
+					max="3650"
+					placeholder="(empty = no protected minimum)"
+					bind:value={logRetentionDays}
+				/>
+				<p class="hint">
+					Owner only. Once set, this host's logs can't be deleted by age (Settings → Log retention) by anyone
+					other than an owner until they're at least this many days old.
+				</p>
 			</div>
 
 			{#if saveError}<p class="error">Error: {saveError}</p>{/if}

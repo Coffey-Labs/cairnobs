@@ -41,6 +41,18 @@ type ConfigOverride struct {
 	HeartbeatIntervalMS  *int64   `json:"heartbeat_interval_ms,omitempty"`
 	JournaldUnit         *string  `json:"journald_unit,omitempty"`
 	ExtraFilePaths       []string `json:"extra_file_paths,omitempty"`
+	// LogRetentionDays is unlike every other field above: it configures
+	// nothing about the agent's own runtime behavior (agent_control.proto
+	// has no equivalent field, and the Rust agent never reads this) --
+	// it's a central policy tag read only by api/logretention, which
+	// treats the largest LogRetentionDays configured across any agent as
+	// a protective floor a non-owner's age-based log deletion request
+	// must not reach into (see logretention.AgentRetentionStore). Stored
+	// here anyway, in the same desired_override JSONB column and edited
+	// on the same per-agent config page, because "a setting attached to
+	// an agent" is exactly what it conceptually is, even though nothing
+	// ever ships it to the agent process itself.
+	LogRetentionDays *int `json:"log_retention_days,omitempty"`
 }
 
 type Agent struct {

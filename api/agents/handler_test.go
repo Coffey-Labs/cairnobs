@@ -309,6 +309,73 @@ func TestHandleSetConfigExtraFilePathsRequiresAdminToAdd(t *testing.T) {
 	}
 }
 
+// TestHandleSetConfigLogRetentionDaysRequiresOwner is the analogous
+// regression test for log_retention_days -- but unlike extra_file_paths,
+// there is no safe direction an Admin is allowed to move it in: setting,
+// raising, lowering, and clearing all require Owner (see
+// changesLogRetentionDays's doc comment for why).
+func TestHandleSetConfigLogRetentionDaysRequiresOwner(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	editor := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleEditor}, nil)
+	admin := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleAdmin}, nil)
+	owner := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleOwner}, nil)
+
+	days90 := 90
+	rec := doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{LogRetentionDays: &days90})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin setting log_retention_days: status = %d, want 403", rec.Code)
+	}
+
+	rec = doRequest(t, owner, "PUT", "/agents/web-01/config", ConfigOverride{LogRetentionDays: &days90})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner setting log_retention_days: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var got Agent
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.DesiredOverride == nil || got.DesiredOverride.LogRetentionDays == nil || *got.DesiredOverride.LogRetentionDays != 90 {
+		t.Fatalf("stored override = %+v, want log_retention_days=90", got.DesiredOverride)
+	}
+
+	// Lowering an existing value is exactly as gated as raising it.
+	days30 := 30
+	rec = doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{LogRetentionDays: &days30})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin lowering log_retention_days: status = %d, want 403", rec.Code)
+	}
+
+	// Clearing it (omitting the field entirely) is also gated -- an
+	// admin resending the rest of the override without this field must
+	// not silently drop an owner-set floor.
+	rec = doRequest(t, admin, "PUT", "/agents/web-01/config", ConfigOverride{})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin clearing log_retention_days: status = %d, want 403", rec.Code)
+	}
+
+	// An editor is blocked the same way an admin is -- this floor is
+	// Owner-only, not Admin-or-above like extra_file_paths.
+	rec = doRequest(t, editor, "PUT", "/agents/web-01/config", ConfigOverride{LogRetentionDays: &days30})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("editor setting log_retention_days: status = %d, want 403", rec.Code)
+	}
+}
+
+func TestHandleSetConfigRejectsInvalidLogRetentionDays(t *testing.T) {
+	s := newFakeStore()
+	s.put(Agent{TenantID: "default", Host: "web-01"})
+	owner := NewHandler(discardLogger(), s, fakeAuthorizer{role: authz.RoleOwner}, nil)
+
+	for _, days := range []int{0, -1, 3651} {
+		d := days
+		rec := doRequest(t, owner, "PUT", "/agents/web-01/config", ConfigOverride{LogRetentionDays: &d})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("log_retention_days=%d: status = %d, want 400", days, rec.Code)
+		}
+	}
+}
+
 func TestHandleSetConfigUnknownHostIsNotFound(t *testing.T) {
 	h := newTestHandler(newFakeStore())
 	interval := int64(30000)

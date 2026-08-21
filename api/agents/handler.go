@@ -155,6 +155,20 @@ func (h *Handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// log_retention_days requires RoleOwner specifically, not just
+	// RoleAdmin -- unlike extra_file_paths (an asymmetric "only granting
+	// more capability needs the stricter role" check), *any* change here
+	// needs the top role, including lowering or clearing an existing
+	// value. The whole point of this field is a floor only an owner can
+	// override (see api/logretention's doc comment); an admin able to
+	// freely lower or remove it would make that floor meaningless.
+	if identity, ok := authz.IdentityFromContext(r.Context()); ok && !identity.Role.Satisfies(authz.RoleOwner) {
+		if changesLogRetentionDays(h.currentLogRetentionDays(r.Context(), h.tenantID(r), r.PathValue("host")), override.LogRetentionDays) {
+			writeError(w, http.StatusForbidden, "log_retention_days requires the owner role")
+			return
+		}
+	}
+
 	a, err := h.store.SetOverride(r.Context(), h.tenantID(r), r.PathValue("host"), override, h.updatedBy(r))
 	if err != nil {
 		h.writeStoreErr(w, err, "setting agent config")
@@ -237,6 +251,14 @@ func validateOverride(o ConfigOverride) error {
 			return err
 		}
 	}
+	// 3650 days (10 years) matches api/logretention's own
+	// maxOlderThanHours bound -- a floor further out than the deletion
+	// feature can even reach is meaningless, and rejecting an obviously-
+	// wrong input (a stray extra digit) here is cheaper than debugging it
+	// later as "why can no one ever delete logs."
+	if o.LogRetentionDays != nil && (*o.LogRetentionDays < 1 || *o.LogRetentionDays > 3650) {
+		return errors.New("log_retention_days must be between 1 and 3650")
+	}
 	return nil
 }
 
@@ -318,6 +340,31 @@ func changesExtraFilePaths(current, desired []string) bool {
 		}
 	}
 	return false
+}
+
+// currentLogRetentionDays mirrors currentExtraFilePaths exactly, for
+// the same reason: handleSetConfig needs the stored value to tell
+// whether this request actually changes it.
+func (h *Handler) currentLogRetentionDays(ctx context.Context, tenantID, host string) *int {
+	a, err := h.store.Get(ctx, tenantID, host)
+	if err != nil || a.DesiredOverride == nil {
+		return nil
+	}
+	return a.DesiredOverride.LogRetentionDays
+}
+
+// changesLogRetentionDays reports whether desired differs from current
+// at all -- unlike changesExtraFilePaths, there is no safe direction
+// here (see handleSetConfig's log_retention_days comment for why even
+// lowering or clearing needs the same gate as raising it).
+func changesLogRetentionDays(current, desired *int) bool {
+	if current == nil && desired == nil {
+		return false
+	}
+	if current == nil || desired == nil {
+		return true
+	}
+	return *current != *desired
 }
 
 func (h *Handler) writeStoreErr(w http.ResponseWriter, err error, action string) {
