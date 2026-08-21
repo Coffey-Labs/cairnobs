@@ -118,6 +118,23 @@ func (f *fakeStore) CountLocalUsers(_ context.Context) (int, error) {
 	return len(f.users), nil
 }
 
+func (f *fakeStore) CountUsersWithRole(_ context.Context, role authz.Role) (int, error) {
+	n := 0
+	for _, u := range f.users {
+		if u.Role == role {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *fakeStore) GetPasswordHashByID(_ context.Context, id string) (string, error) {
+	if _, ok := f.users[id]; !ok {
+		return "", ErrNotFound
+	}
+	return f.hashes[id], nil
+}
+
 func (f *fakeStore) CreateSession(_ context.Context, userID, tenantID string, role authz.Role, ttl time.Duration) (string, error) {
 	raw, hash, err := newOpaqueToken()
 	if err != nil {

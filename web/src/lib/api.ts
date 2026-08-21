@@ -482,6 +482,20 @@ export function setUserRole(id: string, role: string): Promise<LocalUser> {
 	});
 }
 
+// changeOwnPassword is the only way to change your own password (any
+// role, including owner) -- distinct from resetPassword above, which
+// is exclusively for an owner/admin acting on someone ELSE's account
+// and will reject a request that targets the caller's own id. Revokes
+// the caller's own session on success (see api/localauth/handler.go's
+// handleChangeOwnPassword), so the caller must sign in again afterward.
+export function changeOwnPassword(currentPassword: string, newPassword: string): Promise<void> {
+	return request('/auth/password', {
+		method: 'POST',
+		credentials: 'include',
+		body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+	});
+}
+
 // --- log retention (owner/admin only, see api/logretention) -----------
 // Deletion is scoped to specific (host, service) targets, not wholesale
 // -- a caller must name which agents' *and* which log types' logs to

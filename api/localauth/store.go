@@ -258,6 +258,38 @@ func (s *Store) SetRole(ctx context.Context, userID string, role authz.Role) err
 	return tx.Commit(ctx)
 }
 
+// CountUsersWithRole reports how many tenant_memberships rows in the
+// default tenant currently have the given role -- backs the "there
+// must always be at least one owner" guard (handleDeleteUser,
+// handleSetRole). Counts every membership regardless of whether it
+// belongs to a local user or an SSO-provisioned one (unlike ListUsers,
+// which is local-only), since the invariant this backs is about the
+// tenant having an owner at all, not about this package's own user
+// list specifically.
+func (s *Store) CountUsersWithRole(ctx context.Context, role authz.Role) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(*) FROM tenant_memberships WHERE tenant_id = $1 AND role = $2`,
+		defaultTenantID, string(role)).Scan(&n)
+	return n, err
+}
+
+// GetPasswordHashByID is GetUserForLogin's by-ID counterpart, backing
+// self-service password changes (handleChangeOwnPassword) -- the only
+// other place this package ever reads a password_hash back out.
+func (s *Store) GetPasswordHashByID(ctx context.Context, id string) (string, error) {
+	var hash string
+	err := s.pool.QueryRow(ctx, `
+		SELECT password_hash FROM users WHERE id = $1 AND username IS NOT NULL`, id).Scan(&hash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return hash, nil
+}
+
 // CountLocalUsers backs -seed-admin's idempotency check (see
 // cmd/api/main.go's runSeedAdmin): a deployment that already has at
 // least one local user never gets a second auto-created admin account.

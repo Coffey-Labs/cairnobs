@@ -21,9 +21,11 @@ type store interface {
 	ListUsers(ctx context.Context) ([]User, error)
 	GetUserForLogin(ctx context.Context, username string) (*User, string, error)
 	GetUserByID(ctx context.Context, id string) (*User, error)
+	GetPasswordHashByID(ctx context.Context, id string) (string, error)
 	DeleteUser(ctx context.Context, id string) error
 	SetPasswordHash(ctx context.Context, userID, hash string) error
 	SetRole(ctx context.Context, userID string, role authz.Role) error
+	CountUsersWithRole(ctx context.Context, role authz.Role) (int, error)
 	CreateSession(ctx context.Context, userID, tenantID string, role authz.Role, ttl time.Duration) (string, error)
 	DeleteSessionByHash(ctx context.Context, tokenHash string) error
 }
@@ -81,19 +83,41 @@ func NewHandler(logger *slog.Logger, store store, authorizer authz.Authorizer, s
 // cmd/api/main.go) -- a deployment that doesn't enable it simply never
 // registers these routes at all, so GET /auth/session (etc.) 404s
 // rather than needing its own "is this feature even on" response
-// shape. Login/logout/session are deliberately NOT RequireRole-wrapped
-// with anything above RoleViewer's floor: login is how you become
-// authenticated in the first place, logout/session must work for any
-// already-authenticated user regardless of role.
+// shape. Login/logout/session/password are deliberately NOT
+// RequireRole-wrapped with anything above RoleViewer's floor: login is
+// how you become authenticated in the first place, logout/session/
+// changing your own password must work for any already-authenticated
+// user regardless of role.
+//
+// User management's RBAC matrix (each floor here is the minimum to
+// reach the route at all; every handler below applies a further,
+// per-target check narrower than its floor):
+//   - GET/POST /auth/users, DELETE .../{id}, POST .../reset-password:
+//     RoleAdmin floor. An admin caller is then restricted to
+//     viewer/editor targets only (handleCreateUser/handleDeleteUser/
+//     handleResetPassword); an owner caller has no such restriction.
+//   - DELETE .../{id} additionally refuses to remove the last owner,
+//     and POST .../reset-password refuses id == the caller's own ID
+//     (see POST /auth/password) and refuses an owner target unless the
+//     caller is themselves an owner.
+//   - PUT .../{id}/role stays RoleOwner-only (unchanged) but now also
+//     refuses to demote the last owner.
+//   - POST /auth/password (self-service, RoleViewer floor) is the only
+//     way to change your own password, verified against your current
+//     one -- this applies to every role including owner, since "an
+//     owner can change any password on behalf of a user" is about
+//     acting on someone ELSE's account, not a shortcut around
+//     confirming your own current password.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/login", h.handleLogin)
 	mux.HandleFunc("POST /auth/logout", h.handleLogout)
 	mux.HandleFunc("GET /auth/session", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleGetSession))
+	mux.HandleFunc("POST /auth/password", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleChangeOwnPassword))
 
-	mux.HandleFunc("GET /auth/users", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleListUsers))
-	mux.HandleFunc("POST /auth/users", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleCreateUser))
-	mux.HandleFunc("DELETE /auth/users/{id}", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleDeleteUser))
-	mux.HandleFunc("POST /auth/users/{id}/reset-password", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleResetPassword))
+	mux.HandleFunc("GET /auth/users", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleListUsers))
+	mux.HandleFunc("POST /auth/users", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleCreateUser))
+	mux.HandleFunc("DELETE /auth/users/{id}", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleDeleteUser))
+	mux.HandleFunc("POST /auth/users/{id}/reset-password", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleResetPassword))
 	mux.HandleFunc("PUT /auth/users/{id}/role", authz.RequireRole(h.authorizer, authz.RoleOwner, h.handleSetRole))
 }
 
@@ -253,6 +277,15 @@ func (h *Handler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, `role must be "viewer", "editor", "admin", or "owner"`)
 		return
 	}
+	// An admin caller (RegisterRoutes' RoleAdmin floor already excludes
+	// viewer/editor) may only create viewer/editor accounts -- creating
+	// an admin or owner account is owner-only.
+	if identity, ok := authz.IdentityFromContext(r.Context()); ok && !identity.Role.Satisfies(authz.RoleOwner) {
+		if role == authz.RoleAdmin || role == authz.RoleOwner {
+			writeError(w, http.StatusForbidden, "admin can only create viewer or editor accounts")
+			return
+		}
+	}
 
 	hash, err := HashPassword(req.Password)
 	if err != nil {
@@ -273,17 +306,58 @@ func (h *Handler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, userResponse{ID: user.ID, Username: user.Username, Role: string(user.Role), CreatedAt: user.CreatedAt})
 }
 
-// handleDeleteUser deliberately does not stop an admin from deleting
-// their own account -- this package has no separate "you can't remove
-// the last admin" guard; a single-operator prototype deployment is
-// expected to know what it's doing here, same trust level the rest of
-// this codebase's admin-only endpoints assume.
+// handleDeleteUser deliberately does not stop a caller from deleting
+// their own account (as long as it isn't the last owner, per the check
+// below) -- a single-operator prototype deployment is expected to know
+// what it's doing here, same trust level the rest of this codebase's
+// admin-only endpoints assume. What it does stop, unconditionally: an
+// admin caller (RegisterRoutes' RoleAdmin floor already excludes
+// viewer/editor) deleting an admin or owner target -- that's
+// owner-only -- and anyone at all deleting the last remaining owner.
 func (h *Handler) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	if err := h.store.DeleteUser(r.Context(), r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	target, err := h.store.GetUserByID(r.Context(), id)
+	if err != nil {
+		h.writeStoreErr(w, err, "deleting user")
+		return
+	}
+
+	if identity, ok := authz.IdentityFromContext(r.Context()); ok && !identity.Role.Satisfies(authz.RoleOwner) {
+		if target.Role == authz.RoleAdmin || target.Role == authz.RoleOwner {
+			writeError(w, http.StatusForbidden, "admin can only delete viewer or editor accounts")
+			return
+		}
+	}
+	if target.Role == authz.RoleOwner {
+		if blocked, err := h.wouldRemoveLastOwner(r.Context(), w); err != nil {
+			return
+		} else if blocked {
+			writeError(w, http.StatusConflict, "cannot delete the last owner")
+			return
+		}
+	}
+
+	if err := h.store.DeleteUser(r.Context(), id); err != nil {
 		h.writeStoreErr(w, err, "deleting user")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// wouldRemoveLastOwner reports whether the default tenant currently has
+// only one owner -- shared by handleDeleteUser (deleting that owner)
+// and handleSetRole (demoting them) since both are exactly the same
+// invariant violation from two different operations. Writes a 500 and
+// returns a non-nil error itself on a store failure, so callers can
+// just `return` on a non-nil error without writing their own.
+func (h *Handler) wouldRemoveLastOwner(ctx context.Context, w http.ResponseWriter) (bool, error) {
+	n, err := h.store.CountUsersWithRole(ctx, authz.RoleOwner)
+	if err != nil {
+		h.logger.Error("counting owners", "error", err)
+		writeError(w, http.StatusInternalServerError, "checking owner count failed")
+		return false, err
+	}
+	return n <= 1, nil
 }
 
 type setRoleRequest struct {
@@ -294,6 +368,8 @@ type setRoleRequest struct {
 // re-promoting their own account -- same "single-operator prototype
 // deployment knows what it's doing" trust level handleDeleteUser's doc
 // comment already establishes for this package's owner-only endpoints.
+// It does stop demoting the last remaining owner away from RoleOwner,
+// the same invariant handleDeleteUser enforces for deletion.
 func (h *Handler) handleSetRole(w http.ResponseWriter, r *http.Request) {
 	var req setRoleRequest
 	if !decodeJSON(w, r, &req) {
@@ -305,12 +381,27 @@ func (h *Handler) handleSetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.SetRole(r.Context(), r.PathValue("id"), role); err != nil {
+	id := r.PathValue("id")
+	current, err := h.store.GetUserByID(r.Context(), id)
+	if err != nil {
+		h.writeStoreErr(w, err, "updating role")
+		return
+	}
+	if current.Role == authz.RoleOwner && role != authz.RoleOwner {
+		if blocked, err := h.wouldRemoveLastOwner(r.Context(), w); err != nil {
+			return
+		} else if blocked {
+			writeError(w, http.StatusConflict, "cannot demote the last owner")
+			return
+		}
+	}
+
+	if err := h.store.SetRole(r.Context(), id, role); err != nil {
 		h.writeStoreErr(w, err, "updating role")
 		return
 	}
 
-	user, err := h.store.GetUserByID(r.Context(), r.PathValue("id"))
+	user, err := h.store.GetUserByID(r.Context(), id)
 	if err != nil {
 		h.writeStoreErr(w, err, "fetching updated user")
 		return
@@ -332,7 +423,30 @@ type resetPasswordResponse struct {
 	Password string `json:"password,omitempty"`
 }
 
+// handleResetPassword is exclusively for an owner/admin acting on
+// someone ELSE's account -- it refuses id == the caller's own ID
+// outright (POST /auth/password is the only path to changing your own
+// password, for anyone, including an owner resetting their own), and
+// refuses an owner target unless the caller is themselves an owner
+// (RegisterRoutes' RoleAdmin floor already means a caller here is
+// admin-or-owner, so "not an owner" in the check below means admin).
 func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	identity, _ := authz.IdentityFromContext(r.Context())
+	if id == identity.UserID {
+		writeError(w, http.StatusBadRequest, "use POST /auth/password to change your own password")
+		return
+	}
+	target, err := h.store.GetUserByID(r.Context(), id)
+	if err != nil {
+		h.writeStoreErr(w, err, "resetting password")
+		return
+	}
+	if target.Role == authz.RoleOwner && !identity.Role.Satisfies(authz.RoleOwner) {
+		writeError(w, http.StatusForbidden, "admin cannot reset an owner's password")
+		return
+	}
+
 	var req resetPasswordRequest
 	// An empty body is valid here (generate a random password) --
 	// decodeJSON's json.Decode on an empty io.Reader would error, so
@@ -368,7 +482,7 @@ func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "resetting password failed")
 		return
 	}
-	if err := h.store.SetPasswordHash(r.Context(), r.PathValue("id"), hash); err != nil {
+	if err := h.store.SetPasswordHash(r.Context(), id, hash); err != nil {
 		h.writeStoreErr(w, err, "resetting password")
 		return
 	}
@@ -378,6 +492,54 @@ func (h *Handler) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		resp.Password = plaintext
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type changeOwnPasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// handleChangeOwnPassword is the only path to changing your own
+// password, for every role including owner -- distinct from
+// handleResetPassword (which acts on someone ELSE's account and never
+// asks for a password it could never know) by requiring
+// current_password, verified against the caller's own stored hash.
+// Like every other password change in this package, it revokes the
+// caller's own existing sessions too (SetPasswordHash), including the
+// one this very request is authenticated with -- the caller must sign
+// in again afterward.
+func (h *Handler) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
+	var req changeOwnPasswordRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
+	identity, _ := authz.IdentityFromContext(r.Context())
+	hash, err := h.store.GetPasswordHashByID(r.Context(), identity.UserID)
+	if err != nil {
+		h.writeStoreErr(w, err, "changing password")
+		return
+	}
+	if !ComparePassword(hash, req.CurrentPassword) {
+		writeError(w, http.StatusBadRequest, "current password is incorrect")
+		return
+	}
+
+	newHash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		h.logger.Error("hashing password", "error", err)
+		writeError(w, http.StatusInternalServerError, "changing password failed")
+		return
+	}
+	if err := h.store.SetPasswordHash(r.Context(), identity.UserID, newHash); err != nil {
+		h.writeStoreErr(w, err, "changing password")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) setCookie(w http.ResponseWriter, raw string, ttl time.Duration) {

@@ -12,6 +12,11 @@
 	} from '$lib/api';
 
 	const roleOptions = ['viewer', 'editor', 'admin', 'owner'] as const;
+	// An admin caller can only ever create/pick viewer or editor -- the
+	// server rejects admin/owner from an admin caller (see
+	// api/localauth/handler.go's handleCreateUser), so this is here to
+	// keep the create form from ever offering a choice that would 403.
+	const adminCreatableRoles = ['viewer', 'editor'] as const;
 
 	let localSession = $state<LocalSession | 'disabled' | null>(null);
 	let checked = $state(false);
@@ -22,7 +27,8 @@
 	async function loadUsers() {
 		localSession = localAuthEnabled ? await getLocalSession() : 'disabled';
 		checked = true;
-		if (localSession === 'disabled' || localSession === null || localSession.role !== 'owner') return;
+		if (localSession === 'disabled' || localSession === null) return;
+		if (localSession.role !== 'owner' && localSession.role !== 'admin') return;
 		usersLoading = true;
 		usersError = '';
 		try {
@@ -34,6 +40,39 @@
 		}
 	}
 	loadUsers();
+
+	// isOwner gates what this page offers beyond the owner-or-admin floor
+	// that gets you onto the page at all: role reassignment, and
+	// creating/deleting/resetting an admin or owner account, all stay
+	// owner-only (see api/localauth/handler.go's RBAC matrix doc
+	// comment). $derived.by + a local const alias sidesteps a
+	// svelte-check narrowing quirk with reading a mutable $state
+	// directly inside a bare $derived(...) expression.
+	const isOwner = $derived.by(() => {
+		const s = localSession;
+		return s !== null && s !== 'disabled' && s.role === 'owner';
+	});
+	const ownerCount = $derived(users.filter((u) => u.role === 'owner').length);
+
+	// canDeleteUser/canResetPassword mirror the server's own checks so
+	// the UI never offers an action that would just come back as a 403
+	// or (for the last owner) a 409 -- the server remains the actual
+	// authority, this is purely a "don't show a doomed button" nicety.
+	function canDeleteUser(u: LocalUser): boolean {
+		if ((u.role === 'admin' || u.role === 'owner') && !isOwner) return false;
+		if (u.role === 'owner' && ownerCount <= 1) return false;
+		return true;
+	}
+
+	function deleteDisabledReason(u: LocalUser): string {
+		if ((u.role === 'admin' || u.role === 'owner') && !isOwner) return 'Only an owner can delete an admin or owner account';
+		if (u.role === 'owner' && ownerCount <= 1) return 'There must always be at least one owner';
+		return '';
+	}
+
+	function canResetPassword(u: LocalUser): boolean {
+		return !(u.role === 'owner' && !isOwner);
+	}
 
 	// --- create user ---
 	let newUsername = $state('');
@@ -159,10 +198,16 @@
 		</p>
 	{:else if localSession === null}
 		<p class="note">Sign in to manage users.</p>
-	{:else if localSession.role !== 'owner'}
-		<p class="note">Only an owner can manage users. Signed in as {localSession.username} ({localSession.role}).</p>
+	{:else if localSession.role !== 'owner' && localSession.role !== 'admin'}
+		<p class="note">
+			Only an owner or admin can manage users. Signed in as {localSession.username} ({localSession.role}). To
+			change your own password, use "Change password" in the sidebar.
+		</p>
 	{:else}
-		<p class="subtitle">Local accounts for this deployment: passwords, and roles.</p>
+		<p class="subtitle">
+			Local accounts for this deployment.
+			{#if !isOwner}As an admin, you can manage viewer and editor accounts.{/if}
+		</p>
 
 		{#if usersError}<p class="error">{usersError}</p>{/if}
 
@@ -192,7 +237,8 @@
 								<select
 									class="role-select"
 									value={u.role}
-									disabled={roleSaving === u.id}
+									disabled={roleSaving === u.id || !isOwner}
+									title={isOwner ? '' : 'Only an owner can reassign roles'}
 									onchange={(e) => handleRoleChange(u, e.currentTarget.value)}
 									aria-label="Role for {u.username}"
 								>
@@ -203,8 +249,27 @@
 							</td>
 							<td class="muted">{formatDate(u.created_at)}</td>
 							<td class="actions">
-								<button type="button" onclick={() => togglePasswordPanel(u.id)}>Change password</button>
-								<button type="button" class="danger" onclick={() => handleDelete(u)}>Delete</button>
+								{#if u.id === localSession.user_id}
+									<span class="muted self-note">Use "Change password" in the sidebar</span>
+								{:else}
+									<button
+										type="button"
+										onclick={() => togglePasswordPanel(u.id)}
+										disabled={!canResetPassword(u)}
+										title={canResetPassword(u) ? '' : "Only an owner can reset an owner's password"}
+									>
+										Change password
+									</button>
+								{/if}
+								<button
+									type="button"
+									class="danger"
+									onclick={() => handleDelete(u)}
+									disabled={!canDeleteUser(u)}
+									title={deleteDisabledReason(u)}
+								>
+									Delete
+								</button>
 							</td>
 						</tr>
 						{#if passwordTarget === u.id}
@@ -271,7 +336,7 @@
 				<div class="field">
 					<label for="new-role">Role</label>
 					<select id="new-role" bind:value={newRole} disabled={creating}>
-						{#each roleOptions as r (r)}
+						{#each (isOwner ? roleOptions : adminCreatableRoles) as r (r)}
 							<option value={r}>{r}</option>
 						{/each}
 					</select>
@@ -403,6 +468,13 @@
 	.actions button.danger {
 		color: var(--color-danger);
 		border-color: var(--color-danger);
+	}
+	.actions button:disabled {
+		cursor: default;
+		opacity: 0.5;
+	}
+	.self-note {
+		font-size: var(--text-xs);
 	}
 
 	.password-row td {

@@ -221,3 +221,67 @@ func TestIntegrationSetRoleAcceptsEveryRole(t *testing.T) {
 		}
 	}
 }
+
+// TestIntegrationCountUsersWithRole confirms the count reflects real
+// inserts/role changes against the actual tenant_memberships table --
+// the "at least one owner" guard this backs (handler.go's
+// wouldRemoveLastOwner) is only as trustworthy as this query.
+func TestIntegrationCountUsersWithRole(t *testing.T) {
+	store := integrationStore(t)
+	ctx := context.Background()
+	username := testUsername(t)
+
+	hash, _ := HashPassword("password1")
+	user, err := store.CreateUser(ctx, username, hash, authz.RoleOwner)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { _ = store.DeleteUser(ctx, user.ID) })
+
+	before, err := store.CountUsersWithRole(ctx, authz.RoleOwner)
+	if err != nil {
+		t.Fatalf("CountUsersWithRole(owner): %v", err)
+	}
+	if before < 1 {
+		t.Fatalf("owner count = %d, want at least 1 (the user just created)", before)
+	}
+
+	if err := store.SetRole(ctx, user.ID, authz.RoleAdmin); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+	after, err := store.CountUsersWithRole(ctx, authz.RoleOwner)
+	if err != nil {
+		t.Fatalf("CountUsersWithRole(owner) after demotion: %v", err)
+	}
+	if after != before-1 {
+		t.Fatalf("owner count after demoting one = %d, want %d", after, before-1)
+	}
+}
+
+// TestIntegrationGetPasswordHashByID confirms it reads the same hash
+// GetUserForLogin does, by ID instead of username -- the self-service
+// password change handler's only way to fetch the caller's own hash.
+func TestIntegrationGetPasswordHashByID(t *testing.T) {
+	store := integrationStore(t)
+	ctx := context.Background()
+	username := testUsername(t)
+
+	hash, _ := HashPassword("correct horse battery staple")
+	user, err := store.CreateUser(ctx, username, hash, authz.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { _ = store.DeleteUser(ctx, user.ID) })
+
+	got, err := store.GetPasswordHashByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetPasswordHashByID: %v", err)
+	}
+	if !ComparePassword(got, "correct horse battery staple") {
+		t.Errorf("hash from GetPasswordHashByID does not verify against the original password")
+	}
+
+	if _, err := store.GetPasswordHashByID(ctx, uuid.NewString()); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetPasswordHashByID for an unknown ID: err = %v, want ErrNotFound", err)
+	}
+}
