@@ -229,6 +229,35 @@ func (s *Store) SetPasswordHash(ctx context.Context, userID, hash string) error 
 	return tx.Commit(ctx)
 }
 
+// SetRole also revokes every existing session for userID, in the same
+// transaction -- Session.Role is a snapshot taken at login (see
+// SetPasswordHash's doc comment above for why), so without this a
+// demoted user would keep acting under their old, higher-privileged
+// role for the rest of an already-issued session's lifetime.
+func (s *Store) SetRole(ctx context.Context, userID string, role authz.Role) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE tenant_memberships SET role = $1
+		WHERE user_id = $2 AND tenant_id = $3
+		AND EXISTS (SELECT 1 FROM users WHERE id = $2 AND username IS NOT NULL)`,
+		string(role), userID, defaultTenantID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM local_sessions WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // CountLocalUsers backs -seed-admin's idempotency check (see
 // cmd/api/main.go's runSeedAdmin): a deployment that already has at
 // least one local user never gets a second auto-created admin account.

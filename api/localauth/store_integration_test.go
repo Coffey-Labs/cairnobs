@@ -155,3 +155,69 @@ func TestIntegrationSetPasswordHashRevokesSessions(t *testing.T) {
 		t.Errorf("GetSession after password reset: err = %v, want ErrNotFound (reset must revoke existing sessions)", err)
 	}
 }
+
+func TestIntegrationSetRoleRevokesSessions(t *testing.T) {
+	store := integrationStore(t)
+	ctx := context.Background()
+	username := testUsername(t)
+
+	hash, _ := HashPassword("password1")
+	user, err := store.CreateUser(ctx, username, hash, authz.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { _ = store.DeleteUser(ctx, user.ID) })
+
+	raw, err := store.CreateSession(ctx, user.ID, "default", authz.RoleViewer, time.Hour)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	if err := store.SetRole(ctx, user.ID, authz.RoleAdmin); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+
+	got, _, err := store.GetUserForLogin(ctx, username)
+	if err != nil {
+		t.Fatalf("GetUserForLogin: %v", err)
+	}
+	if got.Role != authz.RoleAdmin {
+		t.Errorf("role after SetRole = %q, want admin", got.Role)
+	}
+
+	if _, err := store.GetSession(ctx, hashToken(raw)); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetSession after role change: err = %v, want ErrNotFound (role change must revoke existing sessions)", err)
+	}
+}
+
+// TestIntegrationSetRoleAcceptsEveryRole confirms tenant_memberships'
+// role CHECK constraint (0020_create_tenant_memberships.sql) accepts
+// all four roles via SetRole's UPDATE, not just CreateUser's INSERT --
+// the handler-level fake-store test already covers all sixteen ordered
+// transitions, but only a real Postgres run proves the constraint
+// itself doesn't reject any of them.
+func TestIntegrationSetRoleAcceptsEveryRole(t *testing.T) {
+	store := integrationStore(t)
+	ctx := context.Background()
+	username := testUsername(t)
+
+	hash, _ := HashPassword("password1")
+	user, err := store.CreateUser(ctx, username, hash, authz.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { _ = store.DeleteUser(ctx, user.ID) })
+
+	for _, role := range []authz.Role{authz.RoleEditor, authz.RoleAdmin, authz.RoleOwner, authz.RoleViewer} {
+		if err := store.SetRole(ctx, user.ID, role); err != nil {
+			t.Fatalf("SetRole(%s): %v", role, err)
+		}
+		got, _, err := store.GetUserForLogin(ctx, username)
+		if err != nil {
+			t.Fatalf("GetUserForLogin after SetRole(%s): %v", role, err)
+		}
+		if got.Role != role {
+			t.Fatalf("role after SetRole(%s) = %q, want %q", role, got.Role, role)
+		}
+	}
+}

@@ -474,6 +474,14 @@ export function resetPassword(id: string, newPassword?: string): Promise<{ passw
 	});
 }
 
+export function setUserRole(id: string, role: string): Promise<LocalUser> {
+	return request(`/auth/users/${id}/role`, {
+		method: 'PUT',
+		credentials: 'include',
+		body: JSON.stringify({ role })
+	});
+}
+
 // --- alerting ---------------------------------------------------------
 
 export type ConditionType = 'threshold' | 'absence';

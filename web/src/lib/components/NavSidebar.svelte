@@ -18,15 +18,16 @@
 		onCloseMobile
 	}: { onOpenPalette: () => void; mobileOpen?: boolean; onCloseMobile?: () => void } = $props();
 
-	const navItems = [
+	const baseNavItems = [
 		{ href: '/', label: 'Search', icon: '◇' },
 		{ href: '/dashboards', label: 'Dashboards', icon: '▤' },
 		{ href: '/alerts', label: 'Alerts', icon: '▲' },
 		{ href: '/data-sources', label: 'Data Sources', icon: '◈' },
 		{ href: '/agents', label: 'Agents', icon: '●' },
-		{ href: '/hosts', label: 'Hosts', icon: '▣' },
-		{ href: '/settings', label: 'Settings', icon: '⚙' }
+		{ href: '/hosts', label: 'Hosts', icon: '▣' }
 	];
+	const usersNavItem = { href: '/users', label: 'Users', icon: '◐' };
+	const settingsNavItem = { href: '/settings', label: 'Settings', icon: '⚙' };
 
 	function isActive(href: string): boolean {
 		if (href === '/') return page.url.pathname === '/';
@@ -43,6 +44,18 @@
 		if (!localAuthEnabled) return;
 		getLocalSession().then((s) => (localSession = s === 'disabled' ? null : s));
 	});
+
+	// The Users nav item only ever makes sense for local-auth mode's
+	// owner-only user manager (see routes/users/+page.svelte) -- an
+	// enterprise-SSO deployment or a non-owner local session never sees
+	// it, same gating that page enforces itself if reached directly.
+	const isLocalOwner = $derived.by(() => {
+		const s = localSession;
+		return s !== null && s.role === 'owner';
+	});
+	const navItems = $derived(
+		isLocalOwner ? [...baseNavItems, usersNavItem, settingsNavItem] : [...baseNavItems, settingsNavItem]
+	);
 
 	let loggingOut = $state(false);
 	async function handleLogout() {

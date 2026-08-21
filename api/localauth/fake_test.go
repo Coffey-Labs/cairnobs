@@ -100,6 +100,20 @@ func (f *fakeStore) SetPasswordHash(_ context.Context, userID, hash string) erro
 	return nil
 }
 
+func (f *fakeStore) SetRole(_ context.Context, userID string, role authz.Role) error {
+	u, ok := f.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	u.Role = role
+	for h, sess := range f.sessions {
+		if sess.UserID == userID {
+			delete(f.sessions, h)
+		}
+	}
+	return nil
+}
+
 func (f *fakeStore) CountLocalUsers(_ context.Context) (int, error) {
 	return len(f.users), nil
 }
