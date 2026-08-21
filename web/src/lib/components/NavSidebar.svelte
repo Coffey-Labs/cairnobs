@@ -46,15 +46,17 @@
 	});
 
 	// The Users nav item only ever makes sense for local-auth mode's
-	// owner-only user manager (see routes/users/+page.svelte) -- an
-	// enterprise-SSO deployment or a non-owner local session never sees
-	// it, same gating that page enforces itself if reached directly.
-	const isLocalOwner = $derived.by(() => {
+	// owner/admin user manager (see routes/users/+page.svelte, which
+	// admin can now partially use too -- viewer/editor accounts only) --
+	// an enterprise-SSO deployment or a plain viewer/editor local
+	// session never sees it, same gating that page enforces itself if
+	// reached directly.
+	const canManageUsers = $derived.by(() => {
 		const s = localSession;
-		return s !== null && s.role === 'owner';
+		return s !== null && (s.role === 'owner' || s.role === 'admin');
 	});
 	const navItems = $derived(
-		isLocalOwner ? [...baseNavItems, usersNavItem, settingsNavItem] : [...baseNavItems, settingsNavItem]
+		canManageUsers ? [...baseNavItems, usersNavItem, settingsNavItem] : [...baseNavItems, settingsNavItem]
 	);
 
 	let loggingOut = $state(false);
@@ -105,6 +107,7 @@
 				<span class="tenant-name">{localSession.username}</span>
 				<span class="role">{localSession.role}</span>
 			</div>
+			<a class="switch" href="/account">Change password</a>
 			<button type="button" class="switch logout-btn" onclick={handleLogout} disabled={loggingOut}>
 				{loggingOut ? 'Signing out…' : 'Log out'}
 			</button>

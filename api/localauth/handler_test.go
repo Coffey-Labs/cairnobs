@@ -373,6 +373,9 @@ func TestOwnerCanReassignEveryRoleTransition(t *testing.T) {
 func TestOwnerCanReassignOwnRole(t *testing.T) {
 	fs := newFakeStore()
 	admin := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	// A second owner so demoting "admin" doesn't trip the "at least one
+	// owner" guard this test isn't exercising.
+	mustCreateUser(t, fs, "otherowner", "otherpass1", authz.RoleOwner)
 	_, mux := newTestHandler(t, fs)
 
 	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
@@ -425,5 +428,277 @@ func TestNonOwnerCannotReassignRole(t *testing.T) {
 	rec := doRequest(t, mux, http.MethodPut, "/auth/users/"+bob.ID+"/role", `{"role":"admin"}`, cookie)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 for a non-owner reassigning a role", rec.Code)
+	}
+}
+
+// --- RBAC matrix: admin's create/delete scope is viewer/editor only ---
+
+func TestAdminCanListUsers(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "dave", "davespassword", authz.RoleAdmin)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"dave","password":"davespassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodGet, "/auth/users", "", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin listing users: status = %d, want 200", rec.Code)
+	}
+}
+
+func TestAdminCanCreateViewerAndEditorOnly(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "dave", "davespassword", authz.RoleAdmin)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"dave","password":"davespassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	for _, role := range []string{"viewer", "editor"} {
+		rec := doRequest(t, mux, http.MethodPost, "/auth/users",
+			`{"username":"new-`+role+`","password":"somepassword1","role":"`+role+`"}`, cookie)
+		if rec.Code != http.StatusCreated {
+			t.Errorf("admin creating %s: status = %d, want 201, body=%s", role, rec.Code, rec.Body.String())
+		}
+	}
+	for _, role := range []string{"admin", "owner"} {
+		rec := doRequest(t, mux, http.MethodPost, "/auth/users",
+			`{"username":"new-`+role+`","password":"somepassword1","role":"`+role+`"}`, cookie)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("admin creating %s: status = %d, want 403", role, rec.Code)
+		}
+	}
+}
+
+func TestOwnerCanCreateAnyRole(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	for _, role := range []string{"viewer", "editor", "admin", "owner"} {
+		rec := doRequest(t, mux, http.MethodPost, "/auth/users",
+			`{"username":"new-`+role+`","password":"somepassword1","role":"`+role+`"}`, cookie)
+		if rec.Code != http.StatusCreated {
+			t.Errorf("owner creating %s: status = %d, want 201, body=%s", role, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminCanDeleteViewerAndEditorOnly(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "dave", "davespassword", authz.RoleAdmin)
+	viewer := mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	editor := mustCreateUser(t, fs, "edith", "edithpassword", authz.RoleEditor)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"dave","password":"davespassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	for _, target := range []*User{viewer, editor} {
+		rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+target.ID, "", cookie)
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("admin deleting %s: status = %d, want 204, body=%s", target.Role, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminCannotDeleteAdminOrOwner(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "dave", "davespassword", authz.RoleAdmin)
+	otherAdmin := mustCreateUser(t, fs, "dan", "danspassword", authz.RoleAdmin)
+	owner := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"dave","password":"davespassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	for _, target := range []*User{otherAdmin, owner} {
+		rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+target.ID, "", cookie)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("admin deleting %s: status = %d, want 403", target.Role, rec.Code)
+		}
+	}
+}
+
+// --- RBAC matrix: at least one owner must always remain ---
+
+func TestCannotDeleteTheLastOwner(t *testing.T) {
+	fs := newFakeStore()
+	owner := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	mustCreateUser(t, fs, "dave", "davespassword", authz.RoleAdmin)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+owner.ID, "", cookie)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("deleting the last owner: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCanDeleteAnOwnerWhenAnotherRemains(t *testing.T) {
+	fs := newFakeStore()
+	owner1 := mustCreateUser(t, fs, "admin1", "adminpass1", authz.RoleOwner)
+	mustCreateUser(t, fs, "admin2", "adminpass2", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin1","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+owner1.ID, "", cookie)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("deleting one of two owners: status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCannotDemoteTheLastOwner(t *testing.T) {
+	fs := newFakeStore()
+	owner := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPut, "/auth/users/"+owner.ID+"/role", `{"role":"admin"}`, cookie)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("demoting the last owner: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- RBAC matrix: password resets on behalf of another user ---
+
+func TestAdminCanResetNonOwnerPasswordsButNotOwners(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "dave", "davespassword", authz.RoleAdmin)
+	viewer := mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	otherAdmin := mustCreateUser(t, fs, "dan", "danspassword", authz.RoleAdmin)
+	owner := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"dave","password":"davespassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	for _, target := range []*User{viewer, otherAdmin} {
+		rec := doRequest(t, mux, http.MethodPost, "/auth/users/"+target.ID+"/reset-password", "", cookie)
+		if rec.Code != http.StatusOK {
+			t.Errorf("admin resetting %s's password: status = %d, want 200, body=%s", target.Role, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/users/"+owner.ID+"/reset-password", "", cookie)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin resetting an owner's password: status = %d, want 403", rec.Code)
+	}
+}
+
+func TestOwnerCanResetAnyPasswordIncludingAnotherOwner(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "admin1", "adminpass1", authz.RoleOwner)
+	owner2 := mustCreateUser(t, fs, "admin2", "adminpass2", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin1","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/users/"+owner2.ID+"/reset-password", "", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner resetting another owner's password: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResetPasswordRejectsTargetingSelf(t *testing.T) {
+	fs := newFakeStore()
+	owner := mustCreateUser(t, fs, "admin", "adminpass1", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/users/"+owner.ID+"/reset-password", "", cookie)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("resetting your own password via the admin endpoint: status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- self-service password change (POST /auth/password) ---
+
+func TestChangeOwnPasswordSucceedsWithCorrectCurrentPassword(t *testing.T) {
+	fs := newFakeStore()
+	// Deliberately RoleViewer -- self-service must work for every role,
+	// not just owner/admin.
+	mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"vince","password":"vincepassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/password",
+		`{"current_password":"vincepassword","new_password":"vinces-new-password"}`, cookie)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// The old session must be revoked...
+	stale := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if stale.Code != http.StatusUnauthorized {
+		t.Errorf("session after password change: status = %d, want 401", stale.Code)
+	}
+	// ...and the new password must actually work.
+	relogin := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"vince","password":"vinces-new-password"}`, nil)
+	if relogin.Code != http.StatusOK {
+		t.Fatalf("login with new password: status = %d, want 200", relogin.Code)
+	}
+}
+
+func TestChangeOwnPasswordRejectsWrongCurrentPassword(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"vince","password":"vincepassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/password",
+		`{"current_password":"wrongpassword","new_password":"vinces-new-password"}`, cookie)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// The session must still be valid -- a rejected attempt is not a
+	// password change.
+	still := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if still.Code != http.StatusOK {
+		t.Errorf("session after a rejected attempt: status = %d, want 200", still.Code)
+	}
+}
+
+func TestChangeOwnPasswordRejectsShortNewPassword(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"vince","password":"vincepassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/password",
+		`{"current_password":"vincepassword","new_password":"short"}`, cookie)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestChangeOwnPasswordRequiresAuth(t *testing.T) {
+	fs := newFakeStore()
+	_, mux := newTestHandler(t, fs)
+
+	rec := doRequest(t, mux, http.MethodPost, "/auth/password",
+		`{"current_password":"whatever","new_password":"somenewpassword"}`, nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 with no session", rec.Code)
 	}
 }
