@@ -49,9 +49,18 @@ line see the same instant written two ways.
   *browser's* zone with no way to override it, which would put a chart's
   clock out of step with the table beside it.
 
-The one place the UTC baseline is still visible to a user is query input:
-`earliest=`/`latest=` are parsed as UTC regardless of this setting. The
-Settings page says so explicitly rather than leaving it to be discovered.
+Query *input* follows the same setting: an absolute time written without
+an offset (`earliest=2026-08-22 09:00`) is read as wall-clock time in the
+reader's zone and converted to UTC before the query is sent -- see
+`src/lib/querytime.ts`. Anything with an explicit offset is taken at its
+word, and relative ranges (`-24h`) never depended on a zone.
+
+That conversion happens before a query is sent *or saved*, so a stored
+dashboard range is an explicit instant rather than "10am, whoever you
+are" -- otherwise one shared dashboard would show two different windows
+to two people. The API itself is unchanged and still accepts only quoted
+RFC3339 with an offset; everything this adds is a form it rejects today,
+so no query that works now can change meaning.
 
 ## Building & running
 

@@ -6,6 +6,8 @@
 	// the dashboard panel editor and alert rule editor), fetch calls
 	// moved into $lib/api.ts.
 
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { normalizeQueryTimes } from '$lib/querytime';
 	import ResultsTable from '$lib/ResultsTable.svelte';
 	import QueryBar from '$lib/QueryBar.svelte';
 	import AddToDashboardModal from '$lib/components/AddToDashboardModal.svelte';
@@ -58,11 +60,16 @@
 		error = '';
 		warnings = [];
 		try {
-			const result = await apiRunQuery(query, language);
+			// Resolve any absolute time typed without an offset against the
+			// reader's display timezone before the query leaves the browser
+			// (see $lib/querytime.ts). Only for pipe syntax -- raw SQL goes
+			// to ClickHouse verbatim and isn't ours to rewrite.
+			const sent = language === 'sql' ? query : normalizeQueryTimes(query, getTimezone());
+			const result = await apiRunQuery(sent, language);
 			columns = result.columns ?? [];
 			rows = result.rows ?? [];
 			warnings = result.warnings ?? [];
-			saveHistory({ query, language, at: Date.now() });
+			saveHistory({ query: sent, language, at: Date.now() });
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			columns = [];
@@ -86,7 +93,7 @@
 		consumedDrillDownParams = true;
 		const earliest = params.get('earliest');
 		const latest = params.get('latest');
-		query = earliest ? injectTimeRange(q, earliest, latest ?? 'now') : q;
+		query = earliest ? injectTimeRange(q, earliest, latest ?? 'now', getTimezone()) : q;
 		runQuery();
 	});
 
@@ -146,7 +153,7 @@
 				<tr><td><code>| sort -field</code></td><td>sort descending (<code>+field</code> for ascending)</td></tr>
 				<tr><td><code>| fields a, b</code></td><td>project specific columns</td></tr>
 				<tr><td><code>| head 50</code> / <code>| tail 50</code></td><td>limit results</td></tr>
-				<tr><td><code>earliest=-1h</code> / <code>latest=...</code></td><td>time range (relative or RFC3339)</td></tr>
+				<tr><td><code>earliest=-1h</code> / <code>latest=...</code></td><td>time range: relative (<code>-1h</code>), or an absolute time read in your display timezone (<code>earliest=2026-08-22 09:00</code>) unless you give it an offset</td></tr>
 			</tbody>
 		</table>
 		<p>Full reference: <code>/docs/query-language-reference.md</code> in the repo.</p>
@@ -154,7 +161,17 @@
 </main>
 
 <style>
+	/* No width cap on the page itself: a log table is the widest thing in
+	   this app and the horizontal scrolling it caused at 64rem was the
+	   whole complaint. Prose keeps a readable measure below; the query
+	   bar and results get the whole window. */
 	main {
+		max-width: none;
+	}
+	h1,
+	main > p,
+	.history,
+	.cheatsheet {
 		max-width: 64rem;
 	}
 	h1 {

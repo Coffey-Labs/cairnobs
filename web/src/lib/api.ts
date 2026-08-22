@@ -3,6 +3,8 @@
 // (query + dashboards + panels + export/import); still zero-dependency,
 // a thin fetch wrapper, not a generated client.
 
+import { toQueryTimeValue } from '$lib/querytime';
+
 export const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 export const alertingBase = import.meta.env.VITE_ALERTING_API_BASE_URL ?? 'http://localhost:8081';
 // Optional third backend (Phase 4; enterprise/ is AGPLv3 same as core
@@ -422,9 +424,19 @@ export function resolveTimeRange(
 // running this against the live stack. Omitting the latest= clause
 // entirely is the query language's own way of saying "no upper bound",
 // which is exactly what "now" means here.
-export function injectTimeRange(query: string, earliest: string, latest: string): string {
-	const clauses = [`earliest=${earliest}`];
-	if (latest && latest !== 'now') clauses.push(`latest=${latest}`);
+export function injectTimeRange(
+	query: string,
+	earliest: string,
+	latest: string,
+	zone: string
+): string {
+	// toQueryTimeValue does two things the old string interpolation
+	// didn't: it quotes absolute values (the parser rejects them bare --
+	// which silently broke chart-zoom-to-time-range), and it resolves a
+	// value typed without an offset as wall-clock time in `zone`. See
+	// $lib/querytime.ts.
+	const clauses = [`earliest=${toQueryTimeValue(earliest, zone)}`];
+	if (latest && latest !== 'now') clauses.push(`latest=${toQueryTimeValue(latest, zone)}`);
 	return `${clauses.join(' ')} ${query}`;
 }
 
@@ -440,7 +452,6 @@ export type LocalSession = {
 	// on the login response, which doesn't carry it -- both mean "UTC".
 	timezone?: string;
 };
-
 
 export function login(username: string, password: string): Promise<LocalSession & { token: string }> {
 	return request('/auth/login', {

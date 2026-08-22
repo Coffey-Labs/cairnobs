@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { toQueryTimeValue } from '$lib/querytime';
 	import { page } from '$app/state';
 	import { GridStack, type GridStackNode } from 'gridstack';
 	import 'gridstack/dist/gridstack.min.css';
@@ -79,7 +81,10 @@
 		if (!dashboard) return;
 		const { earliest, latest } = resolveTimeRange(dashboard, panel);
 		try {
-			const result = await runQuery(injectTimeRange(panel.query, earliest, latest), panel.query_language);
+			const result = await runQuery(
+				injectTimeRange(panel.query, earliest, latest, getTimezone()),
+				panel.query_language
+			);
 			panelResults = { ...panelResults, [panel.id]: result };
 			if (panelErrors[panel.id]) {
 				const rest = { ...panelErrors };
@@ -101,6 +106,15 @@
 
 	async function applyTimeRange() {
 		if (!dashboard) return;
+		// Resolve a typed wall-clock time to an explicit UTC instant
+		// *before* saving, not when a panel runs. A dashboard is shared:
+		// storing "2026-08-22 10:00" would mean 10am in whatever zone each
+		// viewer happens to be in, so two people would see two different
+		// windows of data on the same dashboard. Storing the instant it
+		// meant to its author keeps one dashboard showing one thing.
+		// Relative ranges (-24h) are untouched and stay relative.
+		earliestInput = resolveTypedTime(earliestInput, getTimezone());
+		latestInput = resolveTypedTime(latestInput, getTimezone());
 		dashboard = await updateDashboard(dashboardId, {
 			name: dashboard.name,
 			description: dashboard.description,
@@ -108,6 +122,13 @@
 			default_latest: latestInput
 		});
 		await runAllPanels();
+	}
+
+	// Same conversion the query path uses, minus the quoting -- these two
+	// fields are stored as bare values and quoted later by
+	// injectTimeRange.
+	function resolveTypedTime(value: string, zone: string): string {
+		return toQueryTimeValue(value, zone).replace(/^"|"$/g, '');
 	}
 
 	function nextY(): number {

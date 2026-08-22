@@ -6,6 +6,7 @@
 	// and renders it through the real PanelViz, not a separate mock-up,
 	// so what you see here is exactly what lands on the dashboard, not
 	// an approximation of it.
+	import { getTimezone } from '$lib/timezone.svelte';
 	import { Modal, Button, Input, Select, Tabs } from '$lib/components/ui';
 	import QueryBar from '$lib/QueryBar.svelte';
 	import PanelViz from '$lib/PanelViz.svelte';
@@ -102,7 +103,7 @@
 		try {
 			const earliest = earliestOverride || dashboardEarliest;
 			const latest = latestOverride || dashboardLatest;
-			previewResult = await runQuery(injectTimeRange(query, earliest, latest), language);
+			previewResult = await runQuery(injectTimeRange(query, earliest, latest, getTimezone()), language);
 		} catch (e) {
 			previewError = e instanceof Error ? e.message : String(e);
 			previewResult = null;
