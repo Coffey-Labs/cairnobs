@@ -15,12 +15,12 @@ func TestAccAlertRuleDataSource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint          = "http://localhost:8080"
   alerting_endpoint = "http://localhost:8081"
 }
 
-resource "sentry_alert_rule" "test" {
+resource "cairnobs_alert_rule" "test" {
   name                    = "Data Source Test Rule"
   query                   = "status>=500 | stats count"
   condition_type          = "threshold"
@@ -30,14 +30,14 @@ resource "sentry_alert_rule" "test" {
   notification_target_id  = "placeholder-target-id"
 }
 
-data "sentry_alert_rule" "test" {
-  id = sentry_alert_rule.test.id
+data "cairnobs_alert_rule" "test" {
+  id = cairnobs_alert_rule.test.id
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair("data.sentry_alert_rule.test", "name", "sentry_alert_rule.test", "name"),
-					resource.TestCheckResourceAttrPair("data.sentry_alert_rule.test", "query", "sentry_alert_rule.test", "query"),
-					resource.TestCheckResourceAttrPair("data.sentry_alert_rule.test", "threshold_value", "sentry_alert_rule.test", "threshold_value"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_alert_rule.test", "name", "cairnobs_alert_rule.test", "name"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_alert_rule.test", "query", "cairnobs_alert_rule.test", "query"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_alert_rule.test", "threshold_value", "cairnobs_alert_rule.test", "threshold_value"),
 				),
 			},
 		},

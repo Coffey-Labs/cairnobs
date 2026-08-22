@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MiB, same cap as localauth/dashboards/agents

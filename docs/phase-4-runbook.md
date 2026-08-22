@@ -95,7 +95,7 @@ memberships and getting back the right tenant/role each time (see §3a,
 `helm` were installed without root (`kind`/`kubectl` as static binaries,
 `helm` the same, all into `~/.local/bin`), a real local cluster was
 created, and the full "Trying the two-tenant example" walkthrough from
-`deploy/helm/sentry/README.md` was run end to end against it -- both
+`deploy/helm/cairnobs/README.md` was run end to end against it -- both
 `acme` and `globex` reached `Tenant.status.phase: Active` with real
 generated ClickHouse credentials in their Secrets. That run found and
 fixed two more real bugs, neither ever caught before because this chart
@@ -138,7 +138,7 @@ New service beyond Phase 3: `enterprise-auth` (port 8082) — see
 `enterprise/README.md`. Not wired into `api`/`alerting`'s enforcement by
 default (`docker-compose.yml`'s comment on why: no OIDC/SAML login flow
 exists yet, so turning on enforcement by default would break the web UI
-and `sentryctl` with no way to log in).
+and `cairnobsctl` with no way to log in).
 
 ## 2. Confirm Phase 0-3 behavior is unchanged
 
@@ -148,7 +148,7 @@ through every piece of Phase 4 auth wiring:
 
 ```sh
 curl -s -X POST http://localhost:8080/query -H 'Content-Type: application/json' -d '{"query":"stats count"}'
-sentryctl dashboards list
+cairnobsctl dashboards list
 curl -s http://localhost:8081/healthz
 ```
 
@@ -192,7 +192,7 @@ creating the `users` row via `UpsertUserBySSO`, exactly as designed;
 after `-grant-membership-*` granted that real Auth0 identity
 (`john@linuxexperts.net`) an `admin` role on `acme`, a second login
 completed the full OAuth code exchange, consent screen, and redirect to
-`web`, landing a real `sentry_session` cookie; `POST
+`web`, landing a real `cairnobs_session` cookie; `POST
 /internal/authorize` with that cookie returned
 `{"tenant_id":"acme","user_id":"...","role":"admin"}` -- the exact
 membership granted, round-tripped through a real external IdP, not a
@@ -232,7 +232,7 @@ docker compose run --rm enterprise-auth \
 Then visit `http://localhost:8082/auth/oidc/login` again in a real
 browser, complete the IdP's login, and confirm you land on
 `POST_LOGIN_REDIRECT_URL` (`http://localhost:3000` by default) with a
-`sentry_session` cookie set. `-create-tenant` only touches `rbacstore`
+`cairnobs_session` cookie set. `-create-tenant` only touches `rbacstore`
 (control-plane/RBAC) -- it's independent of `enterprise-api
 -provision-tenant`'s ClickHouse/Tantivy data-plane provisioning (§8),
 so a tenant created this way can log users in immediately but can't yet
@@ -243,7 +243,7 @@ cover revoking, listing, and reassigning ownership the same way
 `-grant-membership-*` covers granting (all offline operator flags, same
 shape as `-create-tenant`) -- `dashboard_permissions` grants (§5a) are
 the one thing here still only reachable via the HTTP endpoints
-directly, no operator flag, since `sentryctl dashboards permissions
+directly, no operator flag, since `cairnobsctl dashboards permissions
 list|grant|revoke` already exists as that surface instead (§5a).
 
 ## 3b. `enterprise-auth`: human login via SAML (now genuinely verified
@@ -294,7 +294,7 @@ offer a free developer/trial tenant with SAML app support):
 #   SAML_IDP_METADATA_URL: "https://your-idp.example.com/metadata"
 # Register SAML_ENTITY_ID (as "audience")/SAML_ACS_URL (as the
 # "Application Callback URL") with the IdP's application config -- the
-# IdP needs Sentry's ACS URL to know where to POST the assertion, and
+# IdP needs Cairn OBS's ACS URL to know where to POST the assertion, and
 # the two must actually agree or the SP-side validation fails with a
 # generic "Authentication failed" (found the hard way -- crewjam/saml's
 # error here doesn't distinguish audience mismatch from other causes).
@@ -309,7 +309,7 @@ Bootstrapping the first `tenant_memberships` row uses the same
 `-create-tenant`/`-grant-membership-*` flags as §3a (log in once, it
 fails with 403, grant the membership using the email you logged in
 with, log in again). Then visit `/auth/saml/login` on your HTTPS host in
-a real browser, complete the IdP's login, and confirm a `sentry_session`
+a real browser, complete the IdP's login, and confirm a `cairnobs_session`
 cookie lands after redirect to `POST_LOGIN_REDIRECT_URL`.
 
 ## 4. Turn on RBAC enforcement and prove it actually blocks/allows
@@ -318,7 +318,7 @@ Without touching the main stack's `api` container (so step 2's baseline
 keeps working):
 
 ```sh
-docker compose run --rm -d --name sentry-api-enforced -p 8090:8080 \
+docker compose run --rm -d --name cairnobs-api-enforced -p 8090:8080 \
   -e ENTERPRISE_AUTH_URL=http://enterprise-auth:8082 api
 
 curl -s -o /dev/null -w "no auth -> %{http_code} (want 401)\n" \
@@ -327,7 +327,7 @@ curl -s -o /dev/null -w "with service token -> %{http_code} (want 200)\n" \
   -X POST http://localhost:8090/query -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"query":"stats count"}'
 
-docker stop sentry-api-enforced
+docker stop cairnobs-api-enforced
 ```
 
 `GET /dashboards` on the same enforced instance should return 401
@@ -346,7 +346,7 @@ tenant. Verify the real SQL, not just the fake-store unit tests:
 ```sh
 docker run --rm --network sentry_default -v $(pwd)/api:/src -w /src \
   -e DASHBOARDS_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
-  -e DASHBOARDS_TEST_POSTGRES_PASSWORD=sentry-dev-only \
+  -e DASHBOARDS_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./dashboards/... -run Integration -v
 ```
 
@@ -375,7 +375,7 @@ PermissionStore`) have real integration tests, same skip-gated shape as
 ```sh
 docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
-  -e RBACSTORE_TEST_POSTGRES_PASSWORD=sentry-dev-only \
+  -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -run DashboardPermission -v
 ```
 
@@ -396,13 +396,13 @@ when `enterprise-api` (not plain `api`) is serving traffic -- see
 ```sh
 docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
-  -e RBACSTORE_TEST_POSTGRES_PASSWORD=sentry-dev-only \
+  -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -v
 
 docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
   -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
-  -e AUDIT_TEST_ADMIN_PASSWORD=sentry-dev-only \
+  -e AUDIT_TEST_ADMIN_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/audit/... -v
 ```
 
@@ -419,10 +419,10 @@ Offline checks (no cluster needed):
 ```sh
 cd deploy/operator && go build ./... && go vet ./... && go test ./...
 
-cd ../helm/sentry
+cd ../helm/cairnobs
 helm lint .
-helm template sentry . --include-crds > /tmp/default.yaml
-helm template sentry . --include-crds \
+helm template cairnobs . --include-crds > /tmp/default.yaml
+helm template cairnobs . --include-crds \
   --set enterprise.enabled=true --set tenantOperator.enabled=true \
   --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
   --set 'tenants[1].name=globex' --set 'tenants[1].displayName=Globex Corporation' \
@@ -434,25 +434,25 @@ without root (`kind`/`kubectl`/`helm` as static binaries into e.g.
 `~/.local/bin`; no package manager or sudo needed):
 
 ```sh
-kind create cluster --name sentry-phase4
+kind create cluster --name cairnobs-phase4
 kubectl wait --for=condition=Ready node --all --timeout=120s
 
 # Build and load every image the chart references -- kind's nodes can't
 # pull unpublished local-only images from a registry, only from images
 # already loaded into the node directly.
-docker build -f deploy/operator/Dockerfile -t sentry-tenant-operator deploy/operator/
-for img in sentry-redpanda-provision sentry-clickhouse-migrate sentry-metadata-migrate \
-           sentry-ingest sentry-search sentry-api sentry-alerting sentry-web \
-           sentry-enterprise-auth sentry-enterprise-api sentry-enterprise-ingest \
-           sentry-tenant-operator; do
-  kind load docker-image "${img}:latest" --name sentry-phase4
+docker build -f deploy/operator/Dockerfile -t cairnobs-tenant-operator deploy/operator/
+for img in cairnobs-redpanda-provision cairnobs-clickhouse-migrate cairnobs-metadata-migrate \
+           cairnobs-ingest cairnobs-search cairnobs-api cairnobs-alerting cairnobs-web \
+           cairnobs-enterprise-auth cairnobs-enterprise-api cairnobs-enterprise-ingest \
+           cairnobs-tenant-operator; do
+  kind load docker-image "${img}:latest" --name cairnobs-phase4
 done
 
 # NOTE: helm install has no --include-crds flag (that's a helm template-only
 # flag -- install always installs crds/ by default). The command in
-# deploy/helm/sentry/README.md's "Trying the two-tenant example" had this
+# deploy/helm/cairnobs/README.md's "Trying the two-tenant example" had this
 # wrong; fixed there too.
-helm install sentry deploy/helm/sentry \
+helm install cairnobs deploy/helm/cairnobs \
   --set enterprise.enabled=true --set tenantOperator.enabled=true \
   --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
   --set 'tenants[1].name=globex' --set 'tenants[1].displayName=Globex Corporation'
@@ -467,12 +467,12 @@ equivalent) rather than hand-rolling it in the chart, so a Secret needs
 supplying before `ingest` can start:
 
 ```sh
-kubectl create secret generic sentry-ingest-tls \
+kubectl create secret generic cairnobs-ingest-tls \
   --from-file=server.pem=hack/dev-certs/out/server.pem \
   --from-file=server-key.pem=hack/dev-certs/out/server-key.pem \
   --from-file=ca.pem=hack/dev-certs/out/ca.pem
-helm upgrade sentry deploy/helm/sentry --reuse-values \
-  --set ingest.tlsSecretName=sentry-ingest-tls
+helm upgrade cairnobs deploy/helm/cairnobs --reuse-values \
+  --set ingest.tlsSecretName=cairnobs-ingest-tls
 ```
 
 Confirm every pod actually reaches `Running`/`1/1` (`kubectl get pods`)
@@ -486,10 +486,10 @@ missing `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT` env var (same bug
 §1's `docker-compose.yml` had). Both fixed in the chart itself.
 
 ```sh
-kubectl exec -it deploy/sentry-api -- /enterprise-api -provision-tenant=acme -display-name="Acme Corp"
-kubectl exec -it deploy/sentry-api -- /enterprise-api -provision-tenant=globex -display-name="Globex Corporation"
+kubectl exec -it deploy/cairnobs-api -- /enterprise-api -provision-tenant=acme -display-name="Acme Corp"
+kubectl exec -it deploy/cairnobs-api -- /enterprise-api -provision-tenant=globex -display-name="Globex Corporation"
 kubectl get tenants
-kubectl get secret sentry-tenant-acme-clickhouse sentry-tenant-globex-clickhouse -o yaml
+kubectl get secret cairnobs-tenant-acme-clickhouse cairnobs-tenant-globex-clickhouse -o yaml
 ```
 
 **Confirmed live**: `kubectl get tenants` shows both `acme` and `globex`
@@ -538,12 +538,12 @@ walkthrough isn't scripted yet):
 ```sh
 docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
   -e CHRUNNER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
-  -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=sentry-dev-only \
+  -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/chrunner/... -v
 
 docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
   -e TENANTPROVISION_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
-  -e TENANTPROVISION_TEST_CLICKHOUSE_PASSWORD=sentry-dev-only \
+  -e TENANTPROVISION_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/tenantprovision/... -v
 ```
 
@@ -606,9 +606,9 @@ No live cluster needed for this either — `helm template`'s output is
 plain YAML, parseable without a cluster:
 
 ```sh
-cd deploy/helm/sentry
-helm template sentry . --include-crds > /tmp/default.yaml
-helm template sentry . --include-crds --set enterprise.enabled=true \
+cd deploy/helm/cairnobs
+helm template cairnobs . --include-crds > /tmp/default.yaml
+helm template cairnobs . --include-crds --set enterprise.enabled=true \
   --set 'tenants[0].name=acme' --set 'tenants[0].displayName=Acme Corp' \
   > /tmp/enterprise.yaml
 
@@ -616,17 +616,17 @@ python3 -c "
 import yaml
 for f in ['/tmp/default.yaml', '/tmp/enterprise.yaml']:
     docs = list(yaml.safe_load_all(open(f)))
-    deploys = [d for d in docs if d and d.get('kind')=='Deployment' and d.get('metadata',{}).get('name')=='sentry-api']
+    deploys = [d for d in docs if d and d.get('kind')=='Deployment' and d.get('metadata',{}).get('name')=='cairnobs-api']
     print(f, '->', [d['spec']['template']['spec']['containers'][0]['image'] for d in deploys])
 "
-# expect: default.yaml -> ['sentry-api:latest'], enterprise.yaml -> ['sentry-enterprise-api:latest']
-# and exactly one Deployment named sentry-api in each file.
+# expect: default.yaml -> ['cairnobs-api:latest'], enterprise.yaml -> ['cairnobs-enterprise-api:latest']
+# and exactly one Deployment named cairnobs-api in each file.
 ```
 
 Real cluster (`kind create cluster`, or similar): `helm install` with
-each set of values and confirm `kubectl get deploy sentry-api -o
+each set of values and confirm `kubectl get deploy cairnobs-api -o
 jsonpath='{.spec.template.spec.containers[0].image}'` matches, and that
-`kubectl get svc sentry-api` routes to whichever one is actually running.
+`kubectl get svc cairnobs-api` routes to whichever one is actually running.
 
 ## 10a. Confirm `docker-compose.yml` now enforces the same binary swap
 
@@ -668,7 +668,7 @@ actually start and route traffic correctly end to end.
 
 ## 11. `Tenant` CRD unified with `-provision-tenant`
 
-`deploy/helm/sentry/README.md`'s "Trying the two-tenant example" section
+`deploy/helm/cairnobs/README.md`'s "Trying the two-tenant example" section
 has the full `helm install` → `-provision-tenant` → `kubectl get
 tenants` walkthrough. What was actually run in this environment (no
 live cluster, same limitation as §10):
@@ -762,7 +762,7 @@ through `mcp__claude-in-chrome`:
 1. A throwaway Node HTTP server (no dependencies) stood in for
    `enterprise-auth`, implementing the exact wire contract this section's
    Go tests already prove server-side: `GET /auth/memberships` and
-   `POST /auth/select-tenant`, the `sentry_pending_login` cookie
+   `POST /auth/select-tenant`, the `cairnobs_pending_login` cookie
    (`Path=/auth`), the credentialed CORS headers, and critically the
    *plain-text* `http.Error` response bodies the real handler sends on
    failure (not JSON -- `enterpriseAuthRequest` in `$lib/api.ts` reads
@@ -857,7 +857,7 @@ Also not built as part of the identity mechanism itself: any Helm/
 `docker-compose.yml` wiring that issues an agent a real ingest credential
 automatically (`enterprise-auth -create-ingest-credential-tenant=<id>`
 is, like every other credential-minting flag in this codebase, a manual
-operator action) -- `deploy/helm/sentry/values.yaml`'s
+operator action) -- `deploy/helm/cairnobs/values.yaml`'s
 `ingest.requireTenantCredential` (default `false`) only turns on
 *validation*, deliberately not folded into `enterprise.enabled`
 directly, since flipping that flag with no agents holding a credential
@@ -1022,7 +1022,7 @@ that's never executed against a real database. See
 
 **Also not built**: Helm/`docker-compose.yml` do gate *whether*
 `enterprise-ingest` runs at all (`ingest.requireTenantCredential`, same
-flag §13 uses for validation -- see `deploy/helm/sentry/templates/
+flag §13 uses for validation -- see `deploy/helm/cairnobs/templates/
 enterprise-ingest.yaml`), but `docker-compose.yml`'s version is a
 disclosed, weaker approximation of Helm's: Helm achieves genuine
 `-mode=server`/`-mode=consumer` mutual exclusivity between `ingest` and
@@ -1040,7 +1040,7 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
 
 - **Both storage engines' isolation exists, and both Helm and
   docker-compose now enforce which binary runs.**
-  `deploy/helm/sentry/templates/api.yaml`/`enterprise-api.yaml` are
+  `deploy/helm/cairnobs/templates/api.yaml`/`enterprise-api.yaml` are
   mutually exclusive on `enterprise.enabled` (§10) -- a Helm-deployed
   cluster can't accidentally run the non-isolated binary once that flag
   is set. `docker-compose.yml`'s `api`/`enterprise-api` services are now
@@ -1120,14 +1120,14 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
   handler reads `dashboard_permissions` via
   `enterprise/internal/rbacstore.DashboardPermissions`, only when
   `enterprise-api` -- not plain `api` -- serves traffic), **and now has a
-  CLI surface**: `sentryctl dashboards permissions list|grant|revoke`
-  (`cli/cmd/sentryctl/cmd_dashboards.go`) against
+  CLI surface**: `cairnobsctl dashboards permissions list|grant|revoke`
+  (`cli/cmd/cairnobsctl/cmd_dashboards.go`) against
   `GET`/`PUT`/`DELETE /dashboards/{id}/permissions/{userId}` -- still no
   `web` UI for it, just the CLI. Verified against a real `httptest.
   Server` (not a fake store this time -- the CLI has no store of its
   own, just an HTTP client, so this is exercising real request
   construction/method/path/body/error-parsing, the same pattern every
-  other `sentryctl` subcommand's tests use):
+  other `cairnobsctl` subcommand's tests use):
 
   ```sh
   cd cli
@@ -1162,7 +1162,7 @@ Full accounting: `/docs/security/threat-model.md`. Headline items:
 
 ```sh
 docker compose down -v
-helm uninstall sentry   # if installed against a real cluster
+helm uninstall cairnobs   # if installed against a real cluster
 ```
 
 ## Troubleshooting
@@ -1191,6 +1191,6 @@ parameter.
 
 **`helm template` fails with `error calling include: ... can't evaluate
 field Release in type string`.**
-A call site is passing a bare string to `sentry.selectorLabels` instead
+A call site is passing a bare string to `cairnobs.selectorLabels` instead
 of `(list $ "name")` — see `templates/_helpers.tpl`'s doc comment for
 why the plain-string form doesn't work with `include`.

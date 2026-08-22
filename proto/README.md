@@ -17,10 +17,10 @@ than sharing generated code across languages.
 
 Go is the one language here with pre-generated, checked-in bindings
 (`sentry/logs/v1/logs.pb.go`, `logs_grpc.pb.go`), living in this directory
-as its own module (`github.com/sentry/sentry/proto`) that `/ingest` and
+as its own module (`github.com/cairnobs/cairnobs/proto`) that `/ingest` and
 `/api` depend on via a local `replace` directive in their `go.mod`. Rust
 (`/agent`) instead generates its bindings at build time via `tonic-build`
-(see `agent/sentry-agent/build.rs`) — no checked-in Rust output.
+(see `agent/cairnobs-agent/build.rs`) — no checked-in Rust output.
 
 To regenerate the Go bindings after changing either `.proto` file:
 

@@ -10,7 +10,7 @@ import (
 // imported -- see this package's doc comment) -- the same cookie
 // api/localauth.Handler.setCookie writes, scoped (via SESSION_COOKIE_
 // DOMAIN) to cover both api's and alerting's subdomains in production.
-const sessionCookieName = "sentry_local_session"
+const sessionCookieName = "cairnobs_local_session"
 
 type errorResponse struct {
 	Error string `json:"error"`

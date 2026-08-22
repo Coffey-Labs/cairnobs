@@ -18,12 +18,12 @@ cd "${OUT_DIR}"
 echo "Generating dev CA..."
 openssl req -x509 -newkey rsa:4096 -sha256 -days "${DAYS}" -nodes \
     -keyout ca-key.pem -out ca.pem \
-    -subj "/O=Sentry Dev/CN=Sentry Dev CA"
+    -subj "/O=Cairn OBS Dev/CN=Cairn OBS Dev CA"
 
 gen_leaf() {
     local name="$1" cn="$2" san="$3"
     openssl req -newkey rsa:2048 -nodes -keyout "${name}-key.pem" -out "${name}.csr" \
-        -subj "/O=Sentry Dev/CN=${cn}"
+        -subj "/O=Cairn OBS Dev/CN=${cn}"
     openssl x509 -req -in "${name}.csr" -CA ca.pem -CAkey ca-key.pem -CAcreateserial \
         -out "${name}.pem" -days "${DAYS}" -sha256 \
         -extfile <(printf "subjectAltName=%s" "${san}")
@@ -37,7 +37,7 @@ echo "Generating server (ingest) cert..."
 gen_leaf server ingest "DNS:ingest,DNS:localhost,IP:127.0.0.1"
 
 echo "Generating client (agent) cert..."
-gen_leaf client sentry-agent "DNS:sentry-agent"
+gen_leaf client cairnobs-agent "DNS:cairnobs-agent"
 
 rm -f ca.srl
 

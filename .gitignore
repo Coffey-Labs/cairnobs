@@ -6,7 +6,7 @@ search/target/
 # binaries in-tree, but be defensive)
 /ingest/ingest
 /api/api
-/cli/sentryctl
+/cli/cairnobsctl
 /terraform/terraform-provider-sentry
 /alerting/alerting
 /hack/windows-fixture/windows-fixture

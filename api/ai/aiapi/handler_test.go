@@ -10,8 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sentry/sentry/api/ai/provider"
-	"github.com/sentry/sentry/api/ai/router"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/ai/router"
 )
 
 type fakeProvider struct {

@@ -1,4 +1,4 @@
-# Sentry Threat Model (Phase 4)
+# Cairn OBS Threat Model (Phase 4)
 
 Written for a prospective enterprise customer's security team, describing
 the system **as actually built** through Phase 4 task 7 — not the target

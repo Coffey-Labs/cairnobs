@@ -34,7 +34,7 @@ func (d *dashboardDataSource) Metadata(_ context.Context, req datasource.Metadat
 
 func (d *dashboardDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Looks up an existing Sentry dashboard by ID. See the sentry_dashboard resource for how one is created/managed.",
+		Description: "Looks up an existing Cairn OBS dashboard by ID. See the cairnobs_dashboard resource for how one is created/managed.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required:    true,

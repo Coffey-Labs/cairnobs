@@ -11,7 +11,7 @@ import (
 
 // TestCreateDashboardSendsExpectedRequest is the same "real
 // httptest.Server, real HTTP round trip" pattern
-// cli/cmd/sentryctl's own tests use against the same api/dashboards
+// cli/cmd/cairnobsctl's own tests use against the same api/dashboards
 // endpoints -- this client has no fake/mock mode, so its tests exercise
 // real request construction and real response parsing throughout.
 func TestCreateDashboardSendsExpectedRequest(t *testing.T) {

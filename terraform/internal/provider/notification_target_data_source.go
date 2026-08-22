@@ -31,7 +31,7 @@ func (d *notificationTargetDataSource) Metadata(_ context.Context, req datasourc
 
 func (d *notificationTargetDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Looks up an existing Sentry notification target by ID. See the sentry_notification_target resource for how one is created/managed.",
+		Description: "Looks up an existing Cairn OBS notification target by ID. See the cairnobs_notification_target resource for how one is created/managed.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required:    true,
@@ -49,7 +49,7 @@ func (d *notificationTargetDataSource) Schema(_ context.Context, _ datasource.Sc
 				Computed:  true,
 				Sensitive: true,
 				Description: "alerting's own GET /targets/{id} returns this unredacted (see the " +
-					"sentry_notification_target resource's schema doc comment) -- Sensitive here for the " +
+					"cairnobs_notification_target resource's schema doc comment) -- Sensitive here for the " +
 					"same reason, and the same state-file caveat applies.",
 			},
 			"created_by": schema.StringAttribute{Computed: true},

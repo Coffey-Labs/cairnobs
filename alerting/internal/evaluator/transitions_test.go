@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 var t0 = time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)

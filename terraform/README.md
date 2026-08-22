@@ -1,11 +1,11 @@
-# terraform-provider-sentry
+# terraform-provider-cairnobs
 
-Sentry's Terraform provider -- `CLAUDE.md`'s "Repo conventions" section
-names this a first-class deliverable alongside `sentryctl`
+Cairn OBS's Terraform provider -- `CLAUDE.md`'s "Repo conventions" section
+names this a first-class deliverable alongside `cairnobsctl`
 ("CLI and Terraform provider are first-class, not afterthoughts"), but
 no phase before this one had actually built any of it. Four resources
-so far (`sentry_dashboard`, `sentry_dashboard_panel`, `sentry_alert_rule`,
-`sentry_notification_target`), each paired with a read-only data source
+so far (`cairnobs_dashboard`, `cairnobs_dashboard_panel`, `cairnobs_alert_rule`,
+`cairnobs_notification_target`), each paired with a read-only data source
 of the same name, not a finished provider, built on
 [HashiCorp's `terraform-plugin-framework`][framework] (the
 actively-developed library, not the legacy SDKv2 -- there's no existing
@@ -21,20 +21,20 @@ framework HashiCorp itself steers new providers away from).
 of a future Terraform provider: one JSON contract, multiple callers (web
 export, CLI apply, eventually a provider)." This provider is that third
 caller -- `internal/provider/client.go` talks the exact same JSON shape
-`sentryctl dashboards apply` and the web UI's Export JSON button already
+`cairnobsctl dashboards apply` and the web UI's Export JSON button already
 use against `api/dashboards.Handler`, not a new contract invented for
-Terraform's sake. `sentry_dashboard_panel` follows the same contract's
+Terraform's sake. `cairnobs_dashboard_panel` follows the same contract's
 panel endpoints, as its own resource rather than a block nested inside
-`sentry_dashboard` -- see "Panels are their own resource" below.
-`sentry_alert_rule` follows against `alerting`'s own `POST`/`GET`/
+`cairnobs_dashboard` -- see "Panels are their own resource" below.
+`cairnobs_alert_rule` follows against `alerting`'s own `POST`/`GET`/
 `DELETE /rules[/{id}]` -- the natural next resource, and a real second
 service (`alerting` is a genuinely separate deployment from `api`, its
 own base URL), so building it exercised that this provider can talk to
-more than one Sentry service, not just repeat the dashboards pattern
-against the same endpoint. `sentry_notification_target` rounds these
-out -- `sentry_alert_rule.notification_target_id` needs something to
+more than one Cairn OBS service, not just repeat the dashboards pattern
+against the same endpoint. `cairnobs_notification_target` rounds these
+out -- `cairnobs_alert_rule.notification_target_id` needs something to
 actually point at, and without this resource that id could only ever
-come from outside Terraform (`sentryctl`, `curl`, the web UI),
+come from outside Terraform (`cairnobsctl`, `curl`, the web UI),
 undermining the point of managing rules as code at all.
 
 ## What's built
@@ -42,18 +42,18 @@ undermining the point of managing rules as code at all.
 ```hcl
 terraform {
   required_providers {
-    sentry = {
-      source = "registry.terraform.io/sentry/sentry"
+    cairnobs = {
+      source = "registry.terraform.io/cairnobs/cairnobs"
     }
   }
 }
 
-provider "sentry" {
-  endpoint = "http://localhost:8080" # or $SENTRY_API_ENDPOINT
-  token    = var.sentry_api_token    # or $SENTRY_API_TOKEN -- optional, only needed once enterprise-auth enforcement is on
+provider "cairnobs" {
+  endpoint = "http://localhost:8080" # or $CAIRNOBS_API_ENDPOINT
+  token    = var.cairnobs_api_token    # or $CAIRNOBS_API_TOKEN -- optional, only needed once enterprise-auth enforcement is on
 }
 
-resource "sentry_dashboard" "example" {
+resource "cairnobs_dashboard" "example" {
   name        = "Checkout Errors"
   description = "5xx rate and latency for the checkout service"
   # default_earliest/default_latest are optional -- left unset, the API
@@ -64,68 +64,68 @@ resource "sentry_dashboard" "example" {
 }
 ```
 
-Supports `terraform import sentry_dashboard.example <dashboard-id>`.
+Supports `terraform import cairnobs_dashboard.example <dashboard-id>`.
 
 **Panels are their own resource, not a nested block.** `api/dashboards.
 Handler` exposes panel CRUD as its own endpoints (`POST`/`PUT`/
 `DELETE /dashboards/{id}/panels[/{panelId}]`) -- a panel belongs to
 exactly one dashboard, has its own lifecycle, and is created/updated/
 deleted independently, never by rewriting a dashboard's whole panel
-list, so `sentry_dashboard_panel` follows that shape rather than a
+list, so `cairnobs_dashboard_panel` follows that shape rather than a
 nested list block (which would force every panel to be rewritten on any
 single panel's change, hiding fine-grained diffs a separate resource
 shows naturally):
 
 ```hcl
-resource "sentry_dashboard_panel" "example" {
-  dashboard_id = sentry_dashboard.example.id
+resource "cairnobs_dashboard_panel" "example" {
+  dashboard_id = cairnobs_dashboard.example.id
   title        = "5xx rate over time"
   query        = "status>=500 | timechart count"
   viz_type     = "line" # table, line, bar, single_stat, or top_n
   # query_language never accepts "sql" for panels -- the API rejects it
   # outright (dashboards only support pipe-syntax queries, since the
   # time-range picker is injected as leading query terms). Unlike
-  # sentry_alert_rule/sentry_notification_target, this resource
+  # cairnobs_alert_rule/cairnobs_notification_target, this resource
   # supports a real in-place update (api/dashboards.Handler has a real
   # PUT for panels) -- only dashboard_id forces a destroy-and-recreate,
   # since there's no API operation to move a panel between dashboards.
 }
 ```
 
-Supports `terraform import sentry_dashboard_panel.example
+Supports `terraform import cairnobs_dashboard_panel.example
 <dashboard-id>/<panel-id>` -- a bare panel ID isn't enough on its own,
 since `Read` needs the parent `dashboard_id` to know where to look (see
 `client.go`'s `getPanel` doc comment for why: there's no standalone
 `GET` for a single panel).
 
 ```hcl
-provider "sentry" {
-  endpoint          = "http://localhost:8080" # or $SENTRY_API_ENDPOINT
-  alerting_endpoint = "http://localhost:8081" # or $SENTRY_ALERTING_API_ENDPOINT -- alerting is a separate service, own base URL
-  token             = var.sentry_api_token    # or $SENTRY_API_TOKEN -- shared by both services, same as sentryctl's one $SENTRYCTL_TOKEN
+provider "cairnobs" {
+  endpoint          = "http://localhost:8080" # or $CAIRNOBS_API_ENDPOINT
+  alerting_endpoint = "http://localhost:8081" # or $CAIRNOBS_ALERTING_API_ENDPOINT -- alerting is a separate service, own base URL
+  token             = var.cairnobs_api_token    # or $CAIRNOBS_API_TOKEN -- shared by both services, same as cairnobsctl's one $CAIRNOBSCTL_TOKEN
 }
 
-resource "sentry_notification_target" "ops" {
+resource "cairnobs_notification_target" "ops" {
   name        = "Ops Webhook"
   kind        = "webhook"
-  webhook_url = "https://ops.example.com/hooks/sentry-alerts"
+  webhook_url = "https://ops.example.com/hooks/cairnobs-alerts"
 }
 
-resource "sentry_alert_rule" "example" {
+resource "cairnobs_alert_rule" "example" {
   name                    = "Checkout 5xx spike"
   query                   = "service=checkout status>=500 | stats count"
   condition_type          = "threshold"
   comparator              = "gt"
   threshold_value         = 50
   eval_interval_seconds   = 60
-  notification_target_id  = sentry_notification_target.ops.id
+  notification_target_id  = cairnobs_notification_target.ops.id
 }
 ```
 
-Supports `terraform import sentry_alert_rule.example <rule-id>` and
-`terraform import sentry_notification_target.example <target-id>`.
+Supports `terraform import cairnobs_alert_rule.example <rule-id>` and
+`terraform import cairnobs_notification_target.example <target-id>`.
 
-**`sentry_alert_rule` and `sentry_notification_target` are both
+**`cairnobs_alert_rule` and `cairnobs_notification_target` are both
 create/destroy only, not update-in-place.** `alerting`'s REST API has no
 `PUT /rules/{id}` or `PUT /targets/{id}` at all -- confirmed down to
 `rulestore.Store`/`notifystore.Store`, both of which have
@@ -144,7 +144,7 @@ surfacing it in the plan output the way `RequiresReplace` does. Adding
 real `PUT` endpoints to `alerting` would remove this constraint, but is
 a change to a different module's REST API, out of scope for this pass.
 
-**`sentry_notification_target`'s `secret` attribute is `Sensitive` but
+**`cairnobs_notification_target`'s `secret` attribute is `Sensitive` but
 still lands in Terraform state in plaintext.** `alerting`'s own
 `GET /targets/{id}` returns `secret` unredacted (confirmed in
 `notifystore/store.go` -- no redaction at the store or handler layer, an
@@ -159,32 +159,32 @@ than left implicit.
 ## Data sources
 
 Each resource above has a matching read-only data source (`data
-"sentry_dashboard"`, `data "sentry_dashboard_panel"`, `data
-"sentry_alert_rule"`, `data "sentry_notification_target"`) -- a lookup
+"cairnobs_dashboard"`, `data "cairnobs_dashboard_panel"`, `data
+"cairnobs_alert_rule"`, `data "cairnobs_notification_target"`) -- a lookup
 against the same endpoint the matching resource's own `Read` already
 uses, nothing new added to `client.go` beyond that. Mechanical and
 low-risk by design: no new architectural question, no new external
 service, no new write path -- just reusing the resource's own model/
 conversion functions (`dashboardModelFromAPI` etc.) against `Required`
 input instead of a full config. Three of the four take a single
-`Required` `id`; `sentry_dashboard_panel`'s takes both `dashboard_id`
+`Required` `id`; `cairnobs_dashboard_panel`'s takes both `dashboard_id`
 and `id` (both `Required`), matching `getPanel`'s own two-argument shape
 -- there's no standalone lookup for a panel by ID alone.
 
 ```hcl
-data "sentry_notification_target" "ops" {
+data "cairnobs_notification_target" "ops" {
   id = "target-abc123"
 }
 
-resource "sentry_alert_rule" "checkout_5xx" {
+resource "cairnobs_alert_rule" "checkout_5xx" {
   # ...
-  notification_target_id = data.sentry_notification_target.ops.id
+  notification_target_id = data.cairnobs_notification_target.ops.id
 }
 ```
 
-`sentry_notification_target`'s data source has the same `secret`
+`cairnobs_notification_target`'s data source has the same `secret`
 caveat its resource does -- `Sensitive`, but a real value visible in
-Terraform state; see "`sentry_notification_target`'s `secret`
+Terraform state; see "`cairnobs_notification_target`'s `secret`
 attribute" above.
 
 **Also not built, all real and disclosed, not attempted here:**
@@ -197,7 +197,7 @@ attribute" above.
   `enterprise/` is AGPLv3 same as this provider module; the blocker is
   purely that the underlying API isn't idempotent-safe yet.)
 - Publishing to the real Terraform Registry -- `main.go`'s `Address`
-  (`registry.terraform.io/sentry/sentry`) is the address a real
+  (`registry.terraform.io/cairnobs/cairnobs`) is the address a real
   publication would use, but nothing has actually been published; local
   use is via `~/.terraformrc`'s `dev_overrides` (see "Building &
   testing" below) or a local provider mirror.
@@ -211,7 +211,7 @@ go test ./...
 ```
 
 `internal/provider/client_test.go` runs real HTTP round trips against a
-`httptest.Server` (same pattern `cli/cmd/sentryctl`'s own tests use
+`httptest.Server` (same pattern `cli/cmd/cairnobsctl`'s own tests use
 against the same `api/dashboards`/`alerting` endpoints) -- real request
 construction (method, path, `Authorization` header, JSON body), real
 response parsing, including the 404-vs-other-error distinction
@@ -266,11 +266,11 @@ for real."
 # local dev override, so `terraform` picks up a locally-built binary
 # instead of trying to download from the registry (which nothing has
 # been published to -- see "What's built" above)
-go build -o terraform-provider-sentry .
+go build -o terraform-provider-cairnobs .
 cat <<'EOF' >> ~/.terraformrc
 provider_installation {
   dev_overrides {
-    "registry.terraform.io/sentry/sentry" = "/absolute/path/to/this/directory"
+    "registry.terraform.io/cairnobs/cairnobs" = "/absolute/path/to/this/directory"
   }
   direct {}
 }

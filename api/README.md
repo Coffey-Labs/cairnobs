@@ -1,6 +1,6 @@
 # api
 
-Sentry's query API: a single `POST /query` endpoint accepting either the
+Cairn OBS's query API: a single `POST /query` endpoint accepting either the
 pipe syntax or raw SQL, compiled and routed across ClickHouse and Tantivy
 by `internal/querylang`. Replaces Phase 0/1's two separate placeholder
 endpoints (raw-SQL-only `/query`, free-text-only `/search`) — see

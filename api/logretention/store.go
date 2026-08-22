@@ -13,7 +13,7 @@
 // service is a genuine per-log-record dimension already, not something
 // this package invents: storage/migrations/0001_create_logs_table.sql
 // has always had a `service` column, and distinct services on one host
-// are a real, already-supported shape (separate sentry-agent processes
+// are a real, already-supported shape (separate cairnobs-agent processes
 // on the same machine, each with its own agent.toml `service` -- see
 // /docs/agent-management-design.md), not merely a per-agent label.
 //

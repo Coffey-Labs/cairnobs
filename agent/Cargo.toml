@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["sentry-parser", "sentry-agent"]
+members = ["cairnobs-parser", "cairnobs-agent"]
 
 [workspace.package]
 version = "0.1.0"

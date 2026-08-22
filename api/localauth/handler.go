@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 const maxBodyBytes = 1 << 20 // 1 MiB, same cap as queryapi/dashboards/agents
@@ -36,8 +36,8 @@ type store interface {
 type CookieConfig struct {
 	// Domain is typically empty for local dev (host-only cookie, works
 	// fine when web/api are both localhost:<port>) and something like
-	// ".sentry.example.com" in production, so the same cookie is sent to
-	// api.sentry.example.com and alerting.sentry.example.com too -- see
+	// ".cairnobs.example.com" in production, so the same cookie is sent to
+	// api.cairnobs.example.com and alerting.cairnobs.example.com too -- see
 	// /docs (deployment runbook) for the subdomain scheme this assumes.
 	Domain string
 	// Secure defaults to true (the cookie is never sent over plain
@@ -129,7 +129,7 @@ type loginRequest struct {
 type sessionResponse struct {
 	// Token duplicates what the Set-Cookie header already carries,
 	// specifically for non-browser callers with no cookie jar --
-	// sentryctl captures this into SENTRYCTL_TOKEN and sends it back as
+	// cairnobsctl captures this into CAIRNOBSCTL_TOKEN and sends it back as
 	// Authorization: Bearer (see authorizer.go's credentialFromRequest,
 	// which accepts either). The web UI ignores this field entirely and
 	// relies on the cookie.

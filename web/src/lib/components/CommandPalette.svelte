@@ -7,7 +7,7 @@
 	type Item = { id: string; label: string; hint: string; go: () => void };
 
 	const staticItems: Item[] = [
-		{ id: 'nav-search', label: 'Search', hint: 'Go to', go: () => goto('/') },
+		{ id: 'nav-search', label: 'Search', hint: 'Go to', go: () => goto('/search') },
 		{ id: 'nav-dashboards', label: 'Dashboards', hint: 'Go to', go: () => goto('/dashboards') },
 		{ id: 'nav-alerts', label: 'Alerts', hint: 'Go to', go: () => goto('/alerts') },
 		{ id: 'nav-data-sources', label: 'Data Sources', hint: 'Go to', go: () => goto('/data-sources') },

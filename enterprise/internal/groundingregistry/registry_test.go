@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
 )
 
 // tenantAwareFakeRunner returns a service list keyed by the tenant

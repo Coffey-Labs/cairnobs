@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/sentry/sentry/ingest/consumer"
-	"github.com/sentry/sentry/ingest/internal/grpcserver"
+	"github.com/cairnobs/cairnobs/ingest/consumer"
+	"github.com/cairnobs/cairnobs/ingest/internal/grpcserver"
 )
 
 // TestTenantIDHeaderKeyConstantsMatch guards against the literal drift

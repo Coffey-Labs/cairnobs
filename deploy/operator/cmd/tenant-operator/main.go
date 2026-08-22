@@ -18,15 +18,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	sentryv1alpha1 "github.com/sentry/sentry/deploy/operator/api/v1alpha1"
-	"github.com/sentry/sentry/deploy/operator/internal/controller"
+	cairnobsv1alpha1 "github.com/cairnobs/cairnobs/deploy/operator/api/v1alpha1"
+	"github.com/cairnobs/cairnobs/deploy/operator/internal/controller"
 )
 
 var scheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(sentryv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(cairnobsv1alpha1.AddToScheme(scheme))
 }
 
 func main() {

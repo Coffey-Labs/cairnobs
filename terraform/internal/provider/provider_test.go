@@ -40,14 +40,14 @@ func TestDashboardResourceSchemaValid(t *testing.T) {
 	newDashboardResource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_dashboard schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_dashboard schema has errors: %v", resp.Diagnostics)
 	}
 	for _, attr := range []string{
 		"id", "tenant_id", "name", "description",
 		"default_earliest", "default_latest", "created_by", "created_at", "updated_at",
 	} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("sentry_dashboard schema missing expected attribute %q", attr)
+			t.Errorf("cairnobs_dashboard schema missing expected attribute %q", attr)
 		}
 	}
 	if !resp.Schema.Attributes["name"].IsRequired() {
@@ -60,9 +60,9 @@ func TestDashboardResourceSchemaValid(t *testing.T) {
 
 func TestDashboardResourceMetadataSetsTypeName(t *testing.T) {
 	resp := &resource.MetadataResponse{}
-	newDashboardResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
-	if resp.TypeName != "sentry_dashboard" {
-		t.Fatalf("TypeName = %q, want sentry_dashboard", resp.TypeName)
+	newDashboardResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "cairnobs"}, resp)
+	if resp.TypeName != "cairnobs_dashboard" {
+		t.Fatalf("TypeName = %q, want cairnobs_dashboard", resp.TypeName)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestDashboardPanelResourceSchemaValid(t *testing.T) {
 	newDashboardPanelResource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_dashboard_panel schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_dashboard_panel schema has errors: %v", resp.Diagnostics)
 	}
 	for _, attr := range []string{
 		"id", "dashboard_id", "title", "query", "query_language", "viz_type", "viz_config",
@@ -82,7 +82,7 @@ func TestDashboardPanelResourceSchemaValid(t *testing.T) {
 		"earliest_override", "latest_override", "sort_order", "created_at", "updated_at",
 	} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("sentry_dashboard_panel schema missing expected attribute %q", attr)
+			t.Errorf("cairnobs_dashboard_panel schema missing expected attribute %q", attr)
 		}
 	}
 	if !resp.Schema.Attributes["query"].IsRequired() {
@@ -98,9 +98,9 @@ func TestDashboardPanelResourceSchemaValid(t *testing.T) {
 
 func TestDashboardPanelResourceMetadataSetsTypeName(t *testing.T) {
 	resp := &resource.MetadataResponse{}
-	newDashboardPanelResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
-	if resp.TypeName != "sentry_dashboard_panel" {
-		t.Fatalf("TypeName = %q, want sentry_dashboard_panel", resp.TypeName)
+	newDashboardPanelResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "cairnobs"}, resp)
+	if resp.TypeName != "cairnobs_dashboard_panel" {
+		t.Fatalf("TypeName = %q, want cairnobs_dashboard_panel", resp.TypeName)
 	}
 }
 
@@ -112,7 +112,7 @@ func TestAlertRuleResourceSchemaValid(t *testing.T) {
 	newAlertRuleResource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_alert_rule schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_alert_rule schema has errors: %v", resp.Diagnostics)
 	}
 	for _, attr := range []string{
 		"id", "tenant_id", "name", "description", "query", "query_language",
@@ -120,7 +120,7 @@ func TestAlertRuleResourceSchemaValid(t *testing.T) {
 		"for_minutes", "renotify_interval_minutes", "notification_target_id", "enabled", "created_by",
 	} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("sentry_alert_rule schema missing expected attribute %q", attr)
+			t.Errorf("cairnobs_alert_rule schema missing expected attribute %q", attr)
 		}
 	}
 	if !resp.Schema.Attributes["name"].IsRequired() {
@@ -133,9 +133,9 @@ func TestAlertRuleResourceSchemaValid(t *testing.T) {
 
 func TestAlertRuleResourceMetadataSetsTypeName(t *testing.T) {
 	resp := &resource.MetadataResponse{}
-	newAlertRuleResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
-	if resp.TypeName != "sentry_alert_rule" {
-		t.Fatalf("TypeName = %q, want sentry_alert_rule", resp.TypeName)
+	newAlertRuleResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "cairnobs"}, resp)
+	if resp.TypeName != "cairnobs_alert_rule" {
+		t.Fatalf("TypeName = %q, want cairnobs_alert_rule", resp.TypeName)
 	}
 }
 
@@ -147,14 +147,14 @@ func TestNotificationTargetResourceSchemaValid(t *testing.T) {
 	newNotificationTargetResource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_notification_target schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_notification_target schema has errors: %v", resp.Diagnostics)
 	}
 	for _, attr := range []string{
 		"id", "tenant_id", "name", "kind", "webhook_url",
 		"payload_template", "headers", "secret", "created_by",
 	} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("sentry_notification_target schema missing expected attribute %q", attr)
+			t.Errorf("cairnobs_notification_target schema missing expected attribute %q", attr)
 		}
 	}
 	if !resp.Schema.Attributes["name"].IsRequired() {
@@ -167,9 +167,9 @@ func TestNotificationTargetResourceSchemaValid(t *testing.T) {
 
 func TestNotificationTargetResourceMetadataSetsTypeName(t *testing.T) {
 	resp := &resource.MetadataResponse{}
-	newNotificationTargetResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
-	if resp.TypeName != "sentry_notification_target" {
-		t.Fatalf("TypeName = %q, want sentry_notification_target", resp.TypeName)
+	newNotificationTargetResource().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "cairnobs"}, resp)
+	if resp.TypeName != "cairnobs_notification_target" {
+		t.Fatalf("TypeName = %q, want cairnobs_notification_target", resp.TypeName)
 	}
 }
 
@@ -181,7 +181,7 @@ func TestDashboardDataSourceSchemaValid(t *testing.T) {
 	newDashboardDataSource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_dashboard data source schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_dashboard data source schema has errors: %v", resp.Diagnostics)
 	}
 	if !resp.Schema.Attributes["id"].IsRequired() {
 		t.Error(`"id" must be Required -- a data source needs it to know what to look up`)
@@ -199,7 +199,7 @@ func TestDashboardPanelDataSourceSchemaValid(t *testing.T) {
 	newDashboardPanelDataSource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_dashboard_panel data source schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_dashboard_panel data source schema has errors: %v", resp.Diagnostics)
 	}
 	if !resp.Schema.Attributes["dashboard_id"].IsRequired() {
 		t.Error(`"dashboard_id" must be Required`)
@@ -220,7 +220,7 @@ func TestAlertRuleDataSourceSchemaValid(t *testing.T) {
 	newAlertRuleDataSource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_alert_rule data source schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_alert_rule data source schema has errors: %v", resp.Diagnostics)
 	}
 	if !resp.Schema.Attributes["id"].IsRequired() {
 		t.Error(`"id" must be Required`)
@@ -238,7 +238,7 @@ func TestNotificationTargetDataSourceSchemaValid(t *testing.T) {
 	newNotificationTargetDataSource().Schema(ctx, req, resp)
 
 	if resp.Diagnostics.HasError() {
-		t.Fatalf("sentry_notification_target data source schema has errors: %v", resp.Diagnostics)
+		t.Fatalf("cairnobs_notification_target data source schema has errors: %v", resp.Diagnostics)
 	}
 	if !resp.Schema.Attributes["id"].IsRequired() {
 		t.Error(`"id" must be Required`)
@@ -253,14 +253,14 @@ func TestDataSourcesMetadataSetTypeNames(t *testing.T) {
 		newDS    func() datasource.DataSource
 		wantType string
 	}{
-		{newDashboardDataSource, "sentry_dashboard"},
-		{newDashboardPanelDataSource, "sentry_dashboard_panel"},
-		{newAlertRuleDataSource, "sentry_alert_rule"},
-		{newNotificationTargetDataSource, "sentry_notification_target"},
+		{newDashboardDataSource, "cairnobs_dashboard"},
+		{newDashboardPanelDataSource, "cairnobs_dashboard_panel"},
+		{newAlertRuleDataSource, "cairnobs_alert_rule"},
+		{newNotificationTargetDataSource, "cairnobs_notification_target"},
 	}
 	for _, c := range cases {
 		resp := &datasource.MetadataResponse{}
-		c.newDS().Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "sentry"}, resp)
+		c.newDS().Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "cairnobs"}, resp)
 		if resp.TypeName != c.wantType {
 			t.Errorf("TypeName = %q, want %q", resp.TypeName, c.wantType)
 		}

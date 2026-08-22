@@ -15,29 +15,29 @@ func TestAccNotificationTargetDataSource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint          = "http://localhost:8080"
   alerting_endpoint = "http://localhost:8081"
 }
 
-resource "sentry_notification_target" "test" {
+resource "cairnobs_notification_target" "test" {
   name        = "Data Source Test Target"
   kind        = "webhook"
   webhook_url = "https://example.com/hook"
   secret      = "test-secret"
 }
 
-data "sentry_notification_target" "test" {
-  id = sentry_notification_target.test.id
+data "cairnobs_notification_target" "test" {
+  id = cairnobs_notification_target.test.id
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair("data.sentry_notification_target.test", "name", "sentry_notification_target.test", "name"),
-					resource.TestCheckResourceAttrPair("data.sentry_notification_target.test", "webhook_url", "sentry_notification_target.test", "webhook_url"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_notification_target.test", "name", "cairnobs_notification_target.test", "name"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_notification_target.test", "webhook_url", "cairnobs_notification_target.test", "webhook_url"),
 					// Real, not papered over -- secret round-trips
 					// unredacted (see the resource test's equivalent
 					// comment).
-					resource.TestCheckResourceAttrPair("data.sentry_notification_target.test", "secret", "sentry_notification_target.test", "secret"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_notification_target.test", "secret", "cairnobs_notification_target.test", "secret"),
 				),
 			},
 		},

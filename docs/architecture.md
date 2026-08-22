@@ -1,4 +1,4 @@
-# Sentry Architecture
+# Cairn OBS Architecture
 
 > **Status:** Updated through Phase 4. The component map/diagram below is
 > still the Phase 0 request path (agent → ingest → ClickHouse → api →

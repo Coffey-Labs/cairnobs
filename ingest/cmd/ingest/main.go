@@ -22,14 +22,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/sentry/sentry/ingest/clickhousewriter"
-	"github.com/sentry/sentry/ingest/consumer"
-	"github.com/sentry/sentry/ingest/internal/agentregistry"
-	"github.com/sentry/sentry/ingest/internal/config"
-	"github.com/sentry/sentry/ingest/internal/grpcserver"
-	"github.com/sentry/sentry/ingest/internal/producer"
-	"github.com/sentry/sentry/ingest/internal/tenantresolver"
-	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
+	"github.com/cairnobs/cairnobs/ingest/clickhousewriter"
+	"github.com/cairnobs/cairnobs/ingest/consumer"
+	"github.com/cairnobs/cairnobs/ingest/internal/agentregistry"
+	"github.com/cairnobs/cairnobs/ingest/internal/config"
+	"github.com/cairnobs/cairnobs/ingest/internal/grpcserver"
+	"github.com/cairnobs/cairnobs/ingest/internal/producer"
+	"github.com/cairnobs/cairnobs/ingest/internal/tenantresolver"
+	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
 
 // singleTenantWriter adapts *clickhousewriter.Writer -- which only

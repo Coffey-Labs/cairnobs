@@ -88,7 +88,7 @@ ignore = [
 # List of explicitly allowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
-# Sentry's own AGPLv3-project license policy (Phase 6 license audit --
+# Cairn OBS's own AGPLv3-project license policy (Phase 6 license audit --
 # see /docs/compliance/license-policy.md for the full rationale per
 # category). Every license actually found in this crate's dependency
 # tree at audit time is listed explicitly here, not just the common

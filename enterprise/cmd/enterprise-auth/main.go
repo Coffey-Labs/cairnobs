@@ -1,4 +1,4 @@
-// Command enterprise-auth is Sentry's SSO/tenant-provisioning/RBAC
+// Command enterprise-auth is Cairn OBS's SSO/tenant-provisioning/RBAC
 // service (AGPLv3, same as core -- see
 // /docs/compliance/license-audit-report.md) -- see
 // /docs/phase-4-isolation-design.md and /docs/phase-4-rbac-design.md.
@@ -38,14 +38,14 @@ import (
 	"github.com/crewjam/saml/samlsp"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/httpserver"
-	"github.com/sentry/sentry/enterprise/internal/authhandler"
-	"github.com/sentry/sentry/enterprise/internal/config"
-	"github.com/sentry/sentry/enterprise/internal/loginhandler"
-	"github.com/sentry/sentry/enterprise/internal/oidc"
-	"github.com/sentry/sentry/enterprise/internal/rbacstore"
-	samlpkg "github.com/sentry/sentry/enterprise/internal/saml"
-	"github.com/sentry/sentry/enterprise/internal/session"
+	"github.com/cairnobs/cairnobs/api/httpserver"
+	"github.com/cairnobs/cairnobs/enterprise/internal/authhandler"
+	"github.com/cairnobs/cairnobs/enterprise/internal/config"
+	"github.com/cairnobs/cairnobs/enterprise/internal/loginhandler"
+	"github.com/cairnobs/cairnobs/enterprise/internal/oidc"
+	"github.com/cairnobs/cairnobs/enterprise/internal/rbacstore"
+	samlpkg "github.com/cairnobs/cairnobs/enterprise/internal/saml"
+	"github.com/cairnobs/cairnobs/enterprise/internal/session"
 )
 
 func main() {

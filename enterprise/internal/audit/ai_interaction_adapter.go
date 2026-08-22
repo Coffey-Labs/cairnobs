@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sentry/sentry/api/ai/aiapi"
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/ai/aiapi"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // AIInteractionLogger implements aiapi.InteractionLogger by translating

@@ -16,7 +16,7 @@
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
-    container_name: sentry-redpanda
+    container_name: cairnobs-redpanda
     command:
       - redpanda
       - start
@@ -43,7 +43,7 @@ services:
   redpanda-provision:
     build:
       context: ./transport
-    container_name: sentry-redpanda-provision
+    container_name: cairnobs-redpanda-provision
     depends_on:
       redpanda:
         condition: service_healthy
@@ -57,7 +57,7 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
-    container_name: sentry-clickhouse
+    container_name: cairnobs-clickhouse
     ports:
       - "8123:8123" # HTTP interface, used by the migrate step
       - "9000:9000" # native protocol, used by ingest and api
@@ -71,7 +71,7 @@ services:
       # password isn't a real secret (mTLS between agent and ingest is
       # the actual security boundary here) — it exists purely to satisfy
       # this image's login gate for local/homelab use.
-      CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
       # Phase 4's per-tenant provisioning (enterprise/internal/tenantprovision)
       # runs CREATE USER/GRANT against this connection as the ClickHouse
       # admin -- the official image's default user doesn't have
@@ -104,13 +104,13 @@ services:
   clickhouse-migrate:
     build:
       context: ./storage
-    container_name: sentry-clickhouse-migrate
+    container_name: cairnobs-clickhouse-migrate
     depends_on:
       clickhouse:
         condition: service_healthy
     environment:
       CLICKHOUSE_HTTP: "http://clickhouse:8123"
-      CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
 
   # Control-plane metadata store (dashboards, alert rules -- see
   # /docs/phase-3-dashboard-design.md for why this is Postgres rather
@@ -118,11 +118,11 @@ services:
   # only, unaffected.
   metadata-postgres:
     image: postgres:16-alpine
-    container_name: sentry-metadata-postgres
+    container_name: cairnobs-metadata-postgres
     environment:
       POSTGRES_DB: sentry_metadata
       POSTGRES_USER: sentry
-      POSTGRES_PASSWORD: "sentry-dev-only" # not a real secret, same framing as CLICKHOUSE_PASSWORD above
+      POSTGRES_PASSWORD: "cairnobs-dev-only" # not a real secret, same framing as CLICKHOUSE_PASSWORD above
     volumes:
       - metadata-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -136,7 +136,7 @@ services:
   metadata-migrate:
     build:
       context: ./metadata
-    container_name: sentry-metadata-migrate
+    container_name: cairnobs-metadata-migrate
     depends_on:
       metadata-postgres:
         condition: service_healthy
@@ -144,7 +144,7 @@ services:
       POSTGRES_HOST: "metadata-postgres"
       POSTGRES_PORT: "5432"
       POSTGRES_USER: "sentry"
-      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_PASSWORD: "cairnobs-dev-only"
       POSTGRES_DATABASE: "sentry_metadata"
       # Password for the restricted audit_writer Postgres role (Phase 4
       # task 4) -- INSERT+SELECT only on audit_log, never UPDATE/DELETE,
@@ -156,7 +156,7 @@ services:
     build:
       context: . # needs both ingest/ and proto/
       dockerfile: ingest/Dockerfile
-    container_name: sentry-ingest
+    container_name: cairnobs-ingest
     depends_on:
       redpanda-provision:
         condition: service_completed_successfully
@@ -169,9 +169,9 @@ services:
     environment:
       REDPANDA_BROKERS: "redpanda:9092"
       CLICKHOUSE_ADDR: "clickhouse:9000"
-      CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
       # TLS_*_FILE env vars are left at their defaults
-      # (/etc/sentry-ingest/{server,server-key,ca}.pem) — matches where
+      # (/etc/cairnobs-ingest/{server,server-key,ca}.pem) — matches where
       # the volume below mounts the generated dev certs.
       #
       # ENTERPRISE_AUTH_URL is deliberately NOT set here (see
@@ -193,9 +193,9 @@ services:
       # tenancy prerequisite -- it works the same in single-tenant core.
       AGENT_REGISTRY_POSTGRES_ADDR: "metadata-postgres:5432"
       AGENT_REGISTRY_POSTGRES_USERNAME: "sentry"
-      AGENT_REGISTRY_POSTGRES_PASSWORD: "sentry-dev-only"
+      AGENT_REGISTRY_POSTGRES_PASSWORD: "cairnobs-dev-only"
     volumes:
-      - ./hack/dev-certs/out:/etc/sentry-ingest:ro
+      - ./hack/dev-certs/out:/etc/cairnobs-ingest:ro
 
   # Reads the same sentry.logs.raw topic ingest's consumer does (own
   # offset tracking, own failure domain — see /search/README.md) and
@@ -204,7 +204,7 @@ services:
     build:
       context: . # needs both search/ and proto/
       dockerfile: search/Dockerfile
-    container_name: sentry-search
+    container_name: cairnobs-search
     depends_on:
       redpanda-provision:
         condition: service_completed_successfully
@@ -226,10 +226,10 @@ services:
       # before this tracker existed -- see search/README.md's "Per-tenant
       # indices" section for how to turn it on for manual testing.
     volumes:
-      - search-index-data:/var/lib/sentry-search
+      - search-index-data:/var/lib/cairnobs-search
 
   # Mutually exclusive with enterprise-api below, same choice Helm makes
-  # via enterprise.enabled (deploy/helm/sentry/templates/api.yaml vs
+  # via enterprise.enabled (deploy/helm/cairnobs/templates/api.yaml vs
   # enterprise-api.yaml) -- selected by the COMPOSE_PROFILES value in
   # .env (checked in as "single-tenant", the zero-config default) or an
   # override on the command line, e.g. `COMPOSE_PROFILES=enterprise
@@ -242,7 +242,7 @@ services:
     build:
       context: . # needs both api/ and proto/ (gRPC client to search)
       dockerfile: api/Dockerfile
-    container_name: sentry-api
+    container_name: cairnobs-api
     depends_on:
       clickhouse-migrate:
         condition: service_completed_successfully
@@ -252,12 +252,12 @@ services:
       - "8080:8080"
     environment:
       CLICKHOUSE_ADDR: "clickhouse:9000"
-      CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
       SEARCH_GRPC_ADDR: "search:50052"
       POSTGRES_ADDR: "metadata-postgres:5432"
       POSTGRES_DATABASE: "sentry_metadata"
       POSTGRES_USERNAME: "sentry"
-      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_PASSWORD: "cairnobs-dev-only"
     healthcheck:
       # alerting (Phase 3 task 5) depends_on api -- without this, that
       # dependency can only mean "container started," not "actually
@@ -274,7 +274,7 @@ services:
     build:
       context: alerting # self-contained, no /proto needed -- see alerting/Dockerfile
       dockerfile: Dockerfile
-    container_name: sentry-alerting
+    container_name: cairnobs-alerting
     depends_on:
       metadata-migrate:
         condition: service_completed_successfully
@@ -295,7 +295,7 @@ services:
       POSTGRES_ADDR: "metadata-postgres:5432"
       POSTGRES_DATABASE: "sentry_metadata"
       POSTGRES_USERNAME: "sentry"
-      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_PASSWORD: "cairnobs-dev-only"
       # Resolves to whichever of api/enterprise-api is actually active --
       # enterprise-api declares a `default.aliases: [api]` network alias
       # below specifically so this never needs to change based on which
@@ -319,14 +319,14 @@ services:
   # no admin UI to create the first tenant_memberships row -- see
   # /docs/phase-4-runbook.md sections 3a/3b for wiring a real IdP and
   # bootstrapping that row by hand. Flipping enforcement on by default
-  # without that would break the web UI and sentryctl with no way to log
+  # without that would break the web UI and cairnobsctl with no way to log
   # in. See enterprise/README.md for how to turn enforcement on for
   # manual testing (mint a service token, set the two env vars, restart).
   enterprise-auth:
     build:
       context: . # needs api/, ingest/, proto/, and enterprise/ itself -- see enterprise/Dockerfile's doc comment
       dockerfile: enterprise/Dockerfile
-    container_name: sentry-enterprise-auth
+    container_name: cairnobs-enterprise-auth
     depends_on:
       metadata-migrate:
         condition: service_completed_successfully
@@ -335,11 +335,11 @@ services:
     environment:
       # Dev-only, same framing as CLICKHOUSE_PASSWORD above -- not a real
       # secret. Must be at least 32 bytes (see internal/config.Load).
-      ENTERPRISE_SESSION_SIGNING_KEY: "sentry-dev-only-session-signing-key-32bytes+"
+      ENTERPRISE_SESSION_SIGNING_KEY: "cairnobs-dev-only-session-signing-key-32bytes+"
       POSTGRES_ADDR: "metadata-postgres:5432"
       POSTGRES_DATABASE: "sentry_metadata"
       POSTGRES_USERNAME: "sentry"
-      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_PASSWORD: "cairnobs-dev-only"
       # Where the browser lands after internal/loginhandler sets a
       # session cookie -- web's mapped host port (see web's build args
       # for why this is localhost:3000, not the compose network's
@@ -372,7 +372,7 @@ services:
     build:
       context: .
       dockerfile: enterprise/cmd/enterprise-api/Dockerfile
-    container_name: sentry-enterprise-api
+    container_name: cairnobs-enterprise-api
     depends_on:
       clickhouse-migrate:
         condition: service_completed_successfully
@@ -388,12 +388,12 @@ services:
       HTTP_LISTEN_ADDR: ":8080"
       CLICKHOUSE_ADDR: "clickhouse:9000"
       CLICKHOUSE_ADMIN_USERNAME: "default"
-      CLICKHOUSE_ADMIN_PASSWORD: "sentry-dev-only"
+      CLICKHOUSE_ADMIN_PASSWORD: "cairnobs-dev-only"
       SEARCH_GRPC_ADDR: "search:50052"
       POSTGRES_ADDR: "metadata-postgres:5432"
       POSTGRES_DATABASE: "sentry_metadata"
       POSTGRES_USERNAME: "sentry"
-      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_PASSWORD: "cairnobs-dev-only"
       AUDIT_WRITER_USERNAME: "audit_writer"
       AUDIT_WRITER_PASSWORD: "audit-writer-dev-only"
       ENTERPRISE_AUTH_URL: "http://enterprise-auth:8082"
@@ -415,14 +415,14 @@ services:
   # groups) and write it -- ingest into the one shared `logs` table,
   # this into each tenant's own database. Harmless duplication for local
   # testing/verification purposes, not what a real deployment does (see
-  # deploy/helm/sentry's ingest.yaml/enterprise-ingest.yaml, which
+  # deploy/helm/cairnobs's ingest.yaml/enterprise-ingest.yaml, which
   # actually achieve exclusivity via -mode=server/-mode=consumer).
   enterprise-ingest:
     profiles: ["enterprise"]
     build:
       context: .
       dockerfile: enterprise/cmd/enterprise-ingest/Dockerfile
-    container_name: sentry-enterprise-ingest
+    container_name: cairnobs-enterprise-ingest
     depends_on:
       redpanda-provision:
         condition: service_completed_successfully
@@ -436,7 +436,7 @@ services:
       POSTGRES_ADDR: "metadata-postgres:5432"
       POSTGRES_DATABASE: "sentry_metadata"
       POSTGRES_USERNAME: "sentry"
-      POSTGRES_PASSWORD: "sentry-dev-only"
+      POSTGRES_PASSWORD: "cairnobs-dev-only"
     healthcheck:
       test: ["CMD", "/enterprise-ingest", "-healthcheck"]
       interval: 5s
@@ -457,7 +457,7 @@ services:
         VITE_API_BASE_URL: "http://localhost:8080"
         VITE_ALERTING_API_BASE_URL: "http://localhost:8081"
         VITE_ENTERPRISE_AUTH_BASE_URL: "http://localhost:8082"
-    container_name: sentry-web
+    container_name: cairnobs-web
     depends_on:
       # api/enterprise-api optional, same reasoning as alerting's
       # depends_on above -- only one is ever in the active profile set.

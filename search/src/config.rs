@@ -20,7 +20,7 @@ pub struct Config {
     /// never turned on ingest's TenantResolver, still lands in. Default
     /// matches the path convention deploy/operator's Tenant controller
     /// and enterprise/internal/rbacstore's seeded default data source
-    /// already assume (`/var/lib/sentry-search/tenants/<id>`).
+    /// already assume (`/var/lib/cairnobs-search/tenants/<id>`).
     pub tenants_index_path: PathBuf,
     /// Base URL of enterprise-auth's HTTP API, e.g.
     /// `http://enterprise-auth:8082` -- same env var name and "empty
@@ -68,15 +68,15 @@ impl Config {
                 .map(str::to_string)
                 .collect(),
             redpanda_topic: getenv("REDPANDA_TOPIC", "sentry.logs.raw"),
-            index_path: PathBuf::from(getenv("INDEX_PATH", "/var/lib/sentry-search/index")),
+            index_path: PathBuf::from(getenv("INDEX_PATH", "/var/lib/cairnobs-search/index")),
             offsets_path: PathBuf::from(getenv(
                 "OFFSETS_PATH",
-                "/var/lib/sentry-search/offsets.json",
+                "/var/lib/cairnobs-search/offsets.json",
             )),
             commit_interval: Duration::from_millis(commit_interval_ms),
             tenants_index_path: PathBuf::from(getenv(
                 "TENANTS_INDEX_PATH",
-                "/var/lib/sentry-search/tenants",
+                "/var/lib/cairnobs-search/tenants",
             )),
             enterprise_auth_url,
             enterprise_auth_service_token,

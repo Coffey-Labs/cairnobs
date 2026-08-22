@@ -29,8 +29,8 @@ import (
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
 )
 
 // DataSource is the minimal shape Registry needs to open one tenant's

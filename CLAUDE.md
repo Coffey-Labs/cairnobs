@@ -1,4 +1,4 @@
-# Project: Sentry — Distributed Log Aggregation & Observability Platform
+# Project: Cairn OBS — Distributed Log Aggregation & Observability Platform
 
 ## Mission
 Build an open-core, Kubernetes-native centralized logging platform that rivals
@@ -22,19 +22,19 @@ described there without flagging it to me first.
 - Schema-on-write with OTel semantic conventions as the default schema, with
   schema-on-read fallback for unstructured text.
 - Every UI action must correspond to a documented REST/gRPC call. No
-  UI-only logic. CLI (`sentryctl`) and Terraform provider are first-class,
-  not afterthoughts. **Status**: `sentryctl` has been built out phase by
+  UI-only logic. CLI (`cairnobsctl`) and Terraform provider are first-class,
+  not afterthoughts. **Status**: `cairnobsctl` has been built out phase by
   phase since Phase 3. The Terraform provider (`/terraform`) only exists
-  as of this note -- four resources (`sentry_dashboard` and
-  `sentry_dashboard_panel`, both full CRUD, panels as their own resource
+  as of this note -- four resources (`cairnobs_dashboard` and
+  `cairnobs_dashboard_panel`, both full CRUD, panels as their own resource
   rather than a nested block since the API manages them independently
-  of their parent dashboard; `sentry_alert_rule` and
-  `sentry_notification_target`, both create/destroy only -- `alerting`
+  of their parent dashboard; `cairnobs_alert_rule` and
+  `cairnobs_notification_target`, both create/destroy only -- `alerting`
   has no `PUT /rules/{id}` or `PUT /targets/{id}` to update against),
   each paired with a read-only data source, built on HashiCorp's
   `terraform-plugin-framework`, reusing the exact same REST contracts
-  `sentryctl dashboards apply`/web's dashboard export and
-  `sentryctl alerts apply` already use. Tenant/RBAC resources are real,
+  `cairnobsctl dashboards apply`/web's dashboard export and
+  `cairnobsctl alerts apply` already use. Tenant/RBAC resources are real,
   disclosed future work -- see
   `/terraform/README.md` for the full accounting of what is and isn't
   built, and the same
@@ -94,7 +94,7 @@ prominently in `/agent/README.md` and the runbook.
 
 ## What "done" looks like for Phase 2
 
-A single query bar in the web UI and a single `sentryctl query` command
+A single query bar in the web UI and a single `cairnobsctl query` command
 can express filter + free-text + stats in one query (e.g. `service=api |
 where status>=500 | stats count by host | sort -count`, or
 `message:"connection refused" | stats count by host`), execute correctly
@@ -212,7 +212,7 @@ the fix verified Docker-free (`chrunner_test.go`'s and
 tests) — see `api/queryapi/tenant_isolation_gap_test.go` for the full
 accounting of all four probes, now all closed. The deployment-
 topology gap that briefly was the largest one is now closed for both
-Helm and docker-compose: `deploy/helm/sentry/templates/api.yaml`/
+Helm and docker-compose: `deploy/helm/cairnobs/templates/api.yaml`/
 `enterprise-api.yaml` are mutually exclusive on the same
 `enterprise.enabled` flag that turns on RBAC/audit/SSO, rendering to the
 same Service name/port either way — a Helm-deployed cluster can't
@@ -234,7 +234,7 @@ stricter still (creator/Admin/Owner only, closing a self-escalation
 path). Verified against a fake store (`api/dashboards/handler_test.go`);
 real integration tests exist but haven't run against a live Postgres,
 same disclosed gap as the rest of this phase's Postgres-backed pieces.
-`sentryctl dashboards permissions list|grant|revoke` is now the CLI
+`cairnobsctl dashboards permissions list|grant|revoke` is now the CLI
 surface for this — `PUT`/`DELETE /dashboards/{id}/permissions/{userId}`
 previously had no caller but Go tests and curl.
 `deploy/operator`'s `Tenant` CRD and `enterprise-api -provision-tenant`
@@ -483,19 +483,19 @@ phase); CI enforcement wired up and every command verified locally.
 **The one real flag — Redpanda's BSL 1.1 license (confirmed against
 primary sources for the pinned v24.2.7, not assumed to still be
 Apache-2.0) — is resolved, not outstanding**: decision recorded
-2026-08-16, accept as-is. Sentry's own use (internal Kafka-protocol
+2026-08-16, accept as-is. Cairn OBS's own use (internal Kafka-protocol
 transport, no resale of broker access) sits within BSL's Additional Use
-Grant; the harder question — whether a third party self-hosting Sentry
+Grant; the harder question — whether a third party self-hosting Cairn OBS
 "as a service" using the bundled `docker-compose.yml` could trip BSL's
 anti-resale restriction on Redpanda specifically — was judged unlikely
-given Sentry's ingest pipeline creates fixed internal topics, not
+given Cairn OBS's ingest pipeline creates fixed internal topics, not
 per-end-user ones, and was accepted as a disclosed, known risk rather
 than triggering a swap to Apache Kafka (real resource-footprint cost) or
 dropping the bundled broker image (rougher local dev experience). See
 the audit report's Redpanda section for the full reasoning, the other
 two options that were considered and not chosen, and the condition under
-which this should be revisited (an official hosted/managed Sentry
-offering, which would make the third-party-SaaS scenario Sentry's own
+which this should be revisited (an official hosted/managed Cairn OBS
+offering, which would make the third-party-SaaS scenario Cairn OBS's own
 rather than a hypothetical one).
 
 Non-goals for this phase: replacing permissively-licensed dependencies

@@ -23,7 +23,7 @@ func newNotificationTargetResource() resource.Resource {
 	return &notificationTargetResource{}
 }
 
-// notificationTargetResource implements sentry_notification_target
+// notificationTargetResource implements cairnobs_notification_target
 // against alerting/internal/httpapi's POST/GET/DELETE
 // /targets[/{id}] endpoints.
 //
@@ -54,14 +54,14 @@ func (r *notificationTargetResource) Metadata(_ context.Context, req resource.Me
 func (r *notificationTargetResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
-		Description: "A Sentry alert notification target. Create/destroy only -- alerting has no update " +
+		Description: "A Cairn OBS alert notification target. Create/destroy only -- alerting has no update " +
 			"endpoint for targets today (see this resource's Go doc comment), so every attribute below " +
 			"forces a destroy-and-recreate on change, never an in-place update.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-				Description:   "Server-generated target ID -- reference this from a sentry_alert_rule's notification_target_id.",
+				Description:   "Server-generated target ID -- reference this from a cairnobs_alert_rule's notification_target_id.",
 			},
 			"tenant_id": schema.StringAttribute{
 				Computed:      true,

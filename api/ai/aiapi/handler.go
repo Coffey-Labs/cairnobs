@@ -22,12 +22,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sentry/sentry/api/ai/costguard"
-	"github.com/sentry/sentry/api/ai/provider"
-	"github.com/sentry/sentry/api/ai/router"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/internal/querylang/ir"
-	"github.com/sentry/sentry/api/internal/querylang/planner"
+	"github.com/cairnobs/cairnobs/api/ai/costguard"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/ai/router"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ir"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/planner"
 )
 
 // SchemaContextSource resolves the calling tenant's grounding data.

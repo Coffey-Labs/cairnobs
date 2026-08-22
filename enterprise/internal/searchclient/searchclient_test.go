@@ -14,8 +14,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/sentry/sentry/api/authz"
-	searchv1 "github.com/sentry/sentry/proto/sentry/search/v1"
+	"github.com/cairnobs/cairnobs/api/authz"
+	searchv1 "github.com/cairnobs/cairnobs/proto/sentry/search/v1"
 )
 
 type fakeSearchServer struct {

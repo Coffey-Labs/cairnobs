@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sentry/sentry/api/agents"
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/agents"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // AgentCommandLogger implements agents.CommandLogger by translating its

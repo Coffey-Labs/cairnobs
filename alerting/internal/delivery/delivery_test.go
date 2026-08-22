@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
 )
 
 func TestBuildPayloadGenericDefaultShape(t *testing.T) {

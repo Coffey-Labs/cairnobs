@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sentry/sentry/alerting/internal/notifystore"
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 type fakeRuleStore struct {

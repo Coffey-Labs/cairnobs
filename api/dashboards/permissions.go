@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // Permission is one dashboard_permissions row -- see

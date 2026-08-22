@@ -117,7 +117,7 @@ const ConditionReady = "Ready"
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Tenant is the K8s-native representation of one Sentry tenant's
+// Tenant is the K8s-native representation of one Cairn OBS tenant's
 // deployment-topology state -- see this file's package-level doc
 // comment for what it does and does not manage today.
 type Tenant struct {

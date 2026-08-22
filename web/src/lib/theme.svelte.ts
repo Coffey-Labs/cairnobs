@@ -13,7 +13,7 @@
 
 export type Theme = 'dark' | 'light' | 'system';
 
-const STORAGE_KEY = 'sentry.theme';
+const STORAGE_KEY = 'cairnobs.theme';
 
 function readStored(): Theme {
 	if (typeof localStorage === 'undefined') return 'dark';

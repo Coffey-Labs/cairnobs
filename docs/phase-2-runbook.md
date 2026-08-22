@@ -136,7 +136,7 @@ in the session-local history panel.
 
 ```sh
 cd cli
-go run ./cmd/sentryctl query 'service=api | where status>=500 | stats count by host | sort -count'
+go run ./cmd/cairnobsctl query 'service=api | where status>=500 | stats count by host | sort -count'
 ```
 
 Both hit the exact same `POST /query` endpoint — there's no separate

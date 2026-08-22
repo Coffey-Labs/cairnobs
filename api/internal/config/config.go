@@ -82,7 +82,7 @@ type PostgresConfig struct {
 // real deployment that skips docker-compose.override.yml would
 // otherwise go live with a password anyone can read straight off
 // GitHub. See DevCredentialWarnings.
-const devOnlyCredential = "sentry-dev-only"
+const devOnlyCredential = "cairnobs-dev-only"
 
 // DevCredentialWarnings reports which configured credentials still
 // equal docker-compose.yml's literal dev-only default -- cmd/api/main.go

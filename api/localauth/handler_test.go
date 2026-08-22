@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 func newTestHandler(t *testing.T, fs *fakeStore) (*Handler, *http.ServeMux) {

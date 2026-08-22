@@ -38,10 +38,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// tenantGVR identifies deploy/operator/config/crd/sentry.io_tenants.yaml's
+// tenantGVR identifies deploy/operator/config/crd/cairnobs.io_tenants.yaml's
 // resource -- kept as a plain schema.GroupVersionResource (not the typed
 // package) for the reason this file's doc comment explains.
-var tenantGVR = schema.GroupVersionResource{Group: "sentry.io", Version: "v1alpha1", Resource: "tenants"}
+var tenantGVR = schema.GroupVersionResource{Group: "cairnobs.io", Version: "v1alpha1", Resource: "tenants"}
 
 // Syncer talks to the K8s API. Construction (New) is the only place
 // that can fail for "no cluster reachable" reasons -- Sync itself
@@ -105,7 +105,7 @@ type Credentials struct {
 // runProvisionTenant) finds and updates the same Secret rather than
 // creating a second one.
 func SecretName(tenantID string) string {
-	return fmt.Sprintf("sentry-tenant-%s-clickhouse", tenantID)
+	return fmt.Sprintf("cairnobs-tenant-%s-clickhouse", tenantID)
 }
 
 // Sync upserts the Tenant object (creating it with spec.displayName if
@@ -145,7 +145,7 @@ func (s *Syncer) upsertTenant(ctx context.Context, tenantID, displayName string)
 	}
 
 	obj := &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "sentry.io/v1alpha1",
+		"apiVersion": "cairnobs.io/v1alpha1",
 		"kind":       "Tenant",
 		"metadata": map[string]interface{}{
 			"name":      tenantID,
@@ -170,8 +170,8 @@ func (s *Syncer) upsertSecret(ctx context.Context, tenantID, secretName string, 
 			Name:      secretName,
 			Namespace: s.namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "sentry-enterprise-api",
-				"sentry.io/tenant":             tenantID,
+				"app.kubernetes.io/managed-by": "cairnobs-enterprise-api",
+				"cairnobs.io/tenant":           tenantID,
 			},
 			// Owned by the Tenant object even though a different
 			// process (this one, not the operator's controller)
@@ -179,7 +179,7 @@ func (s *Syncer) upsertSecret(ctx context.Context, tenantID, secretName string, 
 			// OwnerReferences regardless of which actor set them, so
 			// deleting the Tenant still cleans this Secret up.
 			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion:         "sentry.io/v1alpha1",
+				APIVersion:         "cairnobs.io/v1alpha1",
 				Kind:               "Tenant",
 				Name:               tenantID,
 				UID:                tenantUID,

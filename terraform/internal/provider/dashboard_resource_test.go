@@ -13,7 +13,7 @@ import (
 // runner -- HashiCorp's standard pattern, one factory reused by every
 // acceptance test in this package.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"sentry": providerserver.NewProtocol6WithError(New("test")()),
+	"cairnobs": providerserver.NewProtocol6WithError(New("test")()),
 }
 
 // The acceptance test below is gated the same way every other live-
@@ -32,49 +32,49 @@ func TestAccDashboardResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint = "http://localhost:8080"
 }
 
-resource "sentry_dashboard" "test" {
+resource "cairnobs_dashboard" "test" {
   name        = "Acceptance Test Dashboard"
   description = "created by TestAccDashboardResource_basic"
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("sentry_dashboard.test", "name", "Acceptance Test Dashboard"),
-					resource.TestCheckResourceAttr("sentry_dashboard.test", "description", "created by TestAccDashboardResource_basic"),
-					resource.TestCheckResourceAttrSet("sentry_dashboard.test", "id"),
-					resource.TestCheckResourceAttrSet("sentry_dashboard.test", "tenant_id"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard.test", "name", "Acceptance Test Dashboard"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard.test", "description", "created by TestAccDashboardResource_basic"),
+					resource.TestCheckResourceAttrSet("cairnobs_dashboard.test", "id"),
+					resource.TestCheckResourceAttrSet("cairnobs_dashboard.test", "tenant_id"),
 					// Left unset in config -- must come back as the
 					// server's own defaults (store.go: "-1h"/"now"), not
 					// an empty string, proving the Optional+Computed
 					// schema round-trips the server's default rather
 					// than fighting it with a Terraform-side one.
-					resource.TestCheckResourceAttr("sentry_dashboard.test", "default_earliest", "-1h"),
-					resource.TestCheckResourceAttr("sentry_dashboard.test", "default_latest", "now"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard.test", "default_earliest", "-1h"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard.test", "default_latest", "now"),
 				),
 			},
 			{
 				// Update: name change should apply in place, not
 				// replace (no RequiresReplace plan modifier on name).
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint = "http://localhost:8080"
 }
 
-resource "sentry_dashboard" "test" {
+resource "cairnobs_dashboard" "test" {
   name        = "Renamed Dashboard"
   description = "created by TestAccDashboardResource_basic"
 }
 `,
-				Check: resource.TestCheckResourceAttr("sentry_dashboard.test", "name", "Renamed Dashboard"),
+				Check: resource.TestCheckResourceAttr("cairnobs_dashboard.test", "name", "Renamed Dashboard"),
 			},
 			{
 				// Import: re-reads by ID alone and must match what's in
 				// state, proving Read()'s server round trip agrees with
 				// what Create()/Update() last wrote.
-				ResourceName:      "sentry_dashboard.test",
+				ResourceName:      "cairnobs_dashboard.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},

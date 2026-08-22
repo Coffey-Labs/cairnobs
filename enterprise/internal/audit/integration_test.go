@@ -7,7 +7,7 @@
 //	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
 //	  -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
-//	  -e AUDIT_TEST_ADMIN_PASSWORD=sentry-dev-only \
+//	  -e AUDIT_TEST_ADMIN_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./internal/audit/... -v
 package audit
 
@@ -23,9 +23,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/ai/aiapi"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/queryapi"
+	"github.com/cairnobs/cairnobs/api/ai/aiapi"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/queryapi"
 )
 
 func testPool(t *testing.T, user, password string) *pgxpool.Pool {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sentry/sentry/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
 )
 
 // pagerDutyPayload is PagerDuty's Events API v2 shape. routing_key comes
@@ -50,7 +50,7 @@ func buildPagerDutyPayload(target notifystore.Target, event Event) ([]byte, erro
 		DedupKey:    event.RuleID,
 		Payload: pagerDutyEventPayload{
 			Summary:  summary,
-			Source:   "sentry",
+			Source:   "cairnobs",
 			Severity: severity,
 		},
 	})

@@ -10,8 +10,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/queryapi"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/queryapi"
 )
 
 // QueryAPILogger implements queryapi.AuditLogger by translating its

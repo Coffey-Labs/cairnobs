@@ -26,10 +26,10 @@ func newDashboardPanelResource() resource.Resource {
 	return &dashboardPanelResource{}
 }
 
-// dashboardPanelResource implements sentry_dashboard_panel against
+// dashboardPanelResource implements cairnobs_dashboard_panel against
 // api/dashboards.Handler's POST/PUT/DELETE
 // /dashboards/{id}/panels[/{panelId}] endpoints -- a genuinely separate
-// resource from sentry_dashboard (own id, own lifecycle, own endpoints),
+// resource from cairnobs_dashboard (own id, own lifecycle, own endpoints),
 // not a nested block on the dashboard resource. That split matches the
 // API's own shape (a panel is created/updated/deleted independently of
 // its parent dashboard, never by rewriting the dashboard's whole panel
@@ -38,7 +38,7 @@ func newDashboardPanelResource() resource.Resource {
 // panel to be rewritten on any single panel's change, hiding
 // fine-grained diffs a separate resource shows naturally.
 //
-// Unlike sentry_alert_rule/sentry_notification_target, this resource
+// Unlike cairnobs_alert_rule/cairnobs_notification_target, this resource
 // supports a real in-place Update -- api/dashboards.Handler actually has
 // a PUT /dashboards/{id}/panels/{panelId}. Only dashboard_id forces a
 // replace: UpdatePanel's SQL matches WHERE id = $panelID AND
@@ -76,7 +76,7 @@ func (r *dashboardPanelResource) Metadata(_ context.Context, req resource.Metada
 
 func (r *dashboardPanelResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "A panel on a Sentry dashboard, managed independently of the sentry_dashboard it belongs to.",
+		Description: "A panel on a Cairn OBS dashboard, managed independently of the cairnobs_dashboard it belongs to.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:      true,
@@ -86,7 +86,7 @@ func (r *dashboardPanelResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"dashboard_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Description:   "ID of the sentry_dashboard this panel belongs to. Forces replacement on change -- there is no API operation to move a panel between dashboards, see this resource's Go doc comment.",
+				Description:   "ID of the cairnobs_dashboard this panel belongs to. Forces replacement on change -- there is no API operation to move a panel between dashboards, see this resource's Go doc comment.",
 			},
 			"title": schema.StringAttribute{
 				Optional: true,
@@ -101,7 +101,7 @@ func (r *dashboardPanelResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional:    true,
 				Computed:    true,
 				Default:     stringdefault.StaticString(""),
-				Description: `"" (auto-detect) or "spl" -- never "sql", the API rejects that for panels specifically (unlike sentry_alert_rule's query_language, which accepts it).`,
+				Description: `"" (auto-detect) or "spl" -- never "sql", the API rejects that for panels specifically (unlike cairnobs_alert_rule's query_language, which accepts it).`,
 			},
 			"viz_type": schema.StringAttribute{
 				Required:    true,

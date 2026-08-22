@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sentry/sentry/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
 )
 
 // Client implements provider.Provider against one Ollama server and one

@@ -1,11 +1,11 @@
-// Command terraform-provider-sentry is Sentry's Terraform provider --
-// CLAUDE.md names it a first-class deliverable alongside sentryctl
+// Command terraform-provider-cairnobs is Cairn OBS's Terraform provider --
+// CLAUDE.md names it a first-class deliverable alongside cairnobsctl
 // ("CLI and Terraform provider are first-class, not afterthoughts"),
 // but this is the first phase to actually build any of it.
 //
 // Scoped deliberately narrow to start: one resource
-// (internal/provider.dashboardResource, sentry_dashboard), reusing the
-// exact same JSON contract cli/cmd/sentryctl's "apply" subcommand and
+// (internal/provider.dashboardResource, cairnobs_dashboard), reusing the
+// exact same JSON contract cli/cmd/cairnobsctl's "apply" subcommand and
 // web's dashboard export button already use against
 // api/dashboards.Handler -- "one JSON contract, multiple callers" is a
 // design decision made back in Phase 3 (see cli/README.md), this
@@ -21,7 +21,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/sentry/sentry/terraform/internal/provider"
+	"github.com/cairnobs/cairnobs/terraform/internal/provider"
 )
 
 // version is overridden at build time via -ldflags, same convention
@@ -41,7 +41,7 @@ func main() {
 		// required by the protocol even before actual registry
 		// publication, since local dev overrides
 		// (~/.terraformrc dev_overrides) key on this same address.
-		Address: "registry.terraform.io/sentry/sentry",
+		Address: "registry.terraform.io/cairnobs/cairnobs",
 		Debug:   debug,
 	})
 	if err != nil {

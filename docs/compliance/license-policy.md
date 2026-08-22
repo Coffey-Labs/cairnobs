@@ -97,7 +97,7 @@ this project uses it. **Decision recorded 2026-08-16: accept as-is** —
 see the audit report's Redpanda section for the full reasoning, the
 other two remediation options that were considered and not chosen, and
 the condition under which this decision should be revisited (an
-official hosted/managed Sentry offering). A future change to Redpanda's
+official hosted/managed Cairn OBS offering). A future change to Redpanda's
 license, or to this project's own redistribution posture, should trigger
 re-review, not silently ride on this entry.
 

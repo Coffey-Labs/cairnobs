@@ -7,7 +7,7 @@
 
 export type Density = 'comfortable' | 'compact';
 
-const STORAGE_KEY = 'sentry.density';
+const STORAGE_KEY = 'cairnobs.density';
 
 function readStored(): Density {
 	if (typeof localStorage === 'undefined') return 'comfortable';

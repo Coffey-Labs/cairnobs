@@ -1,4 +1,4 @@
-module github.com/sentry/sentry/proto
+module github.com/cairnobs/cairnobs/proto
 
 go 1.25.0
 

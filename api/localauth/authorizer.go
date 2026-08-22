@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // sessionStore is the narrow interface Authorizer depends on -- *Store
@@ -19,7 +19,7 @@ type sessionStore interface {
 // needs to know about implicitly (via credentials: 'include', not by
 // name -- the browser handles the cookie, JS never reads it since it's
 // HttpOnly).
-const sessionCookieName = "sentry_local_session"
+const sessionCookieName = "cairnobs_local_session"
 
 // Authorizer implements api/authz.Authorizer against local_sessions --
 // wiring a non-nil *Authorizer into api/cmd/api/main.go's authorizer
@@ -37,7 +37,7 @@ func NewAuthorizer(store sessionStore) *Authorizer {
 
 var errNoCredential = errors.New("localauth: no session credential presented")
 
-// Authorize checks Authorization: Bearer first (sentryctl and other
+// Authorize checks Authorization: Bearer first (cairnobsctl and other
 // non-browser callers), then the session cookie (the web UI) -- same
 // precedence authz.HTTPAuthorizer's caller-side forwarding implies,
 // and the same reason POST /auth/login's response body returns the raw

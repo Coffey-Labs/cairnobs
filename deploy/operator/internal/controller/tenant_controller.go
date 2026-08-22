@@ -35,7 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sentryv1alpha1 "github.com/sentry/sentry/deploy/operator/api/v1alpha1"
+	cairnobsv1alpha1 "github.com/cairnobs/cairnobs/deploy/operator/api/v1alpha1"
 )
 
 // TenantReconciler reconciles a Tenant object.
@@ -44,11 +44,11 @@ type TenantReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=sentry.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=sentry.io,resources=tenants/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=cairnobs.io,resources=tenants,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=cairnobs.io,resources=tenants/status,verbs=get;update;patch
 
 func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var tenant sentryv1alpha1.Tenant
+	var tenant cairnobsv1alpha1.Tenant
 	if err := r.Get(ctx, req.NamespacedName, &tenant); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Deleted -- the owned Secret -provision-tenant created (if
@@ -74,19 +74,19 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	reason, message := "AwaitingProvisioning", "waiting for enterprise-api -provision-tenant to provision ClickHouse for this tenant"
 	switch {
 	case tenant.Spec.Suspended:
-		tenant.Status.Phase = sentryv1alpha1.PhaseSuspended
+		tenant.Status.Phase = cairnobsv1alpha1.PhaseSuspended
 		reason, message = "Suspended", "tenant is suspended (spec.suspended=true)"
 	case provisioned:
-		tenant.Status.Phase = sentryv1alpha1.PhaseActive
+		tenant.Status.Phase = cairnobsv1alpha1.PhaseActive
 		condStatus = metav1.ConditionTrue
 		reason, message = "Provisioned", fmt.Sprintf("ClickHouse database %q is provisioned", tenant.Status.ClickHouseDatabaseName)
 	default:
-		tenant.Status.Phase = sentryv1alpha1.PhaseProvisioning
+		tenant.Status.Phase = cairnobsv1alpha1.PhaseProvisioning
 	}
 
 	tenant.Status.ObservedGeneration = tenant.Generation
 	meta.SetStatusCondition(&tenant.Status.Conditions, metav1.Condition{
-		Type:               sentryv1alpha1.ConditionReady,
+		Type:               cairnobsv1alpha1.ConditionReady,
 		Status:             condStatus,
 		Reason:             reason,
 		Message:            message,
@@ -102,6 +102,6 @@ func (r *TenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 func (r *TenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&sentryv1alpha1.Tenant{}).
+		For(&cairnobsv1alpha1.Tenant{}).
 		Complete(r)
 }

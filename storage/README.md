@@ -1,6 +1,6 @@
 # storage
 
-ClickHouse schema and migration tooling for Sentry's analytical store.
+ClickHouse schema and migration tooling for Cairn OBS's analytical store.
 
 ## Schema
 
@@ -79,7 +79,7 @@ split multi-statement files — keep each migration to a single statement.
 
 ```sh
 docker compose up -d                          # starts a standalone ClickHouse for local work
-CLICKHOUSE_PASSWORD=sentry-dev-only ./migrate.sh   # applies migrations/*.sql
+CLICKHOUSE_PASSWORD=cairnobs-dev-only ./migrate.sh   # applies migrations/*.sql
 ```
 
 `CLICKHOUSE_PASSWORD` here has to match whatever `docker-compose.yml` set

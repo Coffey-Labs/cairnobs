@@ -1,20 +1,20 @@
-# sentryctl
+# cairnobsctl
 
-Sentry's control CLI.
+Cairn OBS's control CLI.
 
 ```sh
-sentryctl ping                              # checks http://localhost:8080/healthz
-sentryctl ping --api http://api.internal:8080
-SENTRYCTL_API_URL=http://api.internal:8080 sentryctl ping
+cairnobsctl ping                              # checks http://localhost:8080/healthz
+cairnobsctl ping --api http://api.internal:8080
+CAIRNOBSCTL_API_URL=http://api.internal:8080 cairnobsctl ping
 ```
 
 Exits 0 and prints `ok` if `/api`'s `/healthz` responds 200; exits 1 with an
 error on `stderr` otherwise.
 
 ```sh
-sentryctl query 'service=api | where status>=500 | stats count by host'
-sentryctl query 'SELECT * FROM logs LIMIT 10' --language sql
-sentryctl query 'message:"connection refused"' --json
+cairnobsctl query 'service=api | where status>=500 | stats count by host'
+cairnobsctl query 'SELECT * FROM logs LIMIT 10' --language sql
+cairnobsctl query 'message:"connection refused"' --json
 ```
 
 Quote the query in your shell — pipe syntax uses `|`, which your shell
@@ -27,17 +27,17 @@ Prints a table by default (stdlib `text/tabwriter`, no new dependency);
 `--json` prints the raw `{columns, rows}` response instead.
 
 ```sh
-sentryctl dashboards list
-sentryctl dashboards get <id>
-sentryctl dashboards apply dashboard.json    # imports a dashboard exported via the web UI's "Export JSON" button
+cairnobsctl dashboards list
+cairnobsctl dashboards get <id>
+cairnobsctl dashboards apply dashboard.json    # imports a dashboard exported via the web UI's "Export JSON" button
 
-sentryctl dashboards permissions list <dashboard-id>
-sentryctl dashboards permissions grant <dashboard-id> <user-id> viewer|editor
-sentryctl dashboards permissions revoke <dashboard-id> <user-id>
+cairnobsctl dashboards permissions list <dashboard-id>
+cairnobsctl dashboards permissions grant <dashboard-id> <user-id> viewer|editor
+cairnobsctl dashboards permissions revoke <dashboard-id> <user-id>
 
-sentryctl alerts list
-sentryctl alerts get <id>
-sentryctl alerts apply rule.json             # creates a rule from a JSON file shaped like POST /rules's body
+cairnobsctl alerts list
+cairnobsctl alerts get <id>
+cairnobsctl alerts apply rule.json             # creates a rule from a JSON file shaped like POST /rules's body
 ```
 
 `dashboards permissions` is Phase 4's per-resource dashboard grant
@@ -51,7 +51,7 @@ CLI bug.
 
 `dashboards` talks to `/api` (`--api`, same override as `query`/`ping`).
 `alerts` talks to `/alerting`, a separate service with its own base URL
-(`--alerting-api`, or `$SENTRYCTL_ALERTING_API_URL`, default
+(`--alerting-api`, or `$CAIRNOBSCTL_ALERTING_API_URL`, default
 `http://localhost:8081`) — see `/docs/phase-3-alerting-design.md`'s
 component boundary for why alerting isn't just another `/api` route.
 `apply` in both cases sends the file's JSON as-is to the corresponding
@@ -78,5 +78,5 @@ go test ./...
 ```
 
 ```sh
-docker build -f Dockerfile -t sentryctl .   # context is cli/, not the repo root
+docker build -f Dockerfile -t cairnobsctl .   # context is cli/, not the repo root
 ```

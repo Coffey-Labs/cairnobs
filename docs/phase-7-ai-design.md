@@ -63,7 +63,7 @@ Design choices worth calling out explicitly:
 | Throughput under concurrency | Adequate for one-user-at-a-time interactive use; not built for high concurrent QPS | Purpose-built for high-throughput serving (continuous batching, PagedAttention) |
 | Fit for this project | Matches `docker-compose for local/homelab` (CLAUDE.md's stated deployment target) — most self-hosters won't have a dedicated inference GPU | Fits a provisioned-GPU SaaS inference tier — not this phase's target (cloud is the opt-in secondary path, not primary) |
 
-Sentry's actual AI workload shape is one interactive query bar per user
+Cairn OBS's actual AI workload shape is one interactive query bar per user
 at a time, not a high-QPS inference-serving problem — vLLM's real
 advantage (batched throughput at scale) isn't the bottleneck this phase
 has. Ollama's lower hardware floor and much simpler operational story

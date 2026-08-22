@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // fakeStore implements both store (handler.go) and sessionStore

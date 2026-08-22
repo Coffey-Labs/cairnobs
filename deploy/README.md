@@ -1,14 +1,14 @@
 # deploy
 
-Kubernetes deployment for Sentry, added in Phase 4 (`/deploy` was
+Kubernetes deployment for Cairn OBS, added in Phase 4 (`/deploy` was
 deliberately stubbed through Phase 3 -- see `/CLAUDE.md`'s Phase 3
 non-goals). Two pieces:
 
 - `operator/` -- a small Go controller-runtime Operator managing one CRD
   (`Tenant`). See `operator/README.md`.
-- `helm/sentry/` -- a Helm chart covering every `docker-compose.yml`
+- `helm/cairnobs/` -- a Helm chart covering every `docker-compose.yml`
   service, plus the operator and `Tenant` CRs when
-  `enterprise.enabled=true`. See `helm/sentry/README.md`.
+  `enterprise.enabled=true`. See `helm/cairnobs/README.md`.
 
 ## What "multi-tenant-aware" means here, precisely
 
@@ -29,7 +29,7 @@ add:
   (`values.tenants`) alongside the rest of the stack, and swaps `api`'s
   Deployment for `enterprise-api`'s whenever `enterprise.enabled` is
   true, so which query binary actually serves traffic is no longer a
-  separately-forgettable decision (see `helm/sentry/README.md`'s "`api`
+  separately-forgettable decision (see `helm/cairnobs/README.md`'s "`api`
   vs `enterprise-api`" section).
 
 **Now unified, in a deliberately lightweight way**: `enterprise-api
@@ -65,7 +65,7 @@ gap, which was two *disconnected* sources of truth, not two actors).
 `kubectl`/`helm` were installed without root (static binaries into
 `~/.local/bin`), a real local cluster was created, every image this
 chart references was built and loaded into it, and the full two-tenant
-walkthrough (`helm/sentry/README.md`) was run end to end -- both tenants
+walkthrough (`helm/cairnobs/README.md`) was run end to end -- both tenants
 reached `Tenant.status.phase: Active` with real generated ClickHouse
 credentials in their Secrets. See `/docs/phase-4-runbook.md` §7 for the
 exact commands and the two real chart bugs this run found and fixed
@@ -88,16 +88,16 @@ true, kept as additional evidence, not superseded by the above):
   `k8s.io/client-go`'s fake dynamic and typed clientsets -- real client
   library, fake transport, same shape as `enterprise/internal/
   searchclient`'s in-process gRPC tests. What this doesn't prove: that
-  `sentry.io/v1alpha1.Tenant`'s real CRD schema (a real apiserver's
+  `cairnobs.io/v1alpha1.Tenant`'s real CRD schema (a real apiserver's
   OpenAPI validation) accepts exactly what this package writes -- the
   `helm template`/kubeconform check below covers the schema shape, not
   a live write against it.
-- `deploy/operator/config/crd/sentry.io_tenants.yaml`: parsed with
+- `deploy/operator/config/crd/cairnobs.io_tenants.yaml`: parsed with
   `sigs.k8s.io/yaml` + strict-unmarshaled into the real
   `k8s.io/apiextensions-apiserver` `CustomResourceDefinition` Go type --
   catches YAML syntax errors and structural mistakes, not a live-cluster
   admission check.
-- `deploy/helm/sentry`: `helm lint` passes; `helm template` renders
+- `deploy/helm/cairnobs`: `helm lint` passes; `helm template` renders
   cleanly under both default values and a `enterprise.enabled: true` +
   two-tenant override; the rendered output was checked with `kubeconform
   -strict` against the real Kubernetes 1.31 OpenAPI schema for every
@@ -107,7 +107,7 @@ true, kept as additional evidence, not superseded by the above):
   together on a live cluster (Job/StatefulSet startup ordering, PVC
   provisioning, actual pod scheduling). Specifically confirmed by
   parsing the rendered YAML (not just eyeballing it): exactly one
-  `Deployment`/`Service` named `sentry-api` renders in each mode, with
+  `Deployment`/`Service` named `cairnobs-api` renders in each mode, with
   the `enterprise.enabled: true` render using the `enterprise-api` image
   and the default render using plain `api`'s. Also confirmed for the
   `tenantOperator.enabled: true` case: `enterprise-api` gets its own

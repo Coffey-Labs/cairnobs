@@ -11,6 +11,7 @@
 	} from '$lib/api';
 	import { getTheme, setTheme, type Theme } from '$lib/theme.svelte';
 	import { getDensity, toggleDensity } from '$lib/density.svelte';
+	import logo from '$lib/assets/logo-horizontal-dark.svg';
 
 	let {
 		onOpenPalette,
@@ -19,7 +20,7 @@
 	}: { onOpenPalette: () => void; mobileOpen?: boolean; onCloseMobile?: () => void } = $props();
 
 	const baseNavItems = [
-		{ href: '/', label: 'Search', icon: '◇' },
+		{ href: '/search', label: 'Search', icon: '◇' },
 		{ href: '/dashboards', label: 'Dashboards', icon: '▤' },
 		{ href: '/alerts', label: 'Alerts', icon: '▲' },
 		{ href: '/data-sources', label: 'Data Sources', icon: '◈' },
@@ -82,8 +83,9 @@
 
 <aside class="sidebar" class:mobile-open={mobileOpen}>
 	<div class="brand">
-		<span class="mark" aria-hidden="true">◆</span>
-		<span class="name">Sentry</span>
+		<a href="/" class="brand-link" onclick={onCloseMobile}>
+			<img src={logo} alt="Cairn OBS" class="brand-logo" />
+		</a>
 		<button type="button" class="close-mobile" onclick={onCloseMobile} aria-label="Close menu">✕</button>
 	</div>
 
@@ -166,12 +168,13 @@
 		gap: var(--space-2);
 		padding: 0 var(--space-2);
 	}
-	.mark {
-		color: var(--color-accent);
+	.brand-link {
+		display: flex;
+		align-items: center;
 	}
-	.name {
-		font-weight: var(--font-weight-bold);
-		font-size: var(--text-md);
+	.brand-logo {
+		height: 2.5rem;
+		width: auto;
 	}
 	.close-mobile {
 		display: none;

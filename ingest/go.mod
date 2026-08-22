@@ -1,14 +1,14 @@
-module github.com/sentry/sentry/ingest
+module github.com/cairnobs/cairnobs/ingest
 
 go 1.25.0
 
-replace github.com/sentry/sentry/proto => ../proto
+replace github.com/cairnobs/cairnobs/proto => ../proto
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/google/uuid v1.6.0
 	github.com/segmentio/kafka-go v0.4.51
-	github.com/sentry/sentry/proto v0.0.0-00010101000000-000000000000
+	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
 	golang.org/x/sync v0.22.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12

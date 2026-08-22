@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/ingest/internal/grpcserver"
+	"github.com/cairnobs/cairnobs/ingest/internal/grpcserver"
 )
 
 // defaultTenantID is used when no TenantResolver is configured (empty

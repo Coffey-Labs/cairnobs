@@ -14,23 +14,23 @@ func TestAccDashboardDataSource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint = "http://localhost:8080"
 }
 
-resource "sentry_dashboard" "test" {
+resource "cairnobs_dashboard" "test" {
   name        = "Data Source Test Dashboard"
   description = "created by TestAccDashboardDataSource_basic"
 }
 
-data "sentry_dashboard" "test" {
-  id = sentry_dashboard.test.id
+data "cairnobs_dashboard" "test" {
+  id = cairnobs_dashboard.test.id
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair("data.sentry_dashboard.test", "name", "sentry_dashboard.test", "name"),
-					resource.TestCheckResourceAttrPair("data.sentry_dashboard.test", "tenant_id", "sentry_dashboard.test", "tenant_id"),
-					resource.TestCheckResourceAttrPair("data.sentry_dashboard.test", "default_earliest", "sentry_dashboard.test", "default_earliest"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_dashboard.test", "name", "cairnobs_dashboard.test", "name"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_dashboard.test", "tenant_id", "cairnobs_dashboard.test", "tenant_id"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_dashboard.test", "default_earliest", "cairnobs_dashboard.test", "default_earliest"),
 				),
 			},
 		},

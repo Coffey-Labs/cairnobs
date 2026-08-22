@@ -14,10 +14,10 @@ import (
 // client is a thin HTTP client against api/dashboards.Handler's REST
 // endpoints -- deliberately hand-rolled, not generated from an OpenAPI
 // spec (none exists in this repo yet), the same "boring, well-
-// understood" posture cli/cmd/sentryctl's own httpclient.go already
+// understood" posture cli/cmd/cairnobsctl's own httpclient.go already
 // takes against the same API. Kept separate from that package (not
 // reused directly) since this one needs typed request/response
-// marshaling for Terraform's plan/state model, where sentryctl only
+// marshaling for Terraform's plan/state model, where cairnobsctl only
 // ever needs to pretty-print whatever JSON comes back.
 type client struct {
 	baseURL string
@@ -40,7 +40,7 @@ type apiError struct {
 }
 
 func (e *apiError) Error() string {
-	return fmt.Sprintf("sentry api: request failed with status %d: %s", e.StatusCode, e.Message)
+	return fmt.Sprintf("cairnobs api: request failed with status %d: %s", e.StatusCode, e.Message)
 }
 
 func isNotFound(err error) bool {

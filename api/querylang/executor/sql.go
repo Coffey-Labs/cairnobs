@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/querylang/ir"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ir"
 )
 
 // defaultRowLimit is the safety net when a raw-row query has neither an

@@ -1,7 +1,7 @@
 // Package saml wires crewjam/saml into a small SP (service provider)
 // client: build the login redirect, and validate/parse an incoming
 // assertion. Deliberately not using crewjam's samlsp.Middleware, which
-// owns its own session/cookie handling -- Sentry's session concept lives
+// owns its own session/cookie handling -- Cairn OBS's session concept lives
 // in internal/session, one layer up, so this package only does the SAML
 // protocol mechanics (XML signing/parsing), per the explicit instruction
 // not to hand-roll that crypto.
@@ -23,7 +23,7 @@ import (
 )
 
 type Config struct {
-	// EntityID identifies Sentry to the IdP, conventionally Sentry's own
+	// EntityID identifies Cairn OBS to the IdP, conventionally Cairn OBS's own
 	// metadata URL.
 	EntityID string
 	// ACSURL is where the IdP redirects the browser back to with the
@@ -109,7 +109,7 @@ func (s *ServiceProvider) LoginURL(relayState string) (redirectURL, requestID st
 	return redirect.String(), req.ID, nil
 }
 
-// Claims is the subset of an assertion Sentry uses -- same "extend
+// Claims is the subset of an assertion Cairn OBS uses -- same "extend
 // deliberately" reasoning as oidc.Claims.
 type Claims struct {
 	NameID string
@@ -117,7 +117,7 @@ type Claims struct {
 }
 
 // ParseResponse validates an incoming SAML response (signature, issuer,
-// audience, timing) and extracts the fields Sentry cares about. This is
+// audience, timing) and extracts the fields Cairn OBS cares about. This is
 // the step that actually establishes trust -- crewjam/saml's
 // ParseResponse does the XML signature verification, not this package.
 func (s *ServiceProvider) ParseResponse(r *http.Request, possibleRequestIDs []string) (*Claims, error) {
@@ -186,7 +186,7 @@ func selfSignedCert() (*tls.Certificate, error) {
 	}
 	template := x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "sentry-saml-sp-dev"},
+		Subject:               pkix.Name{CommonName: "cairnobs-saml-sp-dev"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * time.Hour * 365),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/querylang/ast"
-	"github.com/sentry/sentry/api/internal/querylang/ir"
-	"github.com/sentry/sentry/api/internal/querylang/parser"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ast"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ir"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/parser"
 )
 
 // Language selects which syntax a query is written in.

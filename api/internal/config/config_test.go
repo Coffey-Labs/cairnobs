@@ -33,7 +33,7 @@ func TestLoadInvalidTimeoutErrors(t *testing.T) {
 
 // TestDevCredentialWarnings is the regression test for the
 // security-audit finding that docker-compose.yml's hardcoded
-// "sentry-dev-only" password has no runtime fail-safe if an operator
+// "cairnobs-dev-only" password has no runtime fail-safe if an operator
 // forgets to override it for a real deployment.
 func TestDevCredentialWarnings(t *testing.T) {
 	if got := (Config{}).DevCredentialWarnings(); len(got) != 0 {

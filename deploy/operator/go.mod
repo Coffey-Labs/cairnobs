@@ -1,4 +1,4 @@
-module github.com/sentry/sentry/deploy/operator
+module github.com/cairnobs/cairnobs/deploy/operator
 
 go 1.25.0
 

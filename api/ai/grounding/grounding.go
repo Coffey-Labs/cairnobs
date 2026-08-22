@@ -25,8 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sentry/sentry/api/ai/provider"
-	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
 )
 
 // staticFields are always present regardless of what's actually been

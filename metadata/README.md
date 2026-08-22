@@ -1,6 +1,6 @@
 # metadata
 
-PostgreSQL schema and migration tooling for Sentry's control-plane
+PostgreSQL schema and migration tooling for Cairn OBS's control-plane
 config: dashboards, alert rules, and everything else that isn't log data.
 See `/docs/phase-3-dashboard-design.md` and
 `/docs/phase-3-alerting-design.md` for why this is a separate database
@@ -78,7 +78,7 @@ unlike ClickHouse's HTTP interface).
 
 ```sh
 docker compose up -d                                   # starts a standalone Postgres for local work
-POSTGRES_PASSWORD=sentry-dev-only ./migrate.sh          # applies migrations/*.sql
+POSTGRES_PASSWORD=cairnobs-dev-only ./migrate.sh          # applies migrations/*.sql
 ```
 
 Environment variables `migrate.sh` reads (all optional except

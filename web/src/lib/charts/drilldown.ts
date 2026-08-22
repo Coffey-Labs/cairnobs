@@ -64,5 +64,5 @@ export function drillDownUrl(target: DrillDownTarget): string {
 	const params = new URLSearchParams({ q: target.query });
 	if (target.earliest) params.set('earliest', target.earliest);
 	if (target.latest) params.set('latest', target.latest);
-	return `/?${params.toString()}`;
+	return `/search?${params.toString()}`;
 }

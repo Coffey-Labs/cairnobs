@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/querylang/ir"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ir"
 )
 
 func mustParseTime(t *testing.T, s string) time.Time {

@@ -42,23 +42,23 @@ import (
 	chdriver "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/agents"
-	"github.com/sentry/sentry/api/ai/aiapi"
-	"github.com/sentry/sentry/api/ai/provider/ollama"
-	"github.com/sentry/sentry/api/ai/router"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/dashboards"
-	"github.com/sentry/sentry/api/httpserver"
-	"github.com/sentry/sentry/api/queryapi"
+	"github.com/cairnobs/cairnobs/api/agents"
+	"github.com/cairnobs/cairnobs/api/ai/aiapi"
+	"github.com/cairnobs/cairnobs/api/ai/provider/ollama"
+	"github.com/cairnobs/cairnobs/api/ai/router"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/dashboards"
+	"github.com/cairnobs/cairnobs/api/httpserver"
+	"github.com/cairnobs/cairnobs/api/queryapi"
 
-	"github.com/sentry/sentry/enterprise/internal/apiconfig"
-	"github.com/sentry/sentry/enterprise/internal/audit"
-	"github.com/sentry/sentry/enterprise/internal/chrunner"
-	"github.com/sentry/sentry/enterprise/internal/groundingregistry"
-	"github.com/sentry/sentry/enterprise/internal/rbacstore"
-	"github.com/sentry/sentry/enterprise/internal/searchclient"
-	"github.com/sentry/sentry/enterprise/internal/tenantcrd"
-	"github.com/sentry/sentry/enterprise/internal/tenantprovision"
+	"github.com/cairnobs/cairnobs/enterprise/internal/apiconfig"
+	"github.com/cairnobs/cairnobs/enterprise/internal/audit"
+	"github.com/cairnobs/cairnobs/enterprise/internal/chrunner"
+	"github.com/cairnobs/cairnobs/enterprise/internal/groundingregistry"
+	"github.com/cairnobs/cairnobs/enterprise/internal/rbacstore"
+	"github.com/cairnobs/cairnobs/enterprise/internal/searchclient"
+	"github.com/cairnobs/cairnobs/enterprise/internal/tenantcrd"
+	"github.com/cairnobs/cairnobs/enterprise/internal/tenantprovision"
 )
 
 // groundingRefreshInterval matches api/cmd/api's own constant of the
@@ -295,7 +295,7 @@ func runProvisionTenant(ctx context.Context, logger *slog.Logger, cfg apiconfig.
 			logger.Error("tenant is active but has no data source row -- inconsistent state, refusing", "tenant_id", tenantID)
 			return 1
 		}
-		dataSource, err = rbac.CreateDataSource(ctx, tenantID, "default", tenantID, "/var/lib/sentry-search/tenants/"+tenantID)
+		dataSource, err = rbac.CreateDataSource(ctx, tenantID, "default", tenantID, "/var/lib/cairnobs-search/tenants/"+tenantID)
 		if err != nil {
 			logger.Error("creating data source", "error", err)
 			return 1

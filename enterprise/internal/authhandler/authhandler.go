@@ -25,12 +25,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sentry/sentry/enterprise/internal/session"
+	"github.com/cairnobs/cairnobs/enterprise/internal/session"
 )
 
 // SessionCookieName matches the name api/authz.HTTPAuthorizer's
-// tests and doc comments already assume ("sentry_session").
-const SessionCookieName = "sentry_session"
+// tests and doc comments already assume ("cairnobs_session").
+const SessionCookieName = "cairnobs_session"
 
 // Features reports which SSO mechanisms are configured -- the response
 // shape /docs/phase-4-rbac-design.md's "Web UI boundary" section commits

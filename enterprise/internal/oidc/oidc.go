@@ -35,7 +35,7 @@ type Provider struct {
 	oauth2   oauth2.Config
 }
 
-// Claims is the subset of ID token claims Sentry actually uses. Extend
+// Claims is the subset of ID token claims Cairn OBS actually uses. Extend
 // deliberately, not by passing the raw claim map further up the stack --
 // every field added here is a field internal/session has to decide how
 // to trust.

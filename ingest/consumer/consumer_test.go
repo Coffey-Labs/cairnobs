@@ -12,7 +12,7 @@ import (
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/protobuf/proto"
 
-	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
+	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
 
 type fakeReader struct {

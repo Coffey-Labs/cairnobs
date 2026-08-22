@@ -1,9 +1,9 @@
-// Command alerting is Sentry's alert rule evaluator and delivery
+// Command alerting is Cairn OBS's alert rule evaluator and delivery
 // service: rule/target CRUD, the ticker-driven ok/pending/firing
 // evaluator, and the webhook/Slack/PagerDuty delivery worker. See
 // /docs/phase-3-alerting-design.md. Never talks to ClickHouse/Tantivy
 // directly -- rule queries run through /api's POST /query
-// (internal/queryclient), same precedent sentryctl query and the web
+// (internal/queryclient), same precedent cairnobsctl query and the web
 // UI's dashboard panels already set.
 package main
 
@@ -21,15 +21,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/sentry/sentry/alerting/internal/config"
-	"github.com/sentry/sentry/alerting/internal/delivery"
-	"github.com/sentry/sentry/alerting/internal/evaluator"
-	"github.com/sentry/sentry/alerting/internal/httpapi"
-	"github.com/sentry/sentry/alerting/internal/httpserver"
-	"github.com/sentry/sentry/alerting/internal/notifystore"
-	"github.com/sentry/sentry/alerting/internal/queryclient"
-	"github.com/sentry/sentry/alerting/internal/rulestore"
-	"github.com/sentry/sentry/alerting/internal/sessioncheck"
+	"github.com/cairnobs/cairnobs/alerting/internal/config"
+	"github.com/cairnobs/cairnobs/alerting/internal/delivery"
+	"github.com/cairnobs/cairnobs/alerting/internal/evaluator"
+	"github.com/cairnobs/cairnobs/alerting/internal/httpapi"
+	"github.com/cairnobs/cairnobs/alerting/internal/httpserver"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/queryclient"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/sessioncheck"
 )
 
 func main() {

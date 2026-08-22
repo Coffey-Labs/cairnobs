@@ -3,7 +3,7 @@ package parser
 import (
 	"testing"
 
-	"github.com/sentry/sentry/api/internal/querylang/ast"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ast"
 )
 
 func TestParseSimpleFilter(t *testing.T) {

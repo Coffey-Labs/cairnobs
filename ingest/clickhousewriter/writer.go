@@ -17,8 +17,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/sentry/sentry/ingest/internal/normalize"
-	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
+	"github.com/cairnobs/cairnobs/ingest/internal/normalize"
+	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
 
 // Config is deliberately a local type, not ingest/internal/config.

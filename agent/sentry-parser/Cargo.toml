@@ -1,6 +1,0 @@
-[package]
-name = "sentry-parser"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Minimal RFC 5424 syslog parser with raw-passthrough fallback"

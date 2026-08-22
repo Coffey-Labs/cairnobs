@@ -1,0 +1,93 @@
+{{- if and .Values.enterprise.enabled .Values.tenantOperator.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-tenant-operator
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+---
+# ClusterRole, not Role: Tenant is cluster-scoped-CRD-but-namespaced-object
+# (see crds/cairnobs.io_tenants.yaml's scope: Namespaced), and this chart
+# doesn't assume it's the only namespace the operator might one day watch
+# -- narrowed to exactly the two resource types
+# deploy/operator/internal/controller/tenant_controller.go's
+# +kubebuilder:rbac markers name (tenants, tenants/status), not a
+# wildcard grant. No `secrets` permission -- this controller stopped
+# managing the ClickHouse credential Secret once enterprise-api
+# -provision-tenant took over creating it with real credentials (see
+# that controller's doc comment); see enterprise-api.yaml's own
+# ServiceAccount/Role for the `secrets` grant that binary needs instead.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-tenant-operator
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["cairnobs.io"]
+    resources: ["tenants"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["cairnobs.io"]
+    resources: ["tenants/status"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-tenant-operator
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-tenant-operator
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-tenant-operator
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-tenant-operator
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+    {{- include "cairnobs.selectorLabels" (list $ "tenant-operator") | nindent 4 }}
+spec:
+  # One replica -- see deploy/operator/cmd/tenant-operator/main.go's
+  # comment: no leader election yet, a second replica could
+  # double-generate a Secret.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cairnobs.selectorLabels" (list $ "tenant-operator") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cairnobs.selectorLabels" (list $ "tenant-operator") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-tenant-operator
+      containers:
+        - name: tenant-operator
+          image: "{{ .Values.tenantOperator.image.repository }}:{{ .Values.tenantOperator.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: 8080
+            - name: probes
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.tenantOperator.resources | nindent 12 }}
+{{- end }}

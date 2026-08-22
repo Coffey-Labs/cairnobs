@@ -34,8 +34,8 @@ npm run preview            # serve the static build locally to sanity-check it
 ```
 
 ```sh
-docker build -f Dockerfile -t sentry-web .   # context is web/, not the repo root
-docker run -p 3000:3000 sentry-web
+docker build -f Dockerfile -t cairnobs-web .   # context is web/, not the repo root
+docker run -p 3000:3000 cairnobs-web
 ```
 
 ## Tenant picker (Phase 4)
@@ -44,7 +44,7 @@ docker run -p 3000:3000 sentry-web
 clicking around the app -- `enterprise-auth`'s `internal/loginhandler`
 redirects a browser here after an SSO login resolves to more than one
 `tenant_memberships` row (see that package's doc comment), carrying a
-short-lived `sentry_pending_login` cookie instead of a real session. The
+short-lived `cairnobs_pending_login` cookie instead of a real session. The
 page calls `GET /auth/memberships` to list the choices, and
 `POST /auth/select-tenant` on a click, both via
 `fetch(..., {credentials: 'include'})` (`$lib/api.ts`'s

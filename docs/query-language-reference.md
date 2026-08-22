@@ -1,16 +1,16 @@
 # Query language reference
 
-Sentry has one query language for everything: filtering, free-text
+Cairn OBS has one query language for everything: filtering, free-text
 search, and aggregation, in a single query, against a single endpoint
-(`POST /query`), from a single query bar in the web UI or `sentryctl
+(`POST /query`), from a single query bar in the web UI or `cairnobsctl
 query` on the command line. You don't pick a "search mode" or a
-"reporting mode" first — you write one query, and Sentry figures out
+"reporting mode" first — you write one query, and Cairn OBS figures out
 which parts need ClickHouse, which parts need the full-text index, and
 combines them.
 
 If you already know Splunk's SPL, most of this will feel immediately
 familiar: a base search, piped through a sequence of processing stages.
-Sentry's language is a deliberately smaller subset — the operators
+Cairn OBS's language is a deliberately smaller subset — the operators
 people actually use day to day, not SPL's full surface area — plus raw
 SQL as an escape hatch for anything the pipe syntax doesn't (yet) cover.
 
@@ -67,7 +67,7 @@ timeout                              a single bare word
 message:"connection refused"         the same thing, explicit
 ```
 
-Free-text search is powered by Sentry's full-text index (Tantivy), which
+Free-text search is powered by Cairn OBS's full-text index (Tantivy), which
 supports phrase matching and wildcards:
 
 ```
@@ -92,7 +92,7 @@ what most people expect from a search bar:
 error timeout                        same as: error and timeout
 ```
 
-`or` works between free-text terms, and Sentry's full-text index handles
+`or` works between free-text terms, and Cairn OBS's full-text index handles
 it natively:
 
 ```
@@ -176,14 +176,14 @@ tail 50     last 50, chronologically
 
 ## Field mapping: what's a "real" column vs. an attribute
 
-Sentry's structured columns are `timestamp`, `host`, `service`,
+Cairn OBS's structured columns are `timestamp`, `host`, `service`,
 `severity`, `message`, and `record_id`. Anything else you reference by
 name — `status`, `latency_ms`, `winevt.event_id`, whatever your logs
 happen to carry — is looked up in the per-record attributes, which are
 always stored as text.
 
 This matters for comparisons: `status>=500` only makes sense as a number,
-so Sentry casts the attribute's text value to a number for you
+so Cairn OBS casts the attribute's text value to a number for you
 automatically when the value you're comparing against looks numeric.
 `status="unknown"` compares as text instead, since `"unknown"` isn't a
 number. You don't need to do anything differently — this happens based
@@ -212,7 +212,7 @@ directly, no pipe-syntax parsing involved:
 SELECT host, count(*) FROM logs WHERE service = 'api' GROUP BY host
 ```
 
-SELECT-only, single statement — Sentry allowlists this at the API level.
+SELECT-only, single statement — Cairn OBS allowlists this at the API level.
 Use this for anything the pipe syntax doesn't cover yet: window
 functions, `WITH` clauses, ClickHouse-specific functions, joins across
 other tables you've added, and so on. There's no performance penalty for
@@ -221,7 +221,7 @@ execution plan internally.
 
 ## Which syntax am I using?
 
-Sentry detects automatically: a query starting with `SELECT` runs as
+Cairn OBS detects automatically: a query starting with `SELECT` runs as
 SQL, anything else runs as the pipe syntax. This covers the overwhelming
 majority of real queries with no extra step. If you're writing a pipe
 query that happens to start with the literal word "select" as a search
@@ -237,7 +237,7 @@ detected next to the query box, with a dropdown to override it.
 
 ## Combining free-text search with aggregation
 
-This is the case that makes Sentry's query language more than "SQL with
+This is the case that makes Cairn OBS's query language more than "SQL with
 extra steps" — free text and aggregation, together, in one query:
 
 ```

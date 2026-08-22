@@ -11,8 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/sentry/sentry/alerting/internal/notifystore"
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 type ruleStore interface {

@@ -13,11 +13,11 @@
 			// $lib/density.ts; see those for the source of truth.
 			(function () {
 				try {
-					var theme = localStorage.getItem('sentry.theme');
+					var theme = localStorage.getItem('cairnobs.theme');
 					if (theme === 'dark' || theme === 'light') {
 						document.documentElement.setAttribute('data-theme', theme);
 					}
-					if (localStorage.getItem('sentry.density') === 'compact') {
+					if (localStorage.getItem('cairnobs.density') === 'compact') {
 						document.documentElement.classList.add('density-compact');
 					}
 				} catch (e) {

@@ -1,4 +1,4 @@
-module github.com/sentry/sentry/alerting
+module github.com/cairnobs/cairnobs/alerting
 
 go 1.25.0
 

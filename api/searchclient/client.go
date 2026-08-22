@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	searchv1 "github.com/sentry/sentry/proto/sentry/search/v1"
+	searchv1 "github.com/cairnobs/cairnobs/proto/sentry/search/v1"
 )
 
 type Client struct {

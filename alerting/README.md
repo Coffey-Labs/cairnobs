@@ -8,7 +8,7 @@ correctness properties this implementation follows exactly).
 ## Running
 
 ```sh
-POSTGRES_PASSWORD=sentry-dev-only API_QUERY_URL=http://localhost:8080 go run ./cmd/alerting
+POSTGRES_PASSWORD=cairnobs-dev-only API_QUERY_URL=http://localhost:8080 go run ./cmd/alerting
 ```
 
 Talks to the same `sentry_metadata` Postgres database as `/api`

@@ -38,9 +38,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/sentry/sentry/ingest/internal/config"
-	agentv1 "github.com/sentry/sentry/proto/sentry/agent/v1"
-	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
+	"github.com/cairnobs/cairnobs/ingest/internal/config"
+	agentv1 "github.com/cairnobs/cairnobs/proto/sentry/agent/v1"
+	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
 
 // TenantIDHeaderKey is the Kafka message header a resolved tenant ID is

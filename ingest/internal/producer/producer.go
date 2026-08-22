@@ -9,7 +9,7 @@ import (
 
 	"github.com/segmentio/kafka-go"
 
-	"github.com/sentry/sentry/ingest/internal/config"
+	"github.com/cairnobs/cairnobs/ingest/internal/config"
 )
 
 type Producer struct {

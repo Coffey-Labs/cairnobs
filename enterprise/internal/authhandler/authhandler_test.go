@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sentry/sentry/enterprise/internal/session"
+	"github.com/cairnobs/cairnobs/enterprise/internal/session"
 )
 
 // fakeIngestCredentialValidator is an in-memory stand-in for

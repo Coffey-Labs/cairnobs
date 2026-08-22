@@ -28,9 +28,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sentry/sentry/ingest/clickhousewriter"
-	"github.com/sentry/sentry/ingest/consumer"
-	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
+	"github.com/cairnobs/cairnobs/ingest/clickhousewriter"
+	"github.com/cairnobs/cairnobs/ingest/consumer"
+	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
 
 // DataSource mirrors chrunner.DataSource -- deliberately not

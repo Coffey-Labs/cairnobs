@@ -44,7 +44,7 @@ New proto (`proto/sentry/agent/v1/agent_control.proto`), a second gRPC
 service on the exact same mTLS channel/listener `LogIngest.PushBatch`
 already uses — not a second protocol or connection the agent has to
 maintain. Called on the agent's own heartbeat ticker (see
-`agent/sentry-agent/src/main.rs`'s `heartbeat_ticker` arm),
+`agent/cairnobs-agent/src/main.rs`'s `heartbeat_ticker` arm),
 independently of whether the heartbeat log record itself is enabled —
 CheckIn keeps running even with `heartbeat.enabled = false`, since
 that's an agent's only path to ever receive a remote override that
@@ -98,7 +98,7 @@ heartbeat constantly.
 
 The agent's local `agent.toml` is never rewritten. A remote override
 lives only in the running process's memory
-(`agent/sentry-agent/src/main.rs`'s `apply_override`) and is re-applied
+(`agent/cairnobs-agent/src/main.rs`'s `apply_override`) and is re-applied
 fresh on every check-in that returns one — a restarted agent boots from
 `agent.toml` alone and re-syncs whatever override is still set on its
 next successful check-in. This was a deliberate simplicity choice over
