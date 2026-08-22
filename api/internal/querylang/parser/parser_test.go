@@ -266,6 +266,77 @@ func TestParseMultipleAggregations(t *testing.T) {
 	}
 }
 
+func TestParseLeadingStatsStageWithNoBaseFilter(t *testing.T) {
+	// Documented as valid in /docs/query-language-reference.md's "stats"
+	// section -- used to get silently misparsed as four ANDed free-text
+	// base terms ("stats", "count", "by", "host"), matching nothing.
+	q, err := Parse(`stats count by host`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(q.Base.Terms) != 0 {
+		t.Fatalf("expected an empty base (match-everything), got %+v", q.Base.Terms)
+	}
+	if len(q.Pipes) != 1 {
+		t.Fatalf("expected 1 pipe stage, got %d: %+v", len(q.Pipes), q.Pipes)
+	}
+	stats, ok := q.Pipes[0].(ast.StatsStage)
+	if !ok {
+		t.Fatalf("expected StatsStage, got %T", q.Pipes[0])
+	}
+	if len(stats.Aggs) != 1 || stats.Aggs[0].Func != "count" || len(stats.By) != 1 || stats.By[0] != "host" {
+		t.Fatalf("unexpected stats stage: %+v", stats)
+	}
+}
+
+func TestParseLeadingStatsStageWithParenAggAndNoBaseFilter(t *testing.T) {
+	// The specific case that first surfaced this: count() (parens, zero
+	// args) as the very first token of the query.
+	q, err := Parse(`stats count(), avg(latency_ms) as avg_latency by host, service`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	stats := q.Pipes[0].(ast.StatsStage)
+	if len(stats.Aggs) != 2 || stats.Aggs[0].Func != "count" || stats.Aggs[1].Func != "avg" {
+		t.Fatalf("unexpected stats aggs: %+v", stats.Aggs)
+	}
+}
+
+func TestParseLeadingWhereStageWithNoBaseFilter(t *testing.T) {
+	q, err := Parse(`where status>=500`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(q.Base.Terms) != 0 {
+		t.Fatalf("expected an empty base, got %+v", q.Base.Terms)
+	}
+	where, ok := q.Pipes[0].(ast.WhereStage)
+	if !ok {
+		t.Fatalf("expected WhereStage, got %T", q.Pipes[0])
+	}
+	cmp := where.Expr.Terms[0].(ast.Comparison)
+	if cmp.Field != "status" || cmp.Op != ">=" || cmp.Value != "500" {
+		t.Fatalf("unexpected where comparison: %+v", cmp)
+	}
+}
+
+func TestParseFieldNamedLikeAPipeStageKeywordStillFilters(t *testing.T) {
+	// atPipeStageKeyword's comparator lookahead must not misfire on a
+	// genuine structured filter for a field that happens to share one
+	// of the six reserved names.
+	q, err := Parse(`where=foo`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(q.Pipes) != 0 {
+		t.Fatalf("expected no pipe stages, got %+v", q.Pipes)
+	}
+	cmp, ok := q.Base.Terms[0].(ast.Comparison)
+	if !ok || cmp.Field != "where" || cmp.Value != "foo" {
+		t.Fatalf("expected Comparison(where=foo), got %+v", q.Base.Terms[0])
+	}
+}
+
 // --- error cases ---
 
 func TestParseErrorEmptyQuery(t *testing.T) {

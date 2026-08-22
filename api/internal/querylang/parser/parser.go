@@ -41,11 +41,36 @@ func (p *parser) advance() {
 }
 
 func (p *parser) parseQuery() (*ast.Query, error) {
-	base, err := p.parseBoolExpr()
-	if err != nil {
-		return nil, err
+	q := &ast.Query{}
+
+	// base_search is normally mandatory (see the grammar comment on
+	// ast.Query), but every pipe-stage keyword is also a valid bare
+	// Ident, so a query with no leading filter -- e.g. `stats count by
+	// host`, documented as valid in
+	// /docs/query-language-reference.md's "stats" section -- used to
+	// get silently misparsed as a base_search of four ANDed free-text
+	// terms ("stats", "count", "by", "host"), matching nothing rather
+	// than erroring or aggregating. Recognizing a leading pipe-stage
+	// keyword up front and skipping straight to stage-parsing (q.Base
+	// stays its zero value; compileBoolExpr already treats zero Terms
+	// as "match everything", so no planner/executor change is needed)
+	// fixes that without a leading "|". atPipeStageKeyword's comparator
+	// lookahead keeps a genuine field named e.g. "where" (`where=foo`)
+	// parsing as a structured filter, same as today.
+	if p.atPipeStageKeyword() {
+		stage, err := p.parsePipeStage()
+		if err != nil {
+			return nil, err
+		}
+		q.Pipes = append(q.Pipes, stage)
+	} else {
+		base, err := p.parseBoolExpr()
+		if err != nil {
+			return nil, err
+		}
+		q.Base = base
 	}
-	q := &ast.Query{Base: base}
+
 	for p.cur.Kind == lexer.Pipe {
 		p.advance()
 		stage, err := p.parsePipeStage()
@@ -58,6 +83,24 @@ func (p *parser) parseQuery() (*ast.Query, error) {
 		return nil, p.errorf("unexpected %s after query", p.cur)
 	}
 	return q, nil
+}
+
+// atPipeStageKeyword reports whether the parser is sitting on one of the
+// six pipe-stage keywords used as the query's very first token, with no
+// preceding base filter. The comparator lookahead disambiguates from a
+// structured comparison on a field that happens to share one of these
+// names (e.g. `where=foo`), which must keep parsing as a filter, not a
+// stage.
+func (p *parser) atPipeStageKeyword() bool {
+	if p.cur.Kind != lexer.Ident || isComparatorStart(p.next.Kind) {
+		return false
+	}
+	switch p.cur.Value {
+	case "where", "stats", "sort", "fields", "head", "tail":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *parser) parseBoolExpr() (ast.BoolExpr, error) {
