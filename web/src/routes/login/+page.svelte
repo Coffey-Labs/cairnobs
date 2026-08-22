@@ -1,9 +1,16 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { login } from '$lib/api';
+	import { login, demoUsername, demoPassword } from '$lib/api';
 
-	let username = $state('');
-	let password = $state('');
+	// A public demo fills its own credentials in (see api.ts's
+	// demoUsername). Both or neither: prefilling one field alone would
+	// just look like a bug. Still an ordinary editable form -- the values
+	// are a starting point, not a lock, so the demo's admin account can
+	// still be typed in over them.
+	const prefilled = Boolean(demoUsername && demoPassword);
+
+	let username = $state(prefilled ? (demoUsername as string) : '');
+	let password = $state(prefilled ? (demoPassword as string) : '');
 	let error = $state('');
 	let submitting = $state(false);
 
@@ -30,6 +37,12 @@
 
 <main>
 	<h1>Sign in</h1>
+	{#if prefilled}
+		<p class="demo-note">
+			Public demo &mdash; the read-only <code>{demoUsername}</code> account is already filled in.
+			Just sign in.
+		</p>
+	{/if}
 	<form onsubmit={submit}>
 		{#if error}
 			<p class="error">{error}</p>
@@ -105,5 +118,19 @@
 	.error {
 		color: var(--color-danger);
 		font-size: var(--text-sm);
+	}
+	.demo-note {
+		margin-bottom: var(--space-4);
+		padding: var(--space-3);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text-muted);
+		font-size: var(--text-sm);
+		line-height: 1.5;
+	}
+	.demo-note code {
+		font-family: var(--font-mono);
+		color: var(--color-text);
 	}
 </style>

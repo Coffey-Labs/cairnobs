@@ -26,6 +26,28 @@ export const enterpriseAuthBase = import.meta.env.VITE_ENTERPRISE_AUTH_BASE_URL 
 // which never sets either of these.
 export const localAuthEnabled = import.meta.env.VITE_LOCAL_AUTH_ENABLED === 'true';
 
+// Public-demo convenience: with both set at build time, the login page
+// starts with these credentials already in the fields, so a visitor to a
+// public demo can sign in without being handed a password out of band.
+// Two separate vars, neither with a default, and the login page requires
+// BOTH before prefilling anything -- a deployment that sets neither (every
+// deployment except the demo) gets exactly today's empty form, and a
+// half-configured one can't leave a password sitting next to an empty
+// username box.
+//
+// This bakes a password into a static bundle, which is only acceptable
+// for what it's for: a throwaway read-only Viewer account on a deployment
+// whose entire database is wiped and reseeded nightly. Never point these
+// at an account that can do anything worth doing.
+export const demoUsername = import.meta.env.VITE_DEMO_USERNAME as string | undefined;
+export const demoPassword = import.meta.env.VITE_DEMO_PASSWORD as string | undefined;
+
+// A deployment that prints its own login credentials on its login screen
+// is, by definition, the public demo -- so the same two build args also
+// gate the demo notice on the landing page, rather than a third flag
+// that could drift out of sync with them.
+export const isPublicDemo = Boolean(demoUsername && demoPassword);
+
 export type Language = '' | 'sql' | 'spl';
 
 // warnings (Phase 7) is populated by the shared costguard package's

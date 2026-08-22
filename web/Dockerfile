@@ -28,10 +28,18 @@ ARG VITE_ENTERPRISE_AUTH_BASE_URL
 # actually turned local auth on server-side too (LOCAL_AUTH_ENABLED).
 # See api.ts's requestFrom/alertingRequest doc comment.
 ARG VITE_LOCAL_AUTH_ENABLED=false
+# Both unset by default: the login page only prefills when it has both,
+# so every deployment that doesn't opt in gets an ordinary empty form.
+# See web/src/lib/api.ts's demoUsername on why a public demo can bake a
+# password in and nothing else should.
+ARG VITE_DEMO_USERNAME
+ARG VITE_DEMO_PASSWORD
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_ALERTING_API_BASE_URL=${VITE_ALERTING_API_BASE_URL}
 ENV VITE_ENTERPRISE_AUTH_BASE_URL=${VITE_ENTERPRISE_AUTH_BASE_URL}
 ENV VITE_LOCAL_AUTH_ENABLED=${VITE_LOCAL_AUTH_ENABLED}
+ENV VITE_DEMO_USERNAME=${VITE_DEMO_USERNAME}
+ENV VITE_DEMO_PASSWORD=${VITE_DEMO_PASSWORD}
 RUN npm run build
 
 # Not distroless: serving a static SPA needs *some* HTTP server, and
