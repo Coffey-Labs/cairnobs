@@ -10,7 +10,7 @@
 //
 //	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/api \
 //	  -e LOCALAUTH_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
-//	  -e LOCALAUTH_TEST_POSTGRES_PASSWORD=sentry-dev-only \
+//	  -e LOCALAUTH_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./localauth/... -run Integration -v
 package localauth
 
@@ -25,7 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 func integrationStore(t *testing.T) *Store {

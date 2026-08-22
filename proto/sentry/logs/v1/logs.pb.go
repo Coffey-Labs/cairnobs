@@ -332,7 +332,7 @@ const file_sentry_logs_v1_logs_proto_rawDesc = "" +
 	"\x0eSEVERITY_ERROR\x10\x05\x12\x12\n" +
 	"\x0eSEVERITY_FATAL\x10\x062]\n" +
 	"\tLogIngest\x12P\n" +
-	"\tPushBatch\x12 .sentry.logs.v1.PushBatchRequest\x1a!.sentry.logs.v1.PushBatchResponseB6Z4github.com/sentry/sentry/proto/sentry/logs/v1;logsv1b\x06proto3"
+	"\tPushBatch\x12 .sentry.logs.v1.PushBatchRequest\x1a!.sentry.logs.v1.PushBatchResponseB:Z8github.com/cairnobs/cairnobs/proto/sentry/logs/v1;logsv1b\x06proto3"
 
 var (
 	file_sentry_logs_v1_logs_proto_rawDescOnce sync.Once

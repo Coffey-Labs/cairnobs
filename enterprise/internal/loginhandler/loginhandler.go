@@ -32,11 +32,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sentry/sentry/enterprise/internal/authhandler"
-	"github.com/sentry/sentry/enterprise/internal/oidc"
-	"github.com/sentry/sentry/enterprise/internal/rbacstore"
-	"github.com/sentry/sentry/enterprise/internal/saml"
-	"github.com/sentry/sentry/enterprise/internal/session"
+	"github.com/cairnobs/cairnobs/enterprise/internal/authhandler"
+	"github.com/cairnobs/cairnobs/enterprise/internal/oidc"
+	"github.com/cairnobs/cairnobs/enterprise/internal/rbacstore"
+	"github.com/cairnobs/cairnobs/enterprise/internal/saml"
+	"github.com/cairnobs/cairnobs/enterprise/internal/session"
 )
 
 // oidcStateCookieName carries OIDC's CSRF-protection state value between
@@ -44,19 +44,19 @@ import (
 // callback-path cookie (the "double-submit cookie" pattern) rather than
 // server-side state, since this service otherwise has no per-browser
 // session store to put it in before a session exists.
-const oidcStateCookieName = "sentry_oidc_state"
+const oidcStateCookieName = "cairnobs_oidc_state"
 
 // samlRequestCookieName is SAML's analog -- carries the AuthnRequest ID
 // LoginURL generated, so the ACS handler can pass it back to
 // ParseResponse's possibleRequestIDs (SAML's actual replay/unsolicited-
 // response defense -- see saml.ServiceProvider.LoginURL's doc comment).
-const samlRequestCookieName = "sentry_saml_request"
+const samlRequestCookieName = "cairnobs_saml_request"
 
 // pendingLoginCookieName carries a PendingLoginClaims token from
 // finishLogin's multi-membership branch through GET /auth/memberships
 // and POST /auth/select-tenant -- Path "/auth" (not "/") so it's never
 // sent on ordinary requests, only the two routes that need it.
-const pendingLoginCookieName = "sentry_pending_login"
+const pendingLoginCookieName = "cairnobs_pending_login"
 
 // loginCookieTTL bounds how long a user has to complete the IdP round
 // trip -- generous enough for a real login form, short enough that a

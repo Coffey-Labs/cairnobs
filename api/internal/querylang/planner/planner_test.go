@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/querylang/ir"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ir"
 )
 
 var fixedNow = time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)

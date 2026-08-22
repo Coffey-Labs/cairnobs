@@ -5,7 +5,7 @@
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
-    container_name: sentry-clickhouse
+    container_name: cairnobs-clickhouse
     ports:
       - "8123:8123" # HTTP interface, used by migrate.sh
       - "9000:9000" # native protocol, used by ingest
@@ -17,7 +17,7 @@ services:
       # explicitly-empty CLICKHOUSE_PASSWORD="" still triggers it. Not a
       # real secret; see the root docker-compose.yml for the full
       # explanation.
-      CLICKHOUSE_PASSWORD: "sentry-dev-only"
+      CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     ulimits:

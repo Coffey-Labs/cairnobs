@@ -3,8 +3,8 @@ package evaluator
 import (
 	"testing"
 
-	"github.com/sentry/sentry/alerting/internal/queryclient"
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/queryclient"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 func thresholdRule(comparator rulestore.Comparator, threshold float64) rulestore.Rule {

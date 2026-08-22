@@ -19,7 +19,7 @@ func TestHTTPAuthorizerForwardsCredentialsAndParsesIdentity(t *testing.T) {
 
 	a := NewHTTPAuthorizer(srv.URL)
 	incoming := httptest.NewRequest(http.MethodPost, "/query", nil)
-	incoming.Header.Set("Cookie", "sentry_session=abc123")
+	incoming.Header.Set("Cookie", "cairnobs_session=abc123")
 	incoming.Header.Set("Authorization", "Bearer service-token-xyz")
 
 	identity, err := a.Authorize(incoming)
@@ -29,7 +29,7 @@ func TestHTTPAuthorizerForwardsCredentialsAndParsesIdentity(t *testing.T) {
 	if identity.TenantID != "acme" || identity.UserID != "u1" || identity.Role != RoleEditor {
 		t.Fatalf("unexpected identity: %+v", identity)
 	}
-	if gotCookie != "sentry_session=abc123" {
+	if gotCookie != "cairnobs_session=abc123" {
 		t.Fatalf("Cookie header not forwarded, got %q", gotCookie)
 	}
 	if gotAuth != "Bearer service-token-xyz" {

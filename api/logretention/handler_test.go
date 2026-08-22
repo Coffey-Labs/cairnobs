@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 func discardLogger() *slog.Logger {

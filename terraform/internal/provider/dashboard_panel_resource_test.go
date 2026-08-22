@@ -16,66 +16,66 @@ func TestAccDashboardPanelResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint = "http://localhost:8080"
 }
 
-resource "sentry_dashboard" "test" {
+resource "cairnobs_dashboard" "test" {
   name = "Panel Acceptance Test Dashboard"
 }
 
-resource "sentry_dashboard_panel" "test" {
-  dashboard_id = sentry_dashboard.test.id
+resource "cairnobs_dashboard_panel" "test" {
+  dashboard_id = cairnobs_dashboard.test.id
   title        = "Errors over time"
   query        = "status>=500 | timechart count"
   viz_type     = "line"
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair("sentry_dashboard_panel.test", "dashboard_id", "sentry_dashboard.test", "id"),
-					resource.TestCheckResourceAttr("sentry_dashboard_panel.test", "title", "Errors over time"),
-					resource.TestCheckResourceAttr("sentry_dashboard_panel.test", "viz_type", "line"),
-					resource.TestCheckResourceAttrSet("sentry_dashboard_panel.test", "id"),
+					resource.TestCheckResourceAttrPair("cairnobs_dashboard_panel.test", "dashboard_id", "cairnobs_dashboard.test", "id"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard_panel.test", "title", "Errors over time"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard_panel.test", "viz_type", "line"),
+					resource.TestCheckResourceAttrSet("cairnobs_dashboard_panel.test", "id"),
 					// Left unset in config -- must come back as the
 					// API's own default ("{}"), same "API default, not
 					// a duplicated Terraform-side one" reasoning
-					// sentry_dashboard's default_earliest/default_latest
+					// cairnobs_dashboard's default_earliest/default_latest
 					// use.
-					resource.TestCheckResourceAttr("sentry_dashboard_panel.test", "viz_config", "{}"),
+					resource.TestCheckResourceAttr("cairnobs_dashboard_panel.test", "viz_config", "{}"),
 				),
 			},
 			{
-				// Update: unlike sentry_alert_rule/sentry_notification_target,
+				// Update: unlike cairnobs_alert_rule/cairnobs_notification_target,
 				// this really is an in-place update -- api/dashboards.Handler
 				// has a real PUT for panels.
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint = "http://localhost:8080"
 }
 
-resource "sentry_dashboard" "test" {
+resource "cairnobs_dashboard" "test" {
   name = "Panel Acceptance Test Dashboard"
 }
 
-resource "sentry_dashboard_panel" "test" {
-  dashboard_id = sentry_dashboard.test.id
+resource "cairnobs_dashboard_panel" "test" {
+  dashboard_id = cairnobs_dashboard.test.id
   title        = "Errors over time (renamed)"
   query        = "status>=500 | timechart count"
   viz_type     = "line"
 }
 `,
-				Check: resource.TestCheckResourceAttr("sentry_dashboard_panel.test", "title", "Errors over time (renamed)"),
+				Check: resource.TestCheckResourceAttr("cairnobs_dashboard_panel.test", "title", "Errors over time (renamed)"),
 			},
 			{
 				// "dashboard_id/panel_id" -- see ImportState's doc
 				// comment on splitImportID for why a bare panel ID
 				// isn't enough.
-				ResourceName: "sentry_dashboard_panel.test",
+				ResourceName: "cairnobs_dashboard_panel.test",
 				ImportState:  true,
 				ImportStateIdFunc: func(s *tfstate.State) (string, error) {
-					rs, ok := s.RootModule().Resources["sentry_dashboard_panel.test"]
+					rs, ok := s.RootModule().Resources["cairnobs_dashboard_panel.test"]
 					if !ok {
-						return "", fmt.Errorf("sentry_dashboard_panel.test not found in state")
+						return "", fmt.Errorf("cairnobs_dashboard_panel.test not found in state")
 					}
 					return rs.Primary.Attributes["dashboard_id"] + "/" + rs.Primary.Attributes["id"], nil
 				},

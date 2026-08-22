@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package sentry.search.v1;
+package cairnobs.search.v1;
 
-option go_package = "github.com/sentry/sentry/proto/sentry/search/v1;searchv1";
+option go_package = "github.com/cairnobs/cairnobs/proto/sentry/search/v1;searchv1";
 
 // SearchService is the full-text search index (Tantivy-backed) that
 // `api` calls to resolve a free-text query into matching record_ids,

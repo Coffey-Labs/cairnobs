@@ -8,7 +8,7 @@
 //
 //	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e CHWRITER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
-//	  -e CHWRITER_TEST_CLICKHOUSE_PASSWORD=sentry-dev-only \
+//	  -e CHWRITER_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./internal/chwriter/... -v
 package chwriter
 
@@ -24,10 +24,10 @@ import (
 	chdriver "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 
-	"github.com/sentry/sentry/enterprise/internal/tenantprovision"
-	"github.com/sentry/sentry/ingest/clickhousewriter"
-	"github.com/sentry/sentry/ingest/consumer"
-	logsv1 "github.com/sentry/sentry/proto/sentry/logs/v1"
+	"github.com/cairnobs/cairnobs/enterprise/internal/tenantprovision"
+	"github.com/cairnobs/cairnobs/ingest/clickhousewriter"
+	"github.com/cairnobs/cairnobs/ingest/consumer"
+	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
 
 func discardLogger() *slog.Logger {

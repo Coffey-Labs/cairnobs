@@ -85,15 +85,15 @@ any agent has sent data.
 
 ## 4. Install the agent's mTLS material
 
-The agent's default config expects certs at `/etc/sentry-agent/` (see
+The agent's default config expects certs at `/etc/cairnobs-agent/` (see
 `/agent/config/agent.example.toml`), which requires root:
 
 ```sh
-sudo mkdir -p /etc/sentry-agent
+sudo mkdir -p /etc/cairnobs-agent
 sudo cp hack/dev-certs/out/ca.pem \
         hack/dev-certs/out/client.pem \
         hack/dev-certs/out/client-key.pem \
-        /etc/sentry-agent/
+        /etc/cairnobs-agent/
 ```
 
 ## 5. Build and run the agent
@@ -116,7 +116,7 @@ Reading the system journal generally needs root (or membership in the
 by distro, root is the reliable path for this runbook):
 
 ```sh
-sudo RUST_LOG=info ./target/release/sentry-agent
+sudo RUST_LOG=info ./target/release/cairnobs-agent
 ```
 
 `RUST_LOG=info` matters: `tracing_subscriber`'s default filter is

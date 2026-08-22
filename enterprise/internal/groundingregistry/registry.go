@@ -26,10 +26,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sentry/sentry/api/ai/grounding"
-	"github.com/sentry/sentry/api/ai/provider"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/ai/grounding"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
 )
 
 // TenantLister returns the currently-active tenant IDs to sample --

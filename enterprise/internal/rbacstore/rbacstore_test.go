@@ -6,7 +6,7 @@
 //
 //	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
-//	  -e RBACSTORE_TEST_POSTGRES_PASSWORD=sentry-dev-only \
+//	  -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./internal/rbacstore/... -v
 package rbacstore
 
@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 func testStore(t *testing.T) *Store {
@@ -337,7 +337,7 @@ func TestCreateDataSourceThenSetCredentials(t *testing.T) {
 		t.Fatalf("CreateTenant: %v", err)
 	}
 
-	ds, err := s.CreateDataSource(ctx, tenantID, "default", tenantID, "/var/lib/sentry-search/tenants/"+tenantID)
+	ds, err := s.CreateDataSource(ctx, tenantID, "default", tenantID, "/var/lib/cairnobs-search/tenants/"+tenantID)
 	if err != nil {
 		t.Fatalf("CreateDataSource: %v", err)
 	}

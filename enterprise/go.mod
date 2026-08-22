@@ -1,4 +1,4 @@
-module github.com/sentry/sentry/enterprise
+module github.com/cairnobs/cairnobs/enterprise
 
 go 1.25.0
 
@@ -7,24 +7,24 @@ go 1.25.0
 // enterprise/internal/chrunner's doc comment: it implements api's
 // executor.SQLRunner interface, which structurally requires importing
 // the package that defines it.
-replace github.com/sentry/sentry/api => ../api
+replace github.com/cairnobs/cairnobs/api => ../api
 
 // Same allowed direction, against ingest/ instead -- enterprise/internal/
 // chwriter implements ingest/consumer's chWriter interface, which
 // structurally requires importing the package that defines it (see
 // that package's doc comment).
-replace github.com/sentry/sentry/ingest => ../ingest
+replace github.com/cairnobs/cairnobs/ingest => ../ingest
 
 // api's own go.mod replace directive for proto/ is module-local and
 // doesn't propagate here -- enterprise/ needs its own, or `go build`
-// tries to fetch github.com/sentry/sentry/proto from a real (nonexistent)
+// tries to fetch github.com/cairnobs/cairnobs/proto from a real (nonexistent)
 // remote, since api/searchclient (now transitively imported) depends on
 // the generated search gRPC stubs.
-replace github.com/sentry/sentry/proto => ../proto
+replace github.com/cairnobs/cairnobs/proto => ../proto
 
 require (
-	github.com/sentry/sentry/api v0.0.0-00010101000000-000000000000
-	github.com/sentry/sentry/ingest v0.0.0-00010101000000-000000000000
+	github.com/cairnobs/cairnobs/api v0.0.0-00010101000000-000000000000
+	github.com/cairnobs/cairnobs/ingest v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -34,7 +34,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/sentry/sentry/proto v0.0.0-00010101000000-000000000000
+	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
 	google.golang.org/grpc v1.83.0

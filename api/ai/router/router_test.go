@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sentry/sentry/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
 )
 
 // namedFakeProvider lets a test tell which configured provider actually

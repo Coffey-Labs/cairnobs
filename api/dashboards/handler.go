@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // store is the narrow interface Handler depends on -- *Store (store.go)
@@ -187,7 +187,7 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 	// Export is the same document GET /dashboards/{id} returns -- the
 	// import endpoint below consumes exactly this shape, and so does
-	// `sentryctl dashboards apply`, so there's one JSON contract used
+	// `cairnobsctl dashboards apply`, so there's one JSON contract used
 	// from every call site rather than a bespoke export format.
 	h.handleGet(w, r)
 }

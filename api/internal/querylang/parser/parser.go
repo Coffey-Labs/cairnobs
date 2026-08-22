@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/sentry/sentry/api/internal/querylang/ast"
-	"github.com/sentry/sentry/api/internal/querylang/lexer"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ast"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/lexer"
 )
 
 // Parse parses a pipe-syntax query. Callers are responsible for routing

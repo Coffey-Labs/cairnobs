@@ -44,7 +44,7 @@ a second copy of the row.
 `src/registry.rs`'s `IndexRegistry` searches: empty resolves to the
 single default index every deployment already had; a non-empty value
 opens (on first use) a dedicated index under `TENANTS_INDEX_PATH`
-(default `/var/lib/sentry-search/tenants/<tenant_id>`, matching
+(default `/var/lib/cairnobs-search/tenants/<tenant_id>`, matching
 `deploy/operator`'s and `enterprise/internal/rbacstore`'s existing path
 convention). `tenant_id` is set only by a trusted server-side caller
 (`enterprise/internal/searchclient`, from the authenticated request
@@ -109,7 +109,7 @@ discovered dynamically.
 
 Whatever Tantivy's own `QueryParser` supports against the `message`
 field: plain terms, `"exact phrase"` queries, and `foo*` wildcards. Not
-documented further here because it's Tantivy's syntax, not Sentry's — see
+documented further here because it's Tantivy's syntax, not Cairn OBS's — see
 [Tantivy's query parser docs](https://docs.rs/tantivy/latest/tantivy/query/struct.QueryParser.html)
 for the full grammar. No unified query language yet; that's Phase 2.
 
@@ -123,9 +123,9 @@ Environment variables (see `src/config.rs`):
 | `REDPANDA_BROKERS` | `localhost:9092` | Comma-separated broker list |
 | `REDPANDA_TOPIC` | `sentry.logs.raw` | Must match `/ingest`'s topic |
 | `REDPANDA_TOPIC_PARTITIONS` | `6` | Must match what `/transport/provision-topics.sh` created |
-| `INDEX_PATH` | `/var/lib/sentry-search/index` | Default (non-tenant) Tantivy index directory |
-| `TENANTS_INDEX_PATH` | `/var/lib/sentry-search/tenants` | Per-tenant index directories live under here, one subdirectory per tenant_id (Phase 4) |
-| `OFFSETS_PATH` | `/var/lib/sentry-search/offsets.json` | Offset tracking file |
+| `INDEX_PATH` | `/var/lib/cairnobs-search/index` | Default (non-tenant) Tantivy index directory |
+| `TENANTS_INDEX_PATH` | `/var/lib/cairnobs-search/tenants` | Per-tenant index directories live under here, one subdirectory per tenant_id (Phase 4) |
+| `OFFSETS_PATH` | `/var/lib/cairnobs-search/offsets.json` | Offset tracking file |
 | `COMMIT_INTERVAL_MS` | `2000` | How often buffered writes become searchable |
 | `ENTERPRISE_AUTH_URL` | (empty) | Enables `tenants::ActiveTenantTracker` -- empty means write-routing has no active-tenant gate, same as every deployment before Phase 4. Must be set together with `ENTERPRISE_AUTH_SERVICE_TOKEN` below, or `Config::load` fails |
 | `ENTERPRISE_AUTH_SERVICE_TOKEN` | (empty) | RoleService Bearer credential for `GET /internal/active-tenants`, minted via `enterprise-auth -mint-service-token search` |
@@ -166,5 +166,5 @@ unreachable server), not a fake HTTP client substituted in.
 
 ```sh
 # from the repo root, not search/
-docker build -f search/Dockerfile -t sentry-search .
+docker build -f search/Dockerfile -t cairnobs-search .
 ```

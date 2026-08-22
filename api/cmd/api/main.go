@@ -1,4 +1,4 @@
-// Command api is Sentry's query API: a single POST /query endpoint
+// Command api is Cairn OBS's query API: a single POST /query endpoint
 // accepting either the pipe syntax or raw SQL, compiled and routed
 // across ClickHouse and search by internal/querylang. See
 // queryapi and /docs/query-language-design.md for why this is
@@ -23,20 +23,20 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/api/agents"
-	"github.com/sentry/sentry/api/ai/aiapi"
-	"github.com/sentry/sentry/api/ai/grounding"
-	"github.com/sentry/sentry/api/ai/provider/ollama"
-	"github.com/sentry/sentry/api/ai/router"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/dashboards"
-	"github.com/sentry/sentry/api/httpserver"
-	"github.com/sentry/sentry/api/internal/config"
-	"github.com/sentry/sentry/api/localauth"
-	"github.com/sentry/sentry/api/logretention"
-	"github.com/sentry/sentry/api/queryapi"
-	"github.com/sentry/sentry/api/querylang/executor"
-	"github.com/sentry/sentry/api/searchclient"
+	"github.com/cairnobs/cairnobs/api/agents"
+	"github.com/cairnobs/cairnobs/api/ai/aiapi"
+	"github.com/cairnobs/cairnobs/api/ai/grounding"
+	"github.com/cairnobs/cairnobs/api/ai/provider/ollama"
+	"github.com/cairnobs/cairnobs/api/ai/router"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/dashboards"
+	"github.com/cairnobs/cairnobs/api/httpserver"
+	"github.com/cairnobs/cairnobs/api/internal/config"
+	"github.com/cairnobs/cairnobs/api/localauth"
+	"github.com/cairnobs/cairnobs/api/logretention"
+	"github.com/cairnobs/cairnobs/api/queryapi"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/searchclient"
 )
 
 // groundingRefreshInterval matches chwriter.Registry/search's

@@ -1,0 +1,53 @@
+[package]
+name = "cairnobs-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cairn OBS distro-agnostic Linux/Windows log collector"
+
+[[bin]]
+name = "cairnobs-agent"
+path = "src/main.rs"
+
+[features]
+default = ["journald"]
+journald = []
+file-tail = []
+# Windows-only sources. Feature-enabled AND target_os="windows"-gated at
+# the module level (see src/source/mod.rs), so enabling these on a
+# non-Windows build is a harmless no-op, not a build failure -- keeps
+# `cargo test --workspace --all-features` green on Linux CI.
+windows-eventlog = []
+etw = []
+
+[dependencies]
+cairnobs-parser = { path = "../cairnobs-parser" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "io-std", "time", "fs", "sync", "signal"] }
+tonic = { version = "0.12", features = ["tls"] }
+prost = "0.13"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Windows-only: not in the dependency graph at all on other targets, so
+# they don't affect Linux build times or the musl release binary.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_EventLog",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_Etw",
+    "Win32_Security",
+] }
+windows-service = "0.7"
+quick-xml = "0.41"
+
+[build-dependencies]
+tonic-build = "0.12"

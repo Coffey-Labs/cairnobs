@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	sentryv1alpha1 "github.com/sentry/sentry/deploy/operator/api/v1alpha1"
+	cairnobsv1alpha1 "github.com/cairnobs/cairnobs/deploy/operator/api/v1alpha1"
 )
 
 func newFakeReconciler(t *testing.T, objs ...client.Object) *TenantReconciler {
@@ -32,31 +32,31 @@ func newFakeReconciler(t *testing.T, objs ...client.Object) *TenantReconciler {
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("adding corev1 to scheme: %v", err)
 	}
-	if err := sentryv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("adding sentryv1alpha1 to scheme: %v", err)
+	if err := cairnobsv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("adding cairnobsv1alpha1 to scheme: %v", err)
 	}
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&sentryv1alpha1.Tenant{}).
+		WithStatusSubresource(&cairnobsv1alpha1.Tenant{}).
 		Build()
 	return &TenantReconciler{Client: fakeClient, Scheme: scheme}
 }
 
-func testTenant(name string, suspended bool) *sentryv1alpha1.Tenant {
-	return &sentryv1alpha1.Tenant{
+func testTenant(name string, suspended bool) *cairnobsv1alpha1.Tenant {
+	return &cairnobsv1alpha1.Tenant{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec:       sentryv1alpha1.TenantSpec{DisplayName: name, Suspended: suspended},
+		Spec:       cairnobsv1alpha1.TenantSpec{DisplayName: name, Suspended: suspended},
 	}
 }
 
-func reconcile(t *testing.T, r *TenantReconciler, name string) sentryv1alpha1.Tenant {
+func reconcile(t *testing.T, r *TenantReconciler, name string) cairnobsv1alpha1.Tenant {
 	t.Helper()
 	ctx := context.Background()
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: "default"}}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var got sentryv1alpha1.Tenant
+	var got cairnobsv1alpha1.Tenant
 	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &got); err != nil {
 		t.Fatalf("getting tenant: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestReconcileUnprovisionedTenantIsProvisioningNotActive(t *testing.T) {
 
 	got := reconcile(t, r, "acme")
 
-	if got.Status.Phase != sentryv1alpha1.PhaseProvisioning {
+	if got.Status.Phase != cairnobsv1alpha1.PhaseProvisioning {
 		t.Fatalf("Phase = %q, want Provisioning (nothing has provisioned this tenant yet)", got.Status.Phase)
 	}
 	cond := readyCondition(got)
@@ -93,23 +93,23 @@ func TestReconcileReflectsProvisioningStateProvisionTenantSets(t *testing.T) {
 	r := newFakeReconciler(t, tenant)
 	ctx := context.Background()
 
-	var toUpdate sentryv1alpha1.Tenant
+	var toUpdate cairnobsv1alpha1.Tenant
 	if err := r.Get(ctx, types.NamespacedName{Name: "acme", Namespace: "default"}, &toUpdate); err != nil {
 		t.Fatalf("getting tenant: %v", err)
 	}
 	toUpdate.Status.ClickHouseDatabaseName = "acme"
-	toUpdate.Status.ClickHouseSecretRef = "sentry-tenant-acme-clickhouse"
-	toUpdate.Status.TantivyIndexPath = "/var/lib/sentry-search/tenants/acme"
+	toUpdate.Status.ClickHouseSecretRef = "cairnobs-tenant-acme-clickhouse"
+	toUpdate.Status.TantivyIndexPath = "/var/lib/cairnobs-search/tenants/acme"
 	if err := r.Status().Update(ctx, &toUpdate); err != nil {
 		t.Fatalf("simulating -provision-tenant's status write: %v", err)
 	}
 
 	got := reconcile(t, r, "acme")
 
-	if got.Status.Phase != sentryv1alpha1.PhaseActive {
+	if got.Status.Phase != cairnobsv1alpha1.PhaseActive {
 		t.Fatalf("Phase = %q, want Active", got.Status.Phase)
 	}
-	if got.Status.ClickHouseDatabaseName != "acme" || got.Status.ClickHouseSecretRef != "sentry-tenant-acme-clickhouse" || got.Status.TantivyIndexPath != "/var/lib/sentry-search/tenants/acme" {
+	if got.Status.ClickHouseDatabaseName != "acme" || got.Status.ClickHouseSecretRef != "cairnobs-tenant-acme-clickhouse" || got.Status.TantivyIndexPath != "/var/lib/cairnobs-search/tenants/acme" {
 		t.Fatalf("reconcile must not clobber the fields -provision-tenant set: %+v", got.Status)
 	}
 	cond := readyCondition(got)
@@ -125,7 +125,7 @@ func TestReconcileSuspendedOverridesProvisionedState(t *testing.T) {
 
 	got := reconcile(t, r, "acme")
 
-	if got.Status.Phase != sentryv1alpha1.PhaseSuspended {
+	if got.Status.Phase != cairnobsv1alpha1.PhaseSuspended {
 		t.Fatalf("Phase = %q, want Suspended even though the tenant is provisioned", got.Status.Phase)
 	}
 }
@@ -144,7 +144,7 @@ func TestReconcileUnsuspendingReturnsToActiveNotProvisioning(t *testing.T) {
 
 	_ = reconcile(t, r, "acme") // establishes Suspended
 
-	var toUpdate sentryv1alpha1.Tenant
+	var toUpdate cairnobsv1alpha1.Tenant
 	if err := r.Get(ctx, types.NamespacedName{Name: "acme", Namespace: "default"}, &toUpdate); err != nil {
 		t.Fatalf("getting tenant: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestReconcileUnsuspendingReturnsToActiveNotProvisioning(t *testing.T) {
 	}
 
 	got := reconcile(t, r, "acme")
-	if got.Status.Phase != sentryv1alpha1.PhaseActive {
+	if got.Status.Phase != cairnobsv1alpha1.PhaseActive {
 		t.Fatalf("Phase = %q, want Active after unsuspending an already-provisioned tenant", got.Status.Phase)
 	}
 }
@@ -167,9 +167,9 @@ func TestReconcileMissingTenantIsNoOp(t *testing.T) {
 	}
 }
 
-func readyCondition(tenant sentryv1alpha1.Tenant) *metav1.Condition {
+func readyCondition(tenant cairnobsv1alpha1.Tenant) *metav1.Condition {
 	for i := range tenant.Status.Conditions {
-		if tenant.Status.Conditions[i].Type == sentryv1alpha1.ConditionReady {
+		if tenant.Status.Conditions[i].Type == cairnobsv1alpha1.ConditionReady {
 			return &tenant.Status.Conditions[i]
 		}
 	}

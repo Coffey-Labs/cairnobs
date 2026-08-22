@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 func discardLogger() *slog.Logger {
@@ -259,7 +259,7 @@ func TestHandleSetConfigDenylistsSensitivePaths(t *testing.T) {
 		"/home/alice/.ssh/id_rsa",
 		"/home/alice/.ssh/authorized_keys",
 		"/proc/1/environ",
-		"/etc/sentry-agent/client-key.pem",
+		"/etc/cairnobs-agent/client-key.pem",
 		"/opt/app/../../etc/shadow",
 		"/opt/app/id_ed25519",
 	}

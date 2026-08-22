@@ -23,12 +23,12 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 
-	"github.com/sentry/sentry/enterprise/internal/oidc"
-	"github.com/sentry/sentry/enterprise/internal/rbacstore"
-	"github.com/sentry/sentry/enterprise/internal/session"
+	"github.com/cairnobs/cairnobs/enterprise/internal/oidc"
+	"github.com/cairnobs/cairnobs/enterprise/internal/rbacstore"
+	"github.com/cairnobs/cairnobs/enterprise/internal/session"
 )
 
-const testClientID = "sentry-test-client"
+const testClientID = "cairnobs-test-client"
 const testKeyID = "test-key-1"
 
 // fakeUserStore is an in-memory stand-in for *rbacstore.Store, keyed by
@@ -128,7 +128,7 @@ func newTestOIDCProvider(t *testing.T, idp *testIdP) *oidc.Provider {
 	t.Helper()
 	p, err := oidc.New(context.Background(), oidc.Config{
 		IssuerURL: idp.srv.URL, ClientID: testClientID, ClientSecret: "secret",
-		RedirectURL: "http://sentry-test/auth/oidc/callback",
+		RedirectURL: "http://cairnobs-test/auth/oidc/callback",
 	})
 	if err != nil {
 		t.Fatalf("oidc.New: %v", err)
@@ -221,12 +221,12 @@ func TestFullLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 
 	var sessionCookie *http.Cookie
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "sentry_session" {
+		if c.Name == "cairnobs_session" {
 			sessionCookie = c
 		}
 	}
 	if sessionCookie == nil || sessionCookie.Value == "" {
-		t.Fatal("expected a sentry_session cookie to be set")
+		t.Fatal("expected a cairnobs_session cookie to be set")
 	}
 	claims, err := sessionManager.Validate(sessionCookie.Value)
 	if err != nil {
@@ -278,7 +278,7 @@ func TestFullLoginFlowStartsTenantSelectionForMultipleMemberships(t *testing.T) 
 		switch c.Name {
 		case pendingLoginCookieName:
 			pendingCookie = c
-		case "sentry_session":
+		case "cairnobs_session":
 			sessionCookie = c
 		}
 	}
@@ -408,14 +408,14 @@ func TestSelectTenantIssuesSessionForChosenTenant(t *testing.T) {
 	var sessionCookie, clearedPendingCookie *http.Cookie
 	for _, c := range rec.Result().Cookies() {
 		switch c.Name {
-		case "sentry_session":
+		case "cairnobs_session":
 			sessionCookie = c
 		case pendingLoginCookieName:
 			clearedPendingCookie = c
 		}
 	}
 	if sessionCookie == nil || sessionCookie.Value == "" {
-		t.Fatal("expected a sentry_session cookie to be set")
+		t.Fatal("expected a cairnobs_session cookie to be set")
 	}
 	if clearedPendingCookie == nil || clearedPendingCookie.MaxAge >= 0 {
 		t.Fatalf("expected the pending-login cookie to be cleared (MaxAge < 0), got %+v", clearedPendingCookie)
@@ -458,7 +458,7 @@ func TestSelectTenantRejectsTenantOutsideMembership(t *testing.T) {
 		t.Fatalf("status = %d, want 403; body=%s", rec.Code, rec.Body.String())
 	}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "sentry_session" {
+		if c.Name == "cairnobs_session" {
 			t.Fatal("must not issue a session cookie for a tenant outside the identity's memberships")
 		}
 	}

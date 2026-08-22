@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-alerting
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+    {{- include "cairnobs.selectorLabels" (list $ "alerting") | nindent 4 }}
+spec:
+  # See values.yaml's comment: replicas is not a real knob here yet.
+  replicas: {{ .Values.alerting.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cairnobs.selectorLabels" (list $ "alerting") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cairnobs.selectorLabels" (list $ "alerting") | nindent 8 }}
+    spec:
+      initContainers:
+        {{- include "cairnobs.waitForTCP" (list "postgres" (printf "%s-postgres" .Release.Name) "5432") | nindent 8 }}
+        {{- include "cairnobs.waitForTCP" (list "api" (printf "%s-api" .Release.Name) "8080") | nindent 8 }}
+      containers:
+        - name: alerting
+          image: "{{ .Values.alerting.image.repository }}:{{ .Values.alerting.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: POSTGRES_ADDR
+              value: "{{ .Release.Name }}-postgres:5432"
+            - name: POSTGRES_DATABASE
+              value: sentry_metadata
+            - name: POSTGRES_USERNAME
+              value: sentry
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: password
+            - name: API_QUERY_URL
+              value: "http://{{ .Release.Name }}-api:8080"
+            {{- if .Values.enterprise.enabled }}
+            # RoleService credential for POST /query, once api's
+            # ENTERPRISE_AUTH_URL enforcement is on -- see
+            # /docs/phase-4-isolation-design.md's alerting<->api gap and
+            # alerting/internal/queryclient's doc comment. NOT generated
+            # by this chart: mint one with
+            # `enterprise-auth -mint-service-token=alerting` (see
+            # enterprise/README.md) and supply it via
+            # --set-string alerting.apiServiceToken=... or a values
+            # override backed by a Secret you manage -- a chart
+            # generating its own long-lived service credential and
+            # storing it in the same release's values would defeat the
+            # point of it being a distinct, revocable credential.
+            {{- if .Values.alerting.apiServiceToken }}
+            - name: API_SERVICE_TOKEN
+              value: {{ .Values.alerting.apiServiceToken | quote }}
+            {{- end }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8081
+          readinessProbe:
+            exec:
+              command: ["/alerting", "-healthcheck"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.alerting.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-alerting
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+    {{- include "cairnobs.selectorLabels" (list $ "alerting") | nindent 4 }}
+spec:
+  selector:
+    {{- include "cairnobs.selectorLabels" (list $ "alerting") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8081

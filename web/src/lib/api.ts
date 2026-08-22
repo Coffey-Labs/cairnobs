@@ -285,7 +285,7 @@ export async function getAuthFeatures(): Promise<AuthFeatures> {
 //
 // The two calls below are the reason getAuthFeatures above doesn't send
 // credentials but these do: they carry the short-lived
-// sentry_pending_login cookie enterprise-auth's finishLogin sets when an
+// cairnobs_pending_login cookie enterprise-auth's finishLogin sets when an
 // identity resolves to more than one tenant_memberships row (see
 // enterprise/internal/loginhandler's package doc comment), and
 // selectTenant's response sets the real session cookie. Both require
@@ -716,8 +716,8 @@ export function issueAgentCommand(host: string, command: 'restart'): Promise<Age
 // ---- Host CPU/memory/disk metrics ----
 // No new REST endpoints -- a metrics sample is an ordinary log record
 // (see agent/README.md's "Host CPU/memory/disk metrics" section and
-// agent/sentry-agent/src/main.rs's send_metrics), tagged
-// `sentry.metrics=true`, fetched through the same POST /query every
+// agent/cairnobs-agent/src/main.rs's send_metrics), tagged
+// `cairnobs.metrics=true`, fetched through the same POST /query every
 // other page already uses via runQuery(). Only ever set on one agent
 // process per physical host, so `stats count by host` over this tag
 // naturally lists real hosts, not every fragmented per-source agent
@@ -728,7 +728,7 @@ export function issueAgentCommand(host: string, command: 'restart'): Promise<Age
 export type HostSummary = { host: string; sampleCount: number };
 
 export async function listMetricsHosts(): Promise<HostSummary[]> {
-	const result = await runQuery('sentry.metrics=true | stats count by host', 'spl');
+	const result = await runQuery('cairnobs.metrics=true | stats count by host', 'spl');
 	const hostIdx = result.columns.indexOf('host');
 	const countIdx = result.columns.indexOf('count');
 	return result.rows.map((r) => ({ host: String(r[hostIdx]), sampleCount: Number(r[countIdx]) }));
@@ -763,7 +763,7 @@ export type HostMetrics = {
 // attribute columns the same way filtering does.
 export async function getHostMetrics(host: string): Promise<HostMetrics | null> {
 	const result = await runQuery(
-		`host="${host}" sentry.metrics=true | sort -timestamp | head 1`,
+		`host="${host}" cairnobs.metrics=true | sort -timestamp | head 1`,
 		'spl'
 	);
 	if (result.rows.length === 0) return null;

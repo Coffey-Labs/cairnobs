@@ -1,7 +1,7 @@
 # deploy/operator
 
 A small `controller-runtime` Operator managing one CRD: `Tenant`
-(`sentry.io/v1alpha1`). See `internal/controller/tenant_controller.go`'s
+(`cairnobs.io/v1alpha1`). See `internal/controller/tenant_controller.go`'s
 doc comment for exactly what it reconciles and -- just as importantly --
 what it deliberately doesn't (no ClickHouse calls, no Tantivy filesystem
 access, no `enterprise/internal/rbacstore` wiring; those are
@@ -17,7 +17,7 @@ environment, so this package is hand-written rather than generated:
   `api/v1alpha1/api_test.go`'s round-trip tests (mutate a copy, assert
   the original is untouched -- exactly the class of bug a hand-written
   `DeepCopy` is prone to).
-- `config/crd/sentry.io_tenants.yaml` -- normally `controller-gen crd`
+- `config/crd/cairnobs.io_tenants.yaml` -- normally `controller-gen crd`
   output from the `+kubebuilder:validation:*` markers on
   `api/v1alpha1/tenant_types.go`; hand-written here and only as strong as
   keeping the two in sync by hand. Validated by strict-unmarshaling it
@@ -29,7 +29,7 @@ environment, so this package is hand-written rather than generated:
   are present as documentation/intent (matching kubebuilder convention)
   but were never run through `controller-gen rbac` -- the actual
   ClusterRole is hand-written in
-  `/deploy/helm/sentry/templates/tenant-operator.yaml`, kept in sync with
+  `/deploy/helm/cairnobs/templates/tenant-operator.yaml`, kept in sync with
   those markers by hand, same caveat as the CRD above.
 
 ## Layout
@@ -59,7 +59,7 @@ garbage collection, watch-triggered re-reconciliation) -- see
 `internal/controller/tenant_controller_test.go`'s doc comment.
 
 ```sh
-docker build -f Dockerfile -t sentry-tenant-operator .   # context is deploy/operator/, not the repo root
+docker build -f Dockerfile -t cairnobs-tenant-operator .   # context is deploy/operator/, not the repo root
 ```
 
 Not verified in this session -- see `/deploy/README.md`.
@@ -67,9 +67,9 @@ Not verified in this session -- see `/deploy/README.md`.
 ## Trying it against a real cluster
 
 ```sh
-kubectl apply -f config/crd/sentry.io_tenants.yaml
+kubectl apply -f config/crd/cairnobs.io_tenants.yaml
 kubectl apply -f - <<'EOF'
-apiVersion: sentry.io/v1alpha1
+apiVersion: cairnobs.io/v1alpha1
 kind: Tenant
 metadata:
   name: acme
@@ -77,5 +77,5 @@ spec:
   displayName: "Acme Corp"
 EOF
 kubectl get tenant acme -o yaml   # status.phase should reach Active
-kubectl get secret sentry-tenant-acme-clickhouse -o yaml
+kubectl get secret cairnobs-tenant-acme-clickhouse -o yaml
 ```

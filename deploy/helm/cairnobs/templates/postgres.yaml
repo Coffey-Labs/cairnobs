@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+    {{- include "cairnobs.selectorLabels" (list $ "postgres") | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cairnobs.selectorLabels" (list $ "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cairnobs.selectorLabels" (list $ "postgres") | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: POSTGRES_DB
+              value: sentry_metadata
+            - name: POSTGRES_USER
+              value: sentry
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: password
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "sentry", "-d", "sentry_metadata"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+    {{- include "cairnobs.selectorLabels" (list $ "postgres") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "cairnobs.selectorLabels" (list $ "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+---
+# One-shot: applies /metadata/migrations/*.sql (including Phase 4's
+# tenants/users/tenant_memberships/audit_log schema) -- same image
+# metadata/Dockerfile builds for docker-compose.yml's metadata-migrate
+# service. Plain Job, not a Helm hook -- see redpanda.yaml's comment.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-metadata-migrate
+  labels:
+    {{- include "cairnobs.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "cairnobs.selectorLabels" (list $ "metadata-migrate") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: metadata-migrate
+          image: "{{ .Values.postgres.migrateImage.repository }}:{{ .Values.postgres.migrateImage.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: POSTGRES_HOST
+              value: "{{ .Release.Name }}-postgres"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: sentry
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: password
+            - name: POSTGRES_DATABASE
+              value: sentry_metadata
+            - name: AUDIT_WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres
+                  key: auditWriterPassword

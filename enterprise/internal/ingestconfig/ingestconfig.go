@@ -54,7 +54,7 @@ type BatchConfig struct {
 // api/internal/config.Config.DevCredentialWarnings for the full
 // reasoning (duplicated here per this repo's no-shared-code-between-
 // services convention).
-const devOnlyCredential = "sentry-dev-only"
+const devOnlyCredential = "cairnobs-dev-only"
 
 // DevCredentialWarnings reports whether the configured Postgres
 // credential still equals the literal dev-only default --

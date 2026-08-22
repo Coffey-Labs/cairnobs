@@ -26,7 +26,7 @@ const STATS_FUNCTIONS = new Set(['count', 'sum', 'avg', 'min', 'max']);
 const TIME_FIELDS = new Set(['earliest', 'latest']);
 
 export const pipeLanguage = StreamLanguage.define({
-	name: 'sentry-pipe',
+	name: 'cairnobs-pipe',
 	startState() {
 		return { afterPipe: true };
 	},

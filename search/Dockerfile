@@ -1,6 +1,6 @@
 # Build context must be the repo root (sentry/), since this needs both
 # search/ and proto/:
-#   docker build -f search/Dockerfile -t sentry-search .
+#   docker build -f search/Dockerfile -t cairnobs-search .
 #
 # Unlike /agent, this doesn't need musl/static linking -- it's a normal
 # server-side container, not an edge-deployed binary, and both Tantivy and
@@ -16,5 +16,5 @@ WORKDIR /src/search
 RUN cargo build --release
 
 FROM gcr.io/distroless/cc-debian12
-COPY --from=builder /src/search/target/release/sentry-search /sentry-search
-ENTRYPOINT ["/sentry-search"]
+COPY --from=builder /src/search/target/release/cairnobs-search /cairnobs-search
+ENTRYPOINT ["/cairnobs-search"]

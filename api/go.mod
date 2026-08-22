@@ -1,4 +1,4 @@
-module github.com/sentry/sentry/api
+module github.com/cairnobs/cairnobs/api
 
 go 1.25.0
 
@@ -6,12 +6,12 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/sentry/sentry/proto v0.0.0-00010101000000-000000000000
+	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
 	golang.org/x/crypto v0.55.0
 	google.golang.org/grpc v1.83.0
 )
 
-replace github.com/sentry/sentry/proto => ../proto
+replace github.com/cairnobs/cairnobs/proto => ../proto
 
 require (
 	github.com/ClickHouse/ch-go v0.74.0 // indirect

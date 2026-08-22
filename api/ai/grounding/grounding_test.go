@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/ai/provider"
-	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
 )
 
 // routingFakeRunner returns a canned result keyed by a substring match

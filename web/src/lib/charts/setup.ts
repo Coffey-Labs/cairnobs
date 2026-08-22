@@ -2,7 +2,7 @@
 // would ship every chart type/component ECharts has ever shipped,
 // against the whole reason it was picked over hand-rolled D3 for the
 // bundle-size tradeoff (see the Phase 5 charting-library review). This
-// registers only what Sentry's five chart types actually use: line/bar
+// registers only what Cairn OBS's five chart types actually use: line/bar
 // (time-series, stacked bar, top-N, the single-stat sparkline) and
 // heatmap, plus tooltip/legend/grid/dataZoom/visualMap and the canvas
 // renderer. Imported once, here, not per-component -- echarts.use() is

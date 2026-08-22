@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // store is the narrow interface Handler depends on -- *Store (store.go)

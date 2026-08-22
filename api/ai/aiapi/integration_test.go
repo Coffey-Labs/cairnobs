@@ -29,8 +29,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sentry/sentry/api/ai/provider/ollama"
-	"github.com/sentry/sentry/api/ai/router"
+	"github.com/cairnobs/cairnobs/api/ai/provider/ollama"
+	"github.com/cairnobs/cairnobs/api/ai/router"
 )
 
 // jsonBody marshals v for use as an http.Post body -- the integration

@@ -39,8 +39,8 @@ func getTenant(t *testing.T, s *Syncer, tenantID string) *unstructured.Unstructu
 }
 
 func TestSyncCreatesTenantObjectWithDisplayName(t *testing.T) {
-	s := newTestSyncer(t, "sentry")
-	err := s.Sync(context.Background(), "acme", "Acme Corp", "/var/lib/sentry-search/tenants/acme", Credentials{Username: "tenant_acme", Password: "secret-pw"})
+	s := newTestSyncer(t, "cairnobs")
+	err := s.Sync(context.Background(), "acme", "Acme Corp", "/var/lib/cairnobs-search/tenants/acme", Credentials{Username: "tenant_acme", Password: "secret-pw"})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -53,8 +53,8 @@ func TestSyncCreatesTenantObjectWithDisplayName(t *testing.T) {
 }
 
 func TestSyncSetsRealStatusFields(t *testing.T) {
-	s := newTestSyncer(t, "sentry")
-	err := s.Sync(context.Background(), "acme", "Acme Corp", "/var/lib/sentry-search/tenants/acme", Credentials{Username: "tenant_acme", Password: "secret-pw"})
+	s := newTestSyncer(t, "cairnobs")
+	err := s.Sync(context.Background(), "acme", "Acme Corp", "/var/lib/cairnobs-search/tenants/acme", Credentials{Username: "tenant_acme", Password: "secret-pw"})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -65,23 +65,23 @@ func TestSyncSetsRealStatusFields(t *testing.T) {
 		t.Fatalf("status.clickHouseDatabaseName = %q, want acme", dbName)
 	}
 	secretRef, _, _ := unstructured.NestedString(obj.Object, "status", "clickHouseSecretRef")
-	if secretRef != "sentry-tenant-acme-clickhouse" {
-		t.Fatalf("status.clickHouseSecretRef = %q, want sentry-tenant-acme-clickhouse", secretRef)
+	if secretRef != "cairnobs-tenant-acme-clickhouse" {
+		t.Fatalf("status.clickHouseSecretRef = %q, want cairnobs-tenant-acme-clickhouse", secretRef)
 	}
 	indexPath, _, _ := unstructured.NestedString(obj.Object, "status", "tantivyIndexPath")
-	if indexPath != "/var/lib/sentry-search/tenants/acme" {
-		t.Fatalf("status.tantivyIndexPath = %q, want /var/lib/sentry-search/tenants/acme", indexPath)
+	if indexPath != "/var/lib/cairnobs-search/tenants/acme" {
+		t.Fatalf("status.tantivyIndexPath = %q, want /var/lib/cairnobs-search/tenants/acme", indexPath)
 	}
 }
 
 func TestSyncCreatesSecretOwnedByTenant(t *testing.T) {
-	s := newTestSyncer(t, "sentry")
+	s := newTestSyncer(t, "cairnobs")
 	err := s.Sync(context.Background(), "acme", "Acme Corp", "/idx", Credentials{Username: "tenant_acme", Password: "secret-pw"})
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
-	secret, err := s.clientset.CoreV1().Secrets("sentry").Get(context.Background(), "sentry-tenant-acme-clickhouse", metav1.GetOptions{})
+	secret, err := s.clientset.CoreV1().Secrets("cairnobs").Get(context.Background(), "cairnobs-tenant-acme-clickhouse", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("getting secret: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestSyncCreatesSecretOwnedByTenant(t *testing.T) {
 // Tenant object, must not error, and must never silently swap in
 // different credentials than what was passed.
 func TestSyncIsIdempotentAndNeverChangesCredentials(t *testing.T) {
-	s := newTestSyncer(t, "sentry")
+	s := newTestSyncer(t, "cairnobs")
 	ctx := context.Background()
 	creds := Credentials{Username: "tenant_acme", Password: "secret-pw"}
 
@@ -111,7 +111,7 @@ func TestSyncIsIdempotentAndNeverChangesCredentials(t *testing.T) {
 		t.Fatalf("second Sync: %v", err)
 	}
 
-	list, err := s.dynamic.Resource(tenantGVR).Namespace("sentry").List(ctx, metav1.ListOptions{})
+	list, err := s.dynamic.Resource(tenantGVR).Namespace("cairnobs").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Fatalf("listing tenants: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestSyncIsIdempotentAndNeverChangesCredentials(t *testing.T) {
 		t.Fatalf("expected exactly one Tenant object after two Syncs, got %d", len(list.Items))
 	}
 
-	secret, err := s.clientset.CoreV1().Secrets("sentry").Get(ctx, "sentry-tenant-acme-clickhouse", metav1.GetOptions{})
+	secret, err := s.clientset.CoreV1().Secrets("cairnobs").Get(ctx, "cairnobs-tenant-acme-clickhouse", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("getting secret: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestSyncIsIdempotentAndNeverChangesCredentials(t *testing.T) {
 }
 
 func TestSyncPreservesExistingTenantObjectDisplayName(t *testing.T) {
-	s := newTestSyncer(t, "sentry")
+	s := newTestSyncer(t, "cairnobs")
 	ctx := context.Background()
 
 	// A human/GitOps process already created this Tenant object (e.g.
@@ -137,12 +137,12 @@ func TestSyncPreservesExistingTenantObjectDisplayName(t *testing.T) {
 	// -provision-tenant ever ran -- Sync must not overwrite their
 	// chosen displayName with its own.
 	pre := &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "sentry.io/v1alpha1",
+		"apiVersion": "cairnobs.io/v1alpha1",
 		"kind":       "Tenant",
-		"metadata":   map[string]interface{}{"name": "acme", "namespace": "sentry"},
+		"metadata":   map[string]interface{}{"name": "acme", "namespace": "cairnobs"},
 		"spec":       map[string]interface{}{"displayName": "Human-Chosen Name"},
 	}}
-	if _, err := s.dynamic.Resource(tenantGVR).Namespace("sentry").Create(ctx, pre, metav1.CreateOptions{}); err != nil {
+	if _, err := s.dynamic.Resource(tenantGVR).Namespace("cairnobs").Create(ctx, pre, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("pre-creating tenant: %v", err)
 	}
 

@@ -1,12 +1,12 @@
 [package]
-name = "sentry-search"
+name = "cairnobs-search"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
-description = "Sentry Tantivy-backed full-text search service"
+description = "Cairn OBS Tantivy-backed full-text search service"
 
 [[bin]]
-name = "sentry-search"
+name = "cairnobs-search"
 path = "src/main.rs"
 
 [dependencies]

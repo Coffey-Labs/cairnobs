@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sentry/sentry/ingest/internal/config"
+	"github.com/cairnobs/cairnobs/ingest/internal/config"
 )
 
 // loadServerTLSConfig builds the mTLS server config: ingest's own

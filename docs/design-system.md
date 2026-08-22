@@ -1,4 +1,4 @@
-# Sentry Design System (Phase 5)
+# Cairn OBS Design System (Phase 5)
 
 Direction: **Signal** — cockpit/ICU-monitor instrumentation logic. Color
 is a rationed resource: the UI is near-neutral grayscale everywhere, so
@@ -140,7 +140,7 @@ Two presets, one token swap — `html.density-compact` overrides
 and drops `--text-base` to `--text-sm`. Comfortable (the default) suits
 dashboards and forms; compact suits log tables and query results. Toggle
 via `$lib/density.svelte.ts`'s `setDensity()`/`toggleDensity()` — a
-global, persisted (`localStorage['sentry.density']`) preference, not a
+global, persisted (`localStorage['cairnobs.density']`) preference, not a
 per-page setting, so switching it on one page carries to the next.
 `web/src/app.html` has a synchronous inline script that applies the
 stored value before first paint, so there's no flash of the wrong

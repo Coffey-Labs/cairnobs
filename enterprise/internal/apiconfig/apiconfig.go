@@ -92,7 +92,7 @@ type AuditWriterConfig struct {
 // DevCredentialWarnings for the full reasoning (duplicated here per
 // this repo's no-shared-code-between-services convention).
 const (
-	devOnlyCredential            = "sentry-dev-only"
+	devOnlyCredential            = "cairnobs-dev-only"
 	devOnlyAuditWriterCredential = "audit-writer-dev-only"
 )
 

@@ -1,0 +1,12 @@
+<svg width="600" height="140" viewBox="0 0 600 140" xmlns="http://www.w3.org/2000/svg">
+  <!-- Horizontal lockup for dark backgrounds -->
+  <g transform="translate(20,10) scale(0.6)">
+    <rect x="30" y="142" width="140" height="42" rx="20" fill="#E6690E" transform="rotate(-1.5 100 163)"/>
+    <rect x="48" y="106" width="104" height="38" rx="18" fill="#FF8A00" transform="rotate(2.5 100 125)"/>
+    <rect x="64" y="73" width="72" height="34" rx="16" fill="#FF9D2E" transform="rotate(-3 100 90)"/>
+    <rect x="78" y="43" width="44" height="30" rx="14" fill="#FFB157" transform="rotate(3.5 100 58)"/>
+  </g>
+  <text x="160" y="87" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="48" font-weight="700" fill="#F2F2F2" letter-spacing="-1">cairn</text>
+  <text x="342" y="87" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="48" font-weight="700" fill="#FF8A00" letter-spacing="1"> obs</text>
+  <rect x="540" y="49" width="14" height="38" fill="#FF8A00"/>
+</svg>

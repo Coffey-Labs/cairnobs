@@ -3,7 +3,7 @@
 	// the browser here (SELECT_TENANT_REDIRECT_URL, default
 	// http://localhost:3000/select-tenant -- see enterprise/internal/
 	// config's doc comment) after a login resolves to more than one
-	// tenant_memberships row, carrying a short-lived sentry_pending_login
+	// tenant_memberships row, carrying a short-lived cairnobs_pending_login
 	// cookie instead of a real session. This page's whole job: show the
 	// choices GET /auth/memberships returns, and turn a click into
 	// POST /auth/select-tenant, which trades that cookie for a real

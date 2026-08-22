@@ -19,7 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/sentry/sentry/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
 )
 
 // Event is the firing/resolved occurrence a payload is rendered from.

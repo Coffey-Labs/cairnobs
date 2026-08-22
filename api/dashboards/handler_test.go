@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 )
 
 // fakeStore enforces tenant scoping the same way store.go's real

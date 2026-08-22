@@ -206,7 +206,7 @@ per panel directly, exactly the same endpoint the root query page already
 uses. This keeps `api/internal/dashboards` pure CRUD with zero
 query-execution code of its own, consistent with the project's standing
 rule that nothing duplicates `querylang`'s execution path (the same
-reason `sentryctl query` calls `/query` over HTTP instead of importing
+reason `cairnobsctl query` calls `/query` over HTTP instead of importing
 `querylang` internals). It also means panels load and error
 independently in the UI — one broken panel query doesn't fail the whole
 dashboard.
@@ -253,7 +253,7 @@ used internally, not a separate export-specific shape). `POST
 /dashboards/import` accepts that same shape and creates a new dashboard
 from it (new IDs assigned, not a literal replay of the source IDs, so
 importing into a different environment doesn't collide). This is
-deliberately the *same* JSON contract `sentryctl dashboards apply` (task
+deliberately the *same* JSON contract `cairnobsctl dashboards apply` (task
 7) consumes — "exportable/importable, Terraform-friendly" isn't a
 separate design, it's one JSON shape used from two call sites (web
 export button, CLI apply).

@@ -12,8 +12,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/dashboards"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/dashboards"
 )
 
 // DashboardPermissions implements dashboards.PermissionStore by

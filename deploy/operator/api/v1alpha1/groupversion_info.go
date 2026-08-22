@@ -7,7 +7,7 @@
 // cluster).
 //
 // +kubebuilder:object:generate=true
-// +groupName=sentry.io
+// +groupName=cairnobs.io
 package v1alpha1
 
 import (
@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	// GroupVersion is group sentry.io, version v1alpha1.
-	GroupVersion = schema.GroupVersion{Group: "sentry.io", Version: "v1alpha1"}
+	// GroupVersion is group cairnobs.io, version v1alpha1.
+	GroupVersion = schema.GroupVersion{Group: "cairnobs.io", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}

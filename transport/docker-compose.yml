@@ -12,7 +12,7 @@
 services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
-    container_name: sentry-redpanda
+    container_name: cairnobs-redpanda
     command:
       - redpanda
       - start

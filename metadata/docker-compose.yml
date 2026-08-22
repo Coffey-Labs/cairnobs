@@ -5,13 +5,13 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: sentry-metadata-postgres
+    container_name: cairnobs-metadata-postgres
     ports:
       - "5432:5432"
     environment:
       POSTGRES_DB: sentry_metadata
       POSTGRES_USER: sentry
-      POSTGRES_PASSWORD: "sentry-dev-only" # not a real secret, see root docker-compose.yml
+      POSTGRES_PASSWORD: "cairnobs-dev-only" # not a real secret, see root docker-compose.yml
     volumes:
       - metadata-postgres-data:/var/lib/postgresql/data
 

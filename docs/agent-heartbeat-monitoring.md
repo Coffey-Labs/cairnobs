@@ -10,7 +10,7 @@ reachable, and how quickly the platform notices when it stops.
 
 The agent's transport has always been push-only, by design — it dials
 *out* to `ingest` over mTLS; nothing in the platform ever dials into an
-agent (see `agent/sentry-agent/src/grpc.rs`'s doc comment). Making
+agent (see `agent/cairnobs-agent/src/grpc.rs`'s doc comment). Making
 liveness detection a true pull (the platform reaching into every remote
 host on a schedule) would mean every agent needs a reachable address and
 an open inbound port — a real problem for hosts behind NAT or with
@@ -28,7 +28,7 @@ model this reuses unchanged.
 
 ## Configuring the heartbeat
 
-`agent/sentry-agent/config/agent.example.toml`:
+`agent/cairnobs-agent/config/agent.example.toml`:
 
 ```toml
 [heartbeat]
@@ -40,7 +40,7 @@ The heartbeat record is sent through the exact same `PushBatch` RPC and
 mTLS identity every log line uses, bypassing the batch buffer (`[batch]`
 `max_size`/`flush_interval_ms`) so it's punctual rather than subject to
 batching delay. It's distinguished from real log data purely by an
-attribute — `sentry.heartbeat=true` — not by a fake `service` value, so
+attribute — `cairnobs.heartbeat=true` — not by a fake `service` value, so
 it never pollutes service-based dashboards or faceting. `message` is the
 literal string `"agent heartbeat"`.
 
@@ -55,7 +55,7 @@ heartbeat doesn't look like a false absence):
 curl -X POST http://localhost:8081/rules -H 'Content-Type: application/json' -d '{
   "name": "web-01 unavailable",
   "description": "fires when web-01 misses its heartbeat window",
-  "query": "earliest=-3m host=web-01 sentry.heartbeat=true",
+  "query": "earliest=-3m host=web-01 cairnobs.heartbeat=true",
   "query_language": "spl",
   "condition_type": "absence",
   "eval_interval_seconds": 60,
@@ -123,7 +123,7 @@ this was simply never exercised in this specific way before) and a
 curl -X POST http://localhost:8081/rules -H "Content-Type: application/json" -d "{
   \"name\": \"fleet degraded\",
   \"description\": \"fires when fewer than 3 of the expected fleet hosts have heartbeated recently\",
-  \"query\": \"SELECT count(DISTINCT host) AS active_agents FROM logs WHERE timestamp > now() - INTERVAL 3 MINUTE AND attributes['sentry.heartbeat'] = 'true' AND host LIKE 'web-%'\",
+  \"query\": \"SELECT count(DISTINCT host) AS active_agents FROM logs WHERE timestamp > now() - INTERVAL 3 MINUTE AND attributes['cairnobs.heartbeat'] = 'true' AND host LIKE 'web-%'\",
   \"query_language\": \"sql\",
   \"condition_type\": \"threshold\",
   \"comparator\": \"lt\",
@@ -172,8 +172,8 @@ wanted, not duplicated as a one-off script now.
 ## Verified live
 
 This exact flow was run end-to-end against a live stack in this repo: a
-real `sentry-agent` binary, heartbeat interval 5s, connected to a real
-`ingest`; an absence rule (`earliest=-45s host=... sentry.heartbeat=true`,
+real `cairnobs-agent` binary, heartbeat interval 5s, connected to a real
+`ingest`; an absence rule (`earliest=-45s host=... cairnobs.heartbeat=true`,
 `eval_interval_seconds=30`, `for_minutes=0`) created via the REST API
 above; the agent process killed; the rule transitioned `ok` → `firing`
 within one evaluation cycle (`condition_true_since`/`fired_at` both set

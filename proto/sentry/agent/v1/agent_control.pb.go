@@ -482,7 +482,7 @@ const file_sentry_agent_v1_agent_control_proto_rawDesc = "" +
 	"\x19AGENT_COMMAND_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15AGENT_COMMAND_RESTART\x10\x012\\\n" +
 	"\fAgentControl\x12L\n" +
-	"\aCheckIn\x12\x1f.sentry.agent.v1.CheckInRequest\x1a .sentry.agent.v1.CheckInResponseB8Z6github.com/sentry/sentry/proto/sentry/agent/v1;agentv1b\x06proto3"
+	"\aCheckIn\x12\x1f.sentry.agent.v1.CheckInRequest\x1a .sentry.agent.v1.CheckInResponseB<Z:github.com/cairnobs/cairnobs/proto/sentry/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_sentry_agent_v1_agent_control_proto_rawDescOnce sync.Once

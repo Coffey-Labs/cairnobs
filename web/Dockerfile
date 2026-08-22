@@ -1,6 +1,6 @@
 # Build context can be just web/ (unlike agent/ingest/api, this doesn't
 # need /proto):
-#   docker build -f web/Dockerfile -t sentry-web web/
+#   docker build -f web/Dockerfile -t cairnobs-web web/
 
 FROM node:22-alpine AS builder
 WORKDIR /src

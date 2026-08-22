@@ -1,0 +1,12 @@
+apiVersion: v2
+name: cairnobs
+description: >-
+  Cairn OBS: Kubernetes-native distributed log aggregation. Phase 4 adds
+  multi-tenant-aware deployment (per-tenant ClickHouse credential Secrets
+  via the tenant-operator, optional enterprise-auth) on top of the same
+  single-cluster topology Phases 0-3 ran under docker-compose -- see
+  deploy/README.md for what "multi-tenant-aware" does and doesn't mean
+  here.
+type: application
+version: 0.4.0
+appVersion: "phase-4"

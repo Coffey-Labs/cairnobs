@@ -1,6 +1,6 @@
 // Package queryclient is a thin HTTP client to /api's POST /query --
 // alerting never imports querylang or talks to ClickHouse/Tantivy
-// directly, same precedent sentryctl query and the web UI's dashboard
+// directly, same precedent cairnobsctl query and the web UI's dashboard
 // panels already set: one query-execution path, reused everywhere.
 package queryclient
 

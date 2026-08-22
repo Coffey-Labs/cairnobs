@@ -27,7 +27,7 @@ echo "Checking: no core Go package imports enterprise/..."
 # tooling isn't shipped, and load-test/fixture scripts have no reason to
 # import enterprise/ either, but they're not part of the architectural
 # boundary claim, so they're excluded rather than asserted about).
-core_hits="$(grep -rn '"github.com/sentry/sentry/enterprise' \
+core_hits="$(grep -rn '"github.com/cairnobs/cairnobs/enterprise' \
     --include='*.go' \
     agent ingest storage api web cli alerting 2>/dev/null || true)"
 if [[ -n "$core_hits" ]]; then

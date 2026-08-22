@@ -128,14 +128,14 @@ compile time), same requirement as the Linux build.
 ### C2. Get mTLS certs onto the Windows host
 
 Copy `hack/dev-certs/out/{ca,client,client-key}.pem` from wherever you
-ran `generate.sh` to `C:\ProgramData\SentryAgent\` on the Windows host
+ran `generate.sh` to `C:\ProgramData\CairnObsAgent\` on the Windows host
 (create the directory first). Same dev-only certs Phase 0's Linux agent
 uses — the CA doesn't care what platform the client is on, only that the
 client cert was signed by it.
 
 ### C3. Config
 
-Create `C:\ProgramData\SentryAgent\agent.toml`:
+Create `C:\ProgramData\CairnObsAgent\agent.toml`:
 
 ```toml
 [source]
@@ -155,7 +155,7 @@ needed (same note as Phase 0's runbook's troubleshooting section).
 
 ```powershell
 $env:RUST_LOG="info"
-.\sentry-agent.exe --config C:\ProgramData\SentryAgent\agent.toml
+.\cairnobs-agent.exe --config C:\ProgramData\CairnObsAgent\agent.toml
 ```
 
 Confirms the Event Log source and mTLS connection work before adding the
@@ -167,7 +167,7 @@ diagnose here than after wrapping it in a service.
 From another PowerShell window (or Event Viewer):
 
 ```powershell
-eventcreate /T INFORMATION /ID 1 /L APPLICATION /SO "SentryTest" /D "phase1 windows verification line"
+eventcreate /T INFORMATION /ID 1 /L APPLICATION /SO "CairnObsTest" /D "phase1 windows verification line"
 ```
 
 Then check both query paths, same pattern as A2.
@@ -175,11 +175,11 @@ Then check both query paths, same pattern as A2.
 ### C6. Install as a service
 
 ```powershell
-.\sentry-agent.exe install
-sc.exe start SentryAgent
+.\cairnobs-agent.exe install
+sc.exe start CairnObsAgent
 ```
 
-Verify it's running (`sc.exe query SentryAgent`) and generate another
+Verify it's running (`sc.exe query CairnObsAgent`) and generate another
 test event to confirm it's still flowing through while running as a
 service, not just in the foreground. **Known gap:** no console under the
 SCM means `tracing`'s log output currently has nowhere to go — see
@@ -188,8 +188,8 @@ something goes wrong here, you're debugging blind until that's
 addressed; C4's foreground run is where to diagnose real problems.
 
 ```powershell
-sc.exe stop SentryAgent
-.\sentry-agent.exe uninstall
+sc.exe stop CairnObsAgent
+.\cairnobs-agent.exe uninstall
 ```
 
 ### C7 (optional). ETW

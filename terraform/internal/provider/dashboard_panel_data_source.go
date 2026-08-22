@@ -32,11 +32,11 @@ func (d *dashboardPanelDataSource) Metadata(_ context.Context, req datasource.Me
 
 func (d *dashboardPanelDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Looks up an existing Sentry dashboard panel by (dashboard_id, id). See the sentry_dashboard_panel resource for how one is created/managed.",
+		Description: "Looks up an existing Cairn OBS dashboard panel by (dashboard_id, id). See the cairnobs_dashboard_panel resource for how one is created/managed.",
 		Attributes: map[string]schema.Attribute{
 			"dashboard_id": schema.StringAttribute{
 				Required:    true,
-				Description: "ID of the parent sentry_dashboard.",
+				Description: "ID of the parent cairnobs_dashboard.",
 			},
 			"id": schema.StringAttribute{
 				Required:    true,

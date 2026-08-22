@@ -297,7 +297,7 @@ Loop shape:
    up to a bounded batch size.
 2. Dispatch claimed rules to a bounded worker pool (goroutines).
 3. Each worker: `POST /query` against `api` (reusing the existing
-   endpoint — the same precedent `sentryctl query` already set, never a
+   endpoint — the same precedent `cairnobsctl query` already set, never a
    second query-execution path), evaluate the condition, run the state
    transition (fix 3/4 aware) and, if applicable, the fix-2 transactional
    outbox insert, in one short DB transaction.
@@ -319,7 +319,7 @@ loop, and the delivery worker — all four pieces of "alerting" in one
 service, since they share the same Postgres tables and the same
 claim-based concurrency pattern. It does **not** import `api`'s
 `querylang` package or talk to ClickHouse/Tantivy directly; it only
-calls `api`'s `POST /query` over HTTP, exactly like `sentryctl query`
+calls `api`'s `POST /query` over HTTP, exactly like `cairnobsctl query`
 and the web UI's dashboard panels already do. `web` gets a second
 backend base URL (`alerting`'s) alongside the existing `api` one.
 

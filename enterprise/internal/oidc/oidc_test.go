@@ -47,7 +47,7 @@ func TestNewDiscoversRealIssuer(t *testing.T) {
 	})
 
 	p, err := New(context.Background(), Config{
-		IssuerURL: srv.URL, ClientID: "sentry", ClientSecret: "secret", RedirectURL: "http://localhost/callback",
+		IssuerURL: srv.URL, ClientID: "cairnobs", ClientSecret: "secret", RedirectURL: "http://localhost/callback",
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

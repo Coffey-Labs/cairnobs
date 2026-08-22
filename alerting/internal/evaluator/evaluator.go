@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sentry/sentry/alerting/internal/delivery"
-	"github.com/sentry/sentry/alerting/internal/notifystore"
-	"github.com/sentry/sentry/alerting/internal/queryclient"
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/delivery"
+	"github.com/cairnobs/cairnobs/alerting/internal/notifystore"
+	"github.com/cairnobs/cairnobs/alerting/internal/queryclient"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 // Evaluator is the ticker-driven scheduler -- a bounded worker pool, not

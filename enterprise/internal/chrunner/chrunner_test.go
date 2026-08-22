@@ -13,7 +13,7 @@
 //
 //	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e CHRUNNER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
-//	  -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=sentry-dev-only \
+//	  -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./internal/chrunner/... -v
 package chrunner
 
@@ -25,9 +25,9 @@ import (
 
 	chdriver "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
-	"github.com/sentry/sentry/api/authz"
+	"github.com/cairnobs/cairnobs/api/authz"
 
-	"github.com/sentry/sentry/enterprise/internal/tenantprovision"
+	"github.com/cairnobs/cairnobs/enterprise/internal/tenantprovision"
 )
 
 func testAddr(t *testing.T) string {

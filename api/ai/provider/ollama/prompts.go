@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sentry/sentry/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
 )
 
 // grammarReference is a condensed version of
 // /docs/query-language-reference.md -- every operation's system prompt
-// includes this so the model is grounded in Sentry's actual pipe syntax,
+// includes this so the model is grounded in Cairn OBS's actual pipe syntax,
 // not whatever generic log-query DSL it may have seen in training.
 // Trimmed to the parts that matter for generation/explanation (the full
 // doc's prose and examples aren't needed here); kept in sync with that
 // doc by hand -- if the grammar changes, this needs updating too, same
 // as any other place the language is described outside its own parser.
-const grammarReference = `Sentry query language (pipe syntax):
+const grammarReference = `Cairn OBS query language (pipe syntax):
 
 <base search> | <stage> | <stage> | ...
 
@@ -64,7 +64,7 @@ func renderSchema(s provider.SchemaContext) string {
 }
 
 func translateSystemPrompt(schema provider.SchemaContext) string {
-	return fmt.Sprintf(`You translate a plain-English question into a Sentry pipe-syntax query. You never explain, never execute anything, never write raw SQL unless the pipe syntax genuinely cannot express the request.
+	return fmt.Sprintf(`You translate a plain-English question into a Cairn OBS pipe-syntax query. You never explain, never execute anything, never write raw SQL unless the pipe syntax genuinely cannot express the request.
 
 %s
 
@@ -77,7 +77,7 @@ If you cannot produce a query you're reasonably confident in, set confidence to 
 }
 
 func completeSystemPrompt(schema provider.SchemaContext) string {
-	return fmt.Sprintf(`You suggest how to continue a partially-typed Sentry query. You are given everything typed so far; respond with ONLY the suggested continuation text (what should appear after the cursor), not the text already typed, not an explanation.
+	return fmt.Sprintf(`You suggest how to continue a partially-typed Cairn OBS query. You are given everything typed so far; respond with ONLY the suggested continuation text (what should appear after the cursor), not the text already typed, not an explanation.
 
 %s
 
@@ -94,12 +94,12 @@ Respond with ONLY a JSON object, no other text, no markdown fences:
 // ExplainRequest.RuleFindings' doc comment.
 func explainSystemPrompt(hasIntent, hasFindings bool) string {
 	if hasFindings {
-		return fmt.Sprintf(`A rule-based check already found one or more real issues with a Sentry query's efficiency (e.g. a missing time range). Your only job is to phrase those findings as a short, clear, actionable suggestion for the person who wrote the query -- do not invent additional issues, do not restate the query's own syntax back at them, do not hedge with "might" or "could" about something the check already confirmed. One or two sentences.
+		return fmt.Sprintf(`A rule-based check already found one or more real issues with a Cairn OBS query's efficiency (e.g. a missing time range). Your only job is to phrase those findings as a short, clear, actionable suggestion for the person who wrote the query -- do not invent additional issues, do not restate the query's own syntax back at them, do not hedge with "might" or "could" about something the check already confirmed. One or two sentences.
 
 %s`, grammarReference)
 	}
 
-	base := fmt.Sprintf(`You explain what a Sentry query does in plain English, for someone who may not know the query language. Be concise -- two or three sentences, not a line-by-line breakdown unless the query is unusually complex.
+	base := fmt.Sprintf(`You explain what a Cairn OBS query does in plain English, for someone who may not know the query language. Be concise -- two or three sentences, not a line-by-line breakdown unless the query is unusually complex.
 
 %s`, grammarReference)
 	if hasIntent {
@@ -109,7 +109,7 @@ func explainSystemPrompt(hasIntent, hasFindings bool) string {
 }
 
 func fixSystemPrompt(schema provider.SchemaContext) string {
-	return fmt.Sprintf(`You fix a broken Sentry query given its error message. Produce a corrected query and a short explanation of what was wrong.
+	return fmt.Sprintf(`You fix a broken Cairn OBS query given its error message. Produce a corrected query and a short explanation of what was wrong.
 
 %s
 

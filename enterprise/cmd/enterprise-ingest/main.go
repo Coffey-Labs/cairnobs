@@ -39,10 +39,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/sentry/sentry/enterprise/internal/chwriter"
-	"github.com/sentry/sentry/enterprise/internal/ingestconfig"
-	"github.com/sentry/sentry/enterprise/internal/rbacstore"
-	"github.com/sentry/sentry/ingest/consumer"
+	"github.com/cairnobs/cairnobs/enterprise/internal/chwriter"
+	"github.com/cairnobs/cairnobs/enterprise/internal/ingestconfig"
+	"github.com/cairnobs/cairnobs/enterprise/internal/rbacstore"
+	"github.com/cairnobs/cairnobs/ingest/consumer"
 )
 
 // dataSourceRefreshInterval matches search/src/tenants.rs's

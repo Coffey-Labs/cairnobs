@@ -1,4 +1,4 @@
-// Package queryapi is Sentry's query API: a single POST /query endpoint
+// Package queryapi is Cairn OBS's query API: a single POST /query endpoint
 // accepting either the pipe syntax or raw SQL, compiled by
 // querylang/planner and executed by querylang/executor. Replaces Phase
 // 0/1's two separate placeholder endpoints (raw-SQL-only /query,
@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sentry/sentry/api/ai/costguard"
-	"github.com/sentry/sentry/api/authz"
-	"github.com/sentry/sentry/api/internal/querylang/planner"
-	"github.com/sentry/sentry/api/querylang/executor"
+	"github.com/cairnobs/cairnobs/api/ai/costguard"
+	"github.com/cairnobs/cairnobs/api/authz"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/planner"
+	"github.com/cairnobs/cairnobs/api/querylang/executor"
 )
 
 // AuditLogger is core's extension point for query audit logging --

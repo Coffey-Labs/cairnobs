@@ -10,7 +10,7 @@ pub mod logsv1 {
     tonic::include_proto!("sentry.logs.v1");
 }
 pub mod searchv1 {
-    tonic::include_proto!("sentry.search.v1");
+    tonic::include_proto!("cairnobs.search.v1");
 }
 
 use anyhow::{Context, Result};

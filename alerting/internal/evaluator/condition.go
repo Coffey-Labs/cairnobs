@@ -3,8 +3,8 @@ package evaluator
 import (
 	"fmt"
 
-	"github.com/sentry/sentry/alerting/internal/queryclient"
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/queryclient"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 // evaluateCondition implements fixes 3 and 4 from

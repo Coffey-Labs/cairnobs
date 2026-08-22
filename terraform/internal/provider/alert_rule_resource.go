@@ -28,7 +28,7 @@ func newAlertRuleResource() resource.Resource {
 	return &alertRuleResource{}
 }
 
-// alertRuleResource implements sentry_alert_rule against
+// alertRuleResource implements cairnobs_alert_rule against
 // alerting/internal/httpapi's POST/GET/DELETE /rules[/{id}] endpoints.
 //
 // Deliberately create/destroy only, every attribute RequiresReplace:
@@ -70,7 +70,7 @@ func (r *alertRuleResource) Metadata(_ context.Context, req resource.MetadataReq
 func (r *alertRuleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
-		Description: "A Sentry alert rule. Create/destroy only -- alerting has no update endpoint for " +
+		Description: "A Cairn OBS alert rule. Create/destroy only -- alerting has no update endpoint for " +
 			"rules today (see this resource's Go doc comment), so every attribute below forces a " +
 			"destroy-and-recreate on change, never an in-place update.",
 		Attributes: map[string]schema.Attribute{
@@ -141,7 +141,7 @@ func (r *alertRuleResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"notification_target_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: replace,
-				Description:   "ID of a sentry_notification_target-managed (or manually created) notification target. The API rejects an empty string. No sentry_notification_target resource exists yet -- see the provider README -- so this has to be a target created some other way (sentryctl, curl, or the web UI) for now.",
+				Description:   "ID of a cairnobs_notification_target-managed (or manually created) notification target. The API rejects an empty string. No cairnobs_notification_target resource exists yet -- see the provider README -- so this has to be a target created some other way (cairnobsctl, curl, or the web UI) for now.",
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:      true,

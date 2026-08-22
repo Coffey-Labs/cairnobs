@@ -1,4 +1,4 @@
-module github.com/sentry/sentry/terraform
+module github.com/cairnobs/cairnobs/terraform
 
 go 1.25.8
 

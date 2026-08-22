@@ -10,7 +10,7 @@ package evaluator
 import (
 	"time"
 
-	"github.com/sentry/sentry/alerting/internal/rulestore"
+	"github.com/cairnobs/cairnobs/alerting/internal/rulestore"
 )
 
 // TransitionInput is everything ComputeTransition needs: the rule's

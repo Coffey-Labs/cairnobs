@@ -32,13 +32,13 @@ import (
 	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/samlidp"
 
-	"github.com/sentry/sentry/enterprise/internal/rbacstore"
-	samlpkg "github.com/sentry/sentry/enterprise/internal/saml"
+	"github.com/cairnobs/cairnobs/enterprise/internal/rbacstore"
+	samlpkg "github.com/cairnobs/cairnobs/enterprise/internal/saml"
 )
 
 const (
-	testSAMLEntityID = "https://sentry-test.example.com/saml/metadata"
-	testSAMLACSURL   = "https://sentry-test.example.com/auth/saml/acs"
+	testSAMLEntityID = "https://cairnobs-test.example.com/saml/metadata"
+	testSAMLACSURL   = "https://cairnobs-test.example.com/auth/saml/acs"
 )
 
 // testSAMLIdP bundles a real samlidp.Server with the SP key/cert it was
@@ -79,14 +79,14 @@ func genSelfSignedCert(t *testing.T, commonName string) (*rsa.PrivateKey, *x509.
 	return key, cert
 }
 
-// newTestSAMLIdP starts a real samlidp.Server and registers Sentry's SP
+// newTestSAMLIdP starts a real samlidp.Server and registers Cairn OBS's SP
 // metadata with it directly via the IdP's own PUT /services/{id}
 // endpoint -- the same mechanism a real IdP admin uses, not a shortcut
 // that reaches into samlidp's unexported state.
 func newTestSAMLIdP(t *testing.T) *testSAMLIdP {
 	t.Helper()
-	idpKey, idpCert := genSelfSignedCert(t, "sentry-test-idp")
-	spKey, spCert := genSelfSignedCert(t, "sentry-test-sp")
+	idpKey, idpCert := genSelfSignedCert(t, "cairnobs-test-idp")
+	spKey, spCert := genSelfSignedCert(t, "cairnobs-test-sp")
 
 	store := &samlidp.MemoryStore{}
 	idpServer, err := samlidp.New(samlidp.Options{
@@ -122,7 +122,7 @@ func newTestSAMLIdP(t *testing.T) *testSAMLIdP {
 	if err != nil {
 		t.Fatalf("marshaling sp metadata: %v", err)
 	}
-	putReq := httptest.NewRequest(http.MethodPut, "/services/sentry-test-sp", strings.NewReader(string(spMetadataXML)))
+	putReq := httptest.NewRequest(http.MethodPut, "/services/cairnobs-test-sp", strings.NewReader(string(spMetadataXML)))
 	putRec := httptest.NewRecorder()
 	idpServer.ServeHTTP(putRec, putReq)
 	if putRec.Code != http.StatusNoContent {
@@ -324,12 +324,12 @@ func TestFullSAMLLoginFlowIssuesSessionForSingleMembership(t *testing.T) {
 
 	var sessionCookie *http.Cookie
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "sentry_session" {
+		if c.Name == "cairnobs_session" {
 			sessionCookie = c
 		}
 	}
 	if sessionCookie == nil || sessionCookie.Value == "" {
-		t.Fatal("expected a sentry_session cookie to be set")
+		t.Fatal("expected a cairnobs_session cookie to be set")
 	}
 	claims, err := sessionManager.Validate(sessionCookie.Value)
 	if err != nil {
@@ -401,7 +401,7 @@ func TestSAMLACSRejectsMissingRequestCookie(t *testing.T) {
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
-	// No prior GET /auth/saml/login, so no sentry_saml_request cookie --
+	// No prior GET /auth/saml/login, so no cairnobs_saml_request cookie --
 	// simulates an attacker POSTing a captured/forged response directly
 	// at the ACS endpoint with no matching request state.
 	form := url.Values{"SAMLResponse": {"irrelevant"}, "RelayState": {""}}

@@ -47,8 +47,8 @@ type Config struct {
 // in the enterprise deployment," since compromising it lets an attacker
 // forge any identity, including the RoleService credential.
 const (
-	devOnlyCredential = "sentry-dev-only"
-	devOnlySigningKey = "sentry-dev-only-session-signing-key-32bytes+"
+	devOnlyCredential = "cairnobs-dev-only"
+	devOnlySigningKey = "cairnobs-dev-only-session-signing-key-32bytes+"
 )
 
 // DevCredentialWarnings reports which configured secrets still equal

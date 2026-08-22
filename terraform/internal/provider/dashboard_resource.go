@@ -23,9 +23,9 @@ func newDashboardResource() resource.Resource {
 	return &dashboardResource{}
 }
 
-// dashboardResource implements sentry_dashboard against
+// dashboardResource implements cairnobs_dashboard against
 // api/dashboards.Handler's POST/GET/PUT/DELETE /dashboards[/{id}]
-// endpoints -- the exact same JSON contract cli/cmd/sentryctl's
+// endpoints -- the exact same JSON contract cli/cmd/cairnobsctl's
 // "dashboards apply" and web's Export JSON button already use (see
 // cli/README.md's "one JSON contract, multiple callers" framing; this
 // is that third caller). Panels are a separate CRUD surface
@@ -54,7 +54,7 @@ func (r *dashboardResource) Metadata(_ context.Context, req resource.MetadataReq
 
 func (r *dashboardResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "A Sentry dashboard. Panels aren't managed by this resource yet -- see the provider README.",
+		Description: "A Cairn OBS dashboard. Panels aren't managed by this resource yet -- see the provider README.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:      true,
@@ -167,7 +167,7 @@ func (r *dashboardResource) Read(ctx context.Context, req resource.ReadRequest, 
 	out, err := r.client.getDashboard(ctx, state.ID.ValueString())
 	if err != nil {
 		if isNotFound(err) {
-			// Deleted out-of-band (e.g. via web or sentryctl) --
+			// Deleted out-of-band (e.g. via web or cairnobsctl) --
 			// dropping it from state lets the next plan offer to
 			// recreate it, the standard Terraform convention, rather
 			// than failing every subsequent plan/apply until someone

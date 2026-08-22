@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sentry/sentry/api/ai/provider"
+	"github.com/cairnobs/cairnobs/api/ai/provider"
 )
 
 // fakeOllamaServer stands in for a real Ollama server, returning the

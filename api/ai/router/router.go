@@ -14,7 +14,7 @@
 // consume it).
 package router
 
-import "github.com/sentry/sentry/api/ai/provider"
+import "github.com/cairnobs/cairnobs/api/ai/provider"
 
 type Operation string
 

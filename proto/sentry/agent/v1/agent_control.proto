@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package sentry.agent.v1;
 
-option go_package = "github.com/sentry/sentry/proto/sentry/agent/v1;agentv1";
+option go_package = "github.com/cairnobs/cairnobs/proto/sentry/agent/v1;agentv1";
 
 // AgentControl is the control-plane counterpart to logs.v1.LogIngest's
 // data-plane PushBatch -- the same mTLS channel/connection an agent

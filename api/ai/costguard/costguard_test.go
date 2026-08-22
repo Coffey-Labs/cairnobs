@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sentry/sentry/api/internal/querylang/ir"
+	"github.com/cairnobs/cairnobs/api/internal/querylang/ir"
 )
 
 // A raw-row (non-aggregation) query with no time range and no explicit

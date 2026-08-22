@@ -147,16 +147,16 @@ var File_sentry_search_v1_search_proto protoreflect.FileDescriptor
 
 const file_sentry_search_v1_search_proto_rawDesc = "" +
 	"\n" +
-	"\x1dsentry/search/v1/search.proto\x12\x10sentry.search.v1\"X\n" +
+	"\x1dsentry/search/v1/search.proto\x12\x12cairnobs.search.v1\"X\n" +
 	"\rSearchRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\x12\x1b\n" +
 	"\ttenant_id\x18\x03 \x01(\tR\btenantId\"/\n" +
 	"\x0eSearchResponse\x12\x1d\n" +
 	"\n" +
-	"record_ids\x18\x01 \x03(\tR\trecordIds2\\\n" +
-	"\rSearchService\x12K\n" +
-	"\x06Search\x12\x1f.sentry.search.v1.SearchRequest\x1a .sentry.search.v1.SearchResponseB:Z8github.com/sentry/sentry/proto/sentry/search/v1;searchv1b\x06proto3"
+	"record_ids\x18\x01 \x03(\tR\trecordIds2`\n" +
+	"\rSearchService\x12O\n" +
+	"\x06Search\x12!.cairnobs.search.v1.SearchRequest\x1a\".cairnobs.search.v1.SearchResponseB>Z<github.com/cairnobs/cairnobs/proto/sentry/search/v1;searchv1b\x06proto3"
 
 var (
 	file_sentry_search_v1_search_proto_rawDescOnce sync.Once
@@ -172,12 +172,12 @@ func file_sentry_search_v1_search_proto_rawDescGZIP() []byte {
 
 var file_sentry_search_v1_search_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_sentry_search_v1_search_proto_goTypes = []any{
-	(*SearchRequest)(nil),  // 0: sentry.search.v1.SearchRequest
-	(*SearchResponse)(nil), // 1: sentry.search.v1.SearchResponse
+	(*SearchRequest)(nil),  // 0: cairnobs.search.v1.SearchRequest
+	(*SearchResponse)(nil), // 1: cairnobs.search.v1.SearchResponse
 }
 var file_sentry_search_v1_search_proto_depIdxs = []int32{
-	0, // 0: sentry.search.v1.SearchService.Search:input_type -> sentry.search.v1.SearchRequest
-	1, // 1: sentry.search.v1.SearchService.Search:output_type -> sentry.search.v1.SearchResponse
+	0, // 0: cairnobs.search.v1.SearchService.Search:input_type -> cairnobs.search.v1.SearchRequest
+	1, // 1: cairnobs.search.v1.SearchService.Search:output_type -> cairnobs.search.v1.SearchResponse
 	1, // [1:2] is the sub-list for method output_type
 	0, // [0:1] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

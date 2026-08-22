@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package sentry.logs.v1;
 
-option go_package = "github.com/sentry/sentry/proto/sentry/logs/v1;logsv1";
+option go_package = "github.com/cairnobs/cairnobs/proto/sentry/logs/v1;logsv1";
 
 // LogIngest is the service agents use to ship batched log records to the
 // ingest service over mTLS. Phase 0: single unary batch push. Streaming

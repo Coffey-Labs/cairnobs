@@ -14,30 +14,30 @@ func TestAccDashboardPanelDataSource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: `
-provider "sentry" {
+provider "cairnobs" {
   endpoint = "http://localhost:8080"
 }
 
-resource "sentry_dashboard" "test" {
+resource "cairnobs_dashboard" "test" {
   name = "Panel Data Source Test Dashboard"
 }
 
-resource "sentry_dashboard_panel" "test" {
-  dashboard_id = sentry_dashboard.test.id
+resource "cairnobs_dashboard_panel" "test" {
+  dashboard_id = cairnobs_dashboard.test.id
   title        = "Errors over time"
   query        = "status>=500 | timechart count"
   viz_type     = "line"
 }
 
-data "sentry_dashboard_panel" "test" {
-  dashboard_id = sentry_dashboard.test.id
-  id           = sentry_dashboard_panel.test.id
+data "cairnobs_dashboard_panel" "test" {
+  dashboard_id = cairnobs_dashboard.test.id
+  id           = cairnobs_dashboard_panel.test.id
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair("data.sentry_dashboard_panel.test", "title", "sentry_dashboard_panel.test", "title"),
-					resource.TestCheckResourceAttrPair("data.sentry_dashboard_panel.test", "query", "sentry_dashboard_panel.test", "query"),
-					resource.TestCheckResourceAttrPair("data.sentry_dashboard_panel.test", "viz_type", "sentry_dashboard_panel.test", "viz_type"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_dashboard_panel.test", "title", "cairnobs_dashboard_panel.test", "title"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_dashboard_panel.test", "query", "cairnobs_dashboard_panel.test", "query"),
+					resource.TestCheckResourceAttrPair("data.cairnobs_dashboard_panel.test", "viz_type", "cairnobs_dashboard_panel.test", "viz_type"),
 				),
 			},
 		},

@@ -31,7 +31,7 @@ func (d *alertRuleDataSource) Metadata(_ context.Context, req datasource.Metadat
 
 func (d *alertRuleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Looks up an existing Sentry alert rule by ID. See the sentry_alert_rule resource for how one is created/managed.",
+		Description: "Looks up an existing Cairn OBS alert rule by ID. See the cairnobs_alert_rule resource for how one is created/managed.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required:    true,

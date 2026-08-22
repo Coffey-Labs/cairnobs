@@ -60,8 +60,12 @@
 </script>
 
 <svelte:head>
-	<title>Sentry</title>
+	<title>Cairn OBS</title>
 	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
+	<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+	<link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png" />
+	<link rel="apple-touch-icon" sizes="180x180" href="/icons/favicon-180.png" />
 </svelte:head>
 
 {#if isLoginPage}

@@ -80,7 +80,7 @@ type BatchConfig struct {
 // api/internal/config.Config.DevCredentialWarnings for the full
 // reasoning (duplicated here per this repo's no-shared-code-between-
 // services convention).
-const devOnlyCredential = "sentry-dev-only"
+const devOnlyCredential = "cairnobs-dev-only"
 
 // DevCredentialWarnings reports which configured credentials still
 // equal the literal dev-only default -- cmd/ingest/main.go logs each
@@ -104,9 +104,9 @@ func Load() (Config, error) {
 			ListenAddr: getenv("GRPC_LISTEN_ADDR", ":4317"),
 		},
 		TLS: TLSConfig{
-			CertFile:     getenv("TLS_CERT_FILE", "/etc/sentry-ingest/server.pem"),
-			KeyFile:      getenv("TLS_KEY_FILE", "/etc/sentry-ingest/server-key.pem"),
-			ClientCAFile: getenv("TLS_CLIENT_CA_FILE", "/etc/sentry-ingest/ca.pem"),
+			CertFile:     getenv("TLS_CERT_FILE", "/etc/cairnobs-ingest/server.pem"),
+			KeyFile:      getenv("TLS_KEY_FILE", "/etc/cairnobs-ingest/server-key.pem"),
+			ClientCAFile: getenv("TLS_CLIENT_CA_FILE", "/etc/cairnobs-ingest/ca.pem"),
 		},
 		Redpanda: RedpandaConfig{
 			Brokers:       strings.Split(getenv("REDPANDA_BROKERS", "localhost:9092"), ","),

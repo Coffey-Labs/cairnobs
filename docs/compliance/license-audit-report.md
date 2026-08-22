@@ -28,7 +28,7 @@ like BSL/SSPL, anything with a field-of-use or non-compete restriction).
 
 1. **Inventory** every dependency, direct and transitive, in every
    language ecosystem present in the repo:
-   - **Rust** (`agent` workspace: `sentry-agent`, `sentry-parser`;
+   - **Rust** (`agent` workspace: `cairnobs-agent`, `cairnobs-parser`;
      `search`): `cargo-deny` (`cargo deny list --format tsv`), installed
      fresh for this audit (`cargo install cargo-deny --locked`).
    - **Go** (`api`, `ingest`, `alerting`, `enterprise`,
@@ -191,18 +191,18 @@ Key facts, verified against primary sources:
   plaintext core Kafka-protocol functionality — no RCL-gated enterprise
   features, no tiered storage, no SASL/RBAC — squarely within the
   permitted grant as an internal transport layer.
-- **No AGPL linking/compatibility issue.** Sentry never links against
+- **No AGPL linking/compatibility issue.** Cairn OBS never links against
   Redpanda's code; it's consumed purely over the Kafka wire protocol, the
   same relationship as ClickHouse and Postgres. AGPLv3's copyleft
   doesn't reach across a network-protocol boundary to unrelated,
   separately-licensed software you merely talk to.
 - **The genuinely open question**: Phase 6 relicenses `enterprise/` to
   AGPLv3 specifically so that anyone, including competitors, can legally
-  self-host or fork Sentry — including offering it as a network service,
+  self-host or fork Cairn OBS — including offering it as a network service,
   per AGPLv3's own terms. If a third party does that using the bundled
   `docker-compose.yml` (which pulls this BSL-licensed Redpanda image),
   does *their* deployment trip BSL's Streaming-or-Queuing-Service
-  restriction? Sentry's ingest pipeline creates fixed internal topics,
+  restriction? Cairn OBS's ingest pipeline creates fixed internal topics,
   not per-end-user topics exposed for direct third-party production or
   consumption — so this is very likely **not** a Streaming-or-Queuing-Service
   under BSL's own definition. But this is a business/redistribution
@@ -211,7 +211,7 @@ Key facts, verified against primary sources:
 
 ### Remediation options (recorded per task 4's requirement)
 
-1. **Accept as-is.** Document the reasoning above; Sentry's own use is
+1. **Accept as-is.** Document the reasoning above; Cairn OBS's own use is
    clearly within BSL's permitted grant, and the third-party-SaaS
    scenario is a reasonable-but-unverified reading, not a known
    violation. Lowest effort, zero functional change.
@@ -241,22 +241,23 @@ deployment change was made as a result — Redpanda stays pinned at
 v24.2.7 in `docker-compose.yml`/`transport/`, under BSL 1.1, as a
 disclosed and accepted risk rather than an unresolved one. This
 decision should be revisited if the project's redistribution posture
-changes materially (e.g. an official hosted/managed offering of Sentry
-itself, which would make the third-party-SaaS reading in this section
-Sentry's *own* situation rather than a hypothetical third party's).
+changes materially (e.g. an official hosted/managed offering of Cairn
+OBS itself, which would make the third-party-SaaS reading in this section
+Cairn OBS's *own* situation rather than a hypothetical third party's).
 
 ## Non-license finding: `favicon.svg`
 
-`web/src/lib/assets/favicon.svg` is SvelteKit's own default project
+`web/src/lib/assets/favicon.svg` was SvelteKit's own default project
 scaffold logo (`<title>svelte-logo</title>` — the `sv create`/`create-svelte`
 starter icon), never replaced with an original mark during Phase 5's
 redesign. Not a license-compatibility blocker — Svelte's own project
-assets are MIT-licensed — but it's unauthored, third-party-branded
+assets are MIT-licensed — but it was unauthored, third-party-branded
 content shipping as this product's own favicon, caught by the same
 "grep for anything that looks copied" pass this audit's task 1 asked
-for. Recorded as an action item (replace with an original Sentry mark),
-not a compliance blocker; not fixed here since it's a design task outside
-this phase's scope, not a licensing one.
+for. Recorded as an action item (replace with an original mark), not a
+compliance blocker at the time; **resolved as part of the Sentry → Cairn
+OBS rebrand**, which replaced it with the real Cairn OBS mark from the
+project's own logo package.
 
 ## Own license declarations (task 5)
 
@@ -347,7 +348,7 @@ assumed.
 - Final repo-wide grep for `commercial` confirms every remaining
   occurrence is one of the above corrections (explicitly framed as
   historical/superseded), not a live claim. **No file in the repo claims
-  a license other than AGPLv3** for Sentry's own code, as of this audit.
+  a license other than AGPLv3** for Cairn OBS's own code, as of this audit.
 
 ## Ongoing enforcement (task 7)
 

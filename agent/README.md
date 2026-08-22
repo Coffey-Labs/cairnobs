@@ -1,4 +1,4 @@
-# sentry-agent
+# cairnobs-agent
 
 Distro-agnostic Linux/Windows log collector. On Linux, statically linked
 against musl, no glibc runtime dependency. Tails journald (Linux default),
@@ -17,9 +17,9 @@ real before trusting it. See `/docs/phase-1-runbook.md`.
 
 ## Workspace layout
 
-- `sentry-parser` — pure-`std` RFC 5424 syslog parser with raw-passthrough
+- `cairnobs-parser` — pure-`std` RFC 5424 syslog parser with raw-passthrough
   fallback. No I/O, easy to unit test in isolation.
-- `sentry-agent` — the binary: config loading, sourcing (journald/file/
+- `cairnobs-agent` — the binary: config loading, sourcing (journald/file/
   Windows Event Log/ETW), batching, mTLS gRPC client, Windows service
   wrapper.
 
@@ -75,7 +75,7 @@ Container build (see caveat below):
 
 ```sh
 # from the repo root, not agent/
-docker build -f agent/Dockerfile -t sentry-agent .
+docker build -f agent/Dockerfile -t cairnobs-agent .
 ```
 
 **Caveat:** the container image is provided for CI/completeness, but
@@ -117,11 +117,11 @@ automatable vs. manual-only.
 No CLI flags are required for the common case:
 
 ```sh
-./sentry-agent
+./cairnobs-agent
 ```
 
 This uses the platform's conventional config path if present
-(`/etc/sentry-agent/agent.toml` on Linux, `C:\ProgramData\SentryAgent\agent.toml`
+(`/etc/cairnobs-agent/agent.toml` on Linux, `C:\ProgramData\CairnObsAgent\agent.toml`
 on Windows), otherwise built-in defaults: journald source on Linux (whole
 journal, no unit filter), service name `default`, and mTLS material
 expected under the same conventional directory
@@ -132,7 +132,7 @@ fail fast with a clear error rather than connecting insecurely.
 See `config/agent.example.toml` for all fields.
 
 ```sh
-./sentry-agent --config /path/to/agent.toml
+./cairnobs-agent --config /path/to/agent.toml
 ```
 
 ## Heartbeat and unavailability alerting
@@ -142,7 +142,7 @@ schedule (`[heartbeat]` in the config, default every 60s), separate from
 whatever real log traffic is flowing — see `config/agent.example.toml`.
 This isn't a new wire protocol: it's an ordinary record through the same
 `PushBatch` RPC and mTLS identity every log line uses, tagged with a
-`sentry.heartbeat=true` attribute so it's easy to filter for and doesn't
+`cairnobs.heartbeat=true` attribute so it's easy to filter for and doesn't
 show up as noise in normal log views. Set `interval` to a plain number
 plus `s`/`m`/`h` (matches the query language's own `earliest=`/`latest=`
 units); `enabled = false` turns it off entirely.
@@ -157,7 +157,7 @@ to create.
 
 Same shape as heartbeat, same reasoning: `[metrics]` in the config
 (`enabled = false` by default) sends a periodic record — CPU%, memory
-used/total, disk used/total for `/` — tagged `sentry.metrics=true`, with
+used/total, disk used/total for `/` — tagged `cairnobs.metrics=true`, with
 the individual numbers as their own attributes (`cpu_percent`,
 `mem_used_bytes`, `mem_total_bytes`, `disk_used_bytes`,
 `disk_total_bytes`), queryable directly (e.g. `cpu_percent > 80`) since
@@ -169,7 +169,7 @@ dependencies, same "shell out to a boring, ubiquitous tool" precedent
 `journalctl` already sets.
 
 **Enable this on only one agent process per physical host.** It's
-common for one host to run several `sentry-agent` processes (one per
+common for one host to run several `cairnobs-agent` processes (one per
 log source, each needing its own `[agent] host` value to work around
 the `agents` table's `UNIQUE (tenant_id, host)` constraint — see
 `/docs/agent-management-design.md`) — turning `[metrics]` on for more
@@ -185,14 +185,14 @@ console — that's what `service.rs` (via the `windows-service` crate)
 does. From an administrator shell:
 
 ```powershell
-sentry-agent.exe install     # registers the service, Automatic start, LocalSystem account
-sc.exe start SentryAgent
-sc.exe stop SentryAgent
-sentry-agent.exe uninstall
+cairnobs-agent.exe install     # registers the service, Automatic start, LocalSystem account
+sc.exe start CairnObsAgent
+sc.exe stop CairnObsAgent
+cairnobs-agent.exe uninstall
 ```
 
 `install`/`uninstall`/`run-service` are subcommands only present in
-Windows builds (`sentry-agent` with no subcommand is still the normal
+Windows builds (`cairnobs-agent` with no subcommand is still the normal
 foreground/console run, same as on Linux) — `run-service` specifically is
 what the SCM itself invokes at service start; don't run it directly.
 
@@ -224,7 +224,7 @@ about since they're very different amounts of work:
 1. **What this repo supports today, with zero extra code:** WEF is a
    native Windows-to-Windows mechanism (`wecsvc`, the built-in Windows
    Event Collector role) — endpoints forward to a Windows Server acting
-   as collector using Windows' own mechanism, no Sentry code involved in
+   as collector using Windows' own mechanism, no Cairn OBS code involved in
    the forwarding itself. Run this agent *on the collector box*,
    subscribed to the `ForwardedEvents` channel instead of the usual three:
    ```toml
@@ -233,9 +233,9 @@ about since they're very different amounts of work:
    channels = ["ForwardedEvents"]
    ```
 2. **What this repo does *not* implement:** a true agentless receiver —
-   Sentry itself speaking the WS-Management/WinRM event-subscription
+   Cairn OBS itself speaking the WS-Management/WinRM event-subscription
    protocol so endpoints can forward directly to `ingest` without any
-   Windows Event Collector role or Sentry agent anywhere. That's a
+   Windows Event Collector role or Cairn OBS agent anywhere. That's a
    standalone protocol implementation (SOAP-ish subscription/heartbeat/
    delivery over WinRM), not an agent or ingest-side tweak, and it's out
    of scope for Phase 1. If you need this, it's a real project of its
