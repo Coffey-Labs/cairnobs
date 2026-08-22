@@ -1,0 +1,113 @@
+{
+  "name": "Errors & reliability",
+  "description": "Where failures are concentrated right now -- 5xx, fatal events, and failed background jobs",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Error events",
+      "query": "severity=ERROR | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Fatal events",
+      "query": "severity=FATAL | stats count",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Failed jobs",
+      "query": "service=worker result=failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Errors by service",
+      "query": "severity=ERROR | stats count by service | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "service",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Top API error codes",
+      "query": "service=api | where status>=500 | stats count by error_code | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "error_code",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "5xx by host and status",
+      "query": "status>=500 | stats count by host, status",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "y_column": "status",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Failed jobs by queue",
+      "query": "service=worker result=failed | stats count by queue | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "queue",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Recent 5xx responses",
+      "query": "status>=500 | sort -timestamp | head 50 | fields timestamp, host, service, status, route, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

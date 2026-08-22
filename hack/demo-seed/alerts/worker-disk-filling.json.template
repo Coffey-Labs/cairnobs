@@ -1,0 +1,13 @@
+{
+  "name": "worker-02 disk nearly full",
+  "description": "worker-02's data volume has passed 175 GiB of 200 GiB and is still climbing",
+  "query": "host=\"worker-02\" cairnobs.metrics=true earliest=-15m | stats max(disk_used_bytes) as disk_used_bytes",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 187904819200
+}

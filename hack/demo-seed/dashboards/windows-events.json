@@ -1,0 +1,113 @@
+{
+  "name": "Windows events",
+  "description": "Security, System, and Application channels from the Windows hosts",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Windows events",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=eventlog | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Failed logons (4625)",
+      "query": "winevt.event_id=4625 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Account lockouts (4740)",
+      "query": "winevt.event_id=4740 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Events by ID",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=eventlog | stats count by winevt.event_id | sort -count | head 12",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "winevt.event_id",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Top providers",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=eventlog | stats count by winevt.provider | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "winevt.provider",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Channel by computer",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=eventlog | stats count by winevt.computer, winevt.channel",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "winevt.computer",
+        "y_column": "winevt.channel",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Severity mix",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=eventlog | stats count by severity | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "severity",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Recent security-channel events",
+      "query": "service=eventlog winevt.channel=Security | sort -timestamp | head 50 | fields timestamp, winevt.computer, winevt.event_id, winevt.target_user, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

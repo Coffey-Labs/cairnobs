@@ -1,0 +1,113 @@
+{
+  "name": "Service overview",
+  "description": "Every service at a glance: volume, error mix, and the hosts carrying the load",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Log events",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Errors",
+      "query": "severity=ERROR | stats count",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "5xx responses",
+      "query": "status>=500 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Events by service",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count by service | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "service",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Busiest hosts",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count by host | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Severity by service",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count by service, severity",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "service",
+        "y_column": "severity",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Errors by host",
+      "query": "severity=ERROR | stats count by host | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Most recent errors",
+      "query": "severity=ERROR | sort -timestamp | head 50 | fields timestamp, host, service, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

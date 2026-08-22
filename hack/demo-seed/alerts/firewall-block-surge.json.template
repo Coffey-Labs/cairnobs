@@ -1,0 +1,13 @@
+{
+  "name": "Firewall block surge",
+  "description": "UFW is dropping far more inbound connections than usual -- typically a scan in progress",
+  "query": "service=system ufw_action=BLOCK earliest=-15m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 120,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 20
+}

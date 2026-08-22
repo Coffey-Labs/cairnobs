@@ -1,0 +1,112 @@
+{
+  "name": "Infrastructure",
+  "description": "Agent-reported CPU, memory, and disk for every host in the fleet",
+  "default_earliest": "-6h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Metric samples",
+      "query": "cairnobs.metrics=true | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Peak CPU (%)",
+      "query": "cairnobs.metrics=true | stats max(cpu_percent) as max_cpu_percent",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Agent heartbeats",
+      "query": "cairnobs.heartbeat=true | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Average CPU by host",
+      "query": "cairnobs.metrics=true | stats avg(cpu_percent) as avg_cpu_percent by host | sort -avg_cpu_percent",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "avg_cpu_percent"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Disk used by host (bytes)",
+      "query": "cairnobs.metrics=true | stats max(disk_used_bytes) as disk_used_bytes by host | sort -disk_used_bytes | head 12",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "host",
+        "value_column": "disk_used_bytes"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Memory used by host (bytes)",
+      "query": "cairnobs.metrics=true | stats max(mem_used_bytes) as mem_used_bytes by host | sort -mem_used_bytes",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "mem_used_bytes"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Heartbeats by host",
+      "query": "cairnobs.heartbeat=true | stats count by host | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Latest sample per host",
+      "query": "cairnobs.metrics=true | stats max(uptime_seconds) as uptime_seconds, avg(cpu_percent) as avg_cpu_percent, max(cpu_cores) as cores by host | sort -avg_cpu_percent",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

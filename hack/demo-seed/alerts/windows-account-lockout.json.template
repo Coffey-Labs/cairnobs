@@ -1,0 +1,13 @@
+{
+  "name": "Windows account lockout",
+  "description": "Any 4740 on the Windows hosts: an account was locked out after repeated failures",
+  "query": "winevt.event_id=4740 earliest=-15m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 120,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gte",
+  "threshold_value": 1
+}

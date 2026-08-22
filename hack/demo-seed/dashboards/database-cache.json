@@ -1,0 +1,113 @@
+{
+  "name": "Database & cache",
+  "description": "Postgres statement latency and Redis memory pressure",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Slow queries (>1s)",
+      "query": "service=postgres | where duration_ms>1000 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Avg statement (ms)",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=postgres | stats avg(duration_ms) as avg_duration_ms",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Redis evictions",
+      "query": "service=redis op=evict | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Statements by kind",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=postgres | stats count by query_kind | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "query_kind",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Slowest tables (avg ms)",
+      "query": "service=postgres | stats avg(duration_ms) as avg_duration_ms by table | sort -avg_duration_ms | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "table",
+        "value_column": "avg_duration_ms"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Statement kind by table",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=postgres | stats count by table, query_kind",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "table",
+        "y_column": "query_kind",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Redis events by operation",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=redis | stats count by op | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "op",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Slowest statements",
+      "query": "service=postgres | where duration_ms>1000 | sort -duration_ms | head 50 | fields timestamp, table, query_kind, duration_ms, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

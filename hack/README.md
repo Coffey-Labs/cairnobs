@@ -19,3 +19,12 @@ monorepos (Kubernetes among them).
   the pipeline handles Windows-shaped data; doesn't test the real
   `EvtSubscribe`/ETW integration, which needs actual Windows. See
   `/docs/phase-1-runbook.md`.
+- `demo-simulator/` — the public demo's synthetic world: a fictional
+  fleet whose agents check in, report CPU/memory/disk, and ship
+  realistically shaped logs for eight services. Backfills a window of
+  history, then keeps generating in real time. Distinct from
+  `benchmark-fixture/` (volume, for the Phase 2 latency benchmark) and
+  `windows-fixture/` (correctness, for the Windows ingest path).
+- `demo-seed/` — the rest of the demo deployment: its reset script,
+  dashboards, alert rules, and the systemd unit that runs
+  `demo-simulator`.

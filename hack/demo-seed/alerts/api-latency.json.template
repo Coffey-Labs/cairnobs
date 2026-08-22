@@ -1,0 +1,13 @@
+{
+  "name": "API latency degraded",
+  "description": "Average API response time over the last 10 minutes is above the service objective",
+  "query": "service=api earliest=-10m | stats avg(latency_ms) as avg_latency_ms",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 2,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 130
+}
