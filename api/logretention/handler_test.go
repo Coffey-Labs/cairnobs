@@ -479,6 +479,62 @@ func TestAllTargetsBlockedReturnsZeroCountNotError(t *testing.T) {
 	if len(s.deletedWith) != 0 || len(s.countedWith) != 0 {
 		t.Error("the store must never be called when every requested target is blocked")
 	}
+	// Regression check for the production "stuck loading" bug: decoding
+	// through json.Unmarshal above can't tell a JSON `null` apart from
+	// `[]` (both land as a nil/zero-length Go slice), which is exactly
+	// how this shipped broken the first time -- deleted_targets has no
+	// omitempty tag, so it must be a literal `[]` on the wire, not
+	// `null`, or the frontend's `.length` access on it throws.
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"deleted_targets":null`)) {
+		t.Errorf("deleted_targets marshaled as null, not []: %s", rec.Body.String())
+	}
+}
+
+// TestHostsWithNoResultsReturnsEmptyArrayNotNull is a regression test
+// for the production bug where a freshly-deployed instance (nothing yet
+// old enough to be listed) got back `"hosts":null` instead of
+// `"hosts":[]` -- Hosts has no omitempty tag, so the frontend's
+// `hosts.length` threw mid-render on the null instead of the empty
+// state ever painting. See handleHosts' hosts := []hostEntry{} comment.
+func TestHostsWithNoResultsReturnsEmptyArrayNotNull(t *testing.T) {
+	s := &fakeStore{targetList: nil}
+	h := newTestHandler(s, authz.RoleAdmin)
+
+	rec := doRequest(t, h, "GET", "/logs/retention/hosts?older_than_hours=720")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"hosts":null`)) {
+		t.Errorf("hosts marshaled as null, not []: %s", rec.Body.String())
+	}
+	var resp hostsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(resp.Hosts) != 0 {
+		t.Errorf("hosts = %+v, want empty", resp.Hosts)
+	}
+}
+
+// TestPreviewAllTargetsBlockedReturnsEmptyArrayNotNull mirrors
+// TestAllTargetsBlockedReturnsZeroCountNotError but for the preview
+// endpoint, whose Targets field carries the identical no-omitempty risk.
+func TestPreviewAllTargetsBlockedReturnsEmptyArrayNotNull(t *testing.T) {
+	s := &fakeStore{count: 100}
+	h := NewHandler(discardLogger(), s, fakeFloor{byHost: map[string]HostFloor{
+		"web-01": {ServiceDays: map[string]int{"smtp": 90}},
+	}}, fakeAuthorizer{role: authz.RoleAdmin})
+
+	rec := doJSONRequest(t, h, "POST", "/logs/retention/preview", deletionRequest{
+		OlderThanHours: hoursForDays(30),
+		Targets:        []HostService{{Host: "web-01", Service: "smtp"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"targets":null`)) {
+		t.Errorf("targets marshaled as null, not []: %s", rec.Body.String())
+	}
 }
 
 // TestOwnerBypassesRetentionFloor confirms the whole point of the

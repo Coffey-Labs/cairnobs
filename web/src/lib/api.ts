@@ -521,24 +521,32 @@ export type LogRetentionDeleteResult = {
 	blocked_targets?: BlockedTarget[];
 };
 
+// The `?? []` fallbacks below are a second line of defense, matching
+// listUsers' pattern above -- api/logretention/handler.go now always
+// sends `[]` rather than `null` for these fields (see its partitionTargets
+// and handleHosts comments), but a null response should degrade to an
+// empty list here rather than crash the page's `.length` accesses if
+// that guarantee ever regresses.
 export function listRetentionHosts(olderThanHours: number): Promise<RetentionHostsResult> {
-	return request(`/logs/retention/hosts?older_than_hours=${olderThanHours}`, { credentials: 'include' });
+	return request<RetentionHostsResult>(`/logs/retention/hosts?older_than_hours=${olderThanHours}`, {
+		credentials: 'include'
+	}).then((r) => ({ ...r, hosts: r.hosts ?? [] }));
 }
 
 export function previewLogDeletion(olderThanHours: number, targets: HostService[]): Promise<LogRetentionPreview> {
-	return request('/logs/retention/preview', {
+	return request<LogRetentionPreview>('/logs/retention/preview', {
 		method: 'POST',
 		credentials: 'include',
 		body: JSON.stringify({ older_than_hours: olderThanHours, targets })
-	});
+	}).then((r) => ({ ...r, targets: r.targets ?? [] }));
 }
 
 export function deleteLogsOlderThan(olderThanHours: number, targets: HostService[]): Promise<LogRetentionDeleteResult> {
-	return request('/logs/retention/delete', {
+	return request<LogRetentionDeleteResult>('/logs/retention/delete', {
 		method: 'POST',
 		credentials: 'include',
 		body: JSON.stringify({ older_than_hours: olderThanHours, targets })
-	});
+	}).then((r) => ({ ...r, deleted_targets: r.deleted_targets ?? [] }));
 }
 
 // --- alerting ---------------------------------------------------------

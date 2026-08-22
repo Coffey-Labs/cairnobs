@@ -18,6 +18,7 @@
 	} from '$lib/api';
 	import { getTheme, setTheme, type Theme } from '$lib/theme.svelte';
 	import { getDensity, setDensity, type Density } from '$lib/density.svelte';
+	import Skeleton from '$lib/components/ui/Skeleton.svelte';
 
 	let loading = $state(true);
 	let features = $state<AuthFeatures>({ sso_configured: false, oidc_enabled: false, saml_enabled: false });
@@ -122,7 +123,7 @@
 		selectedTargets = new Set();
 		try {
 			const result = await listRetentionHosts(hours);
-			hosts = result.hosts;
+			hosts = result.hosts ?? [];
 		} catch (e) {
 			hostsError = e instanceof Error ? e.message : String(e);
 			hosts = [];
@@ -304,7 +305,12 @@
 			{#if hostsError}<p class="error">{hostsError}</p>{/if}
 
 			{#if hostsLoading}
-				<p class="muted">Loading hosts…</p>
+				<div class="host-picker-loading" aria-busy="true" aria-live="polite">
+					<span class="sr-only">Loading hosts…</span>
+					<Skeleton height="2.25rem" />
+					<Skeleton height="2.25rem" />
+					<Skeleton height="2.25rem" />
+				</div>
 			{:else if hosts.length === 0}
 				<p class="note">No hosts have logs older than this.</p>
 			{:else}
@@ -458,6 +464,18 @@
 	}
 	.muted {
 		color: var(--color-text-muted);
+	}
+	.host-picker-loading {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 	.note {
 		color: var(--color-text-muted);

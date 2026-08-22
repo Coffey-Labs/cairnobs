@@ -149,16 +149,26 @@ type blockedTarget struct {
 // acting on other targets requested in the same call. An owner always
 // gets everything back as allowed, no query needed.
 func (h *Handler) partitionTargets(ctx context.Context, role authz.Role, targets []HostService, cutoff time.Time) ([]HostService, []blockedTarget, error) {
+	// previewResponse.Targets and deleteResponse.DeletedTargets marshal
+	// this return value without omitempty, so it must never be a nil
+	// slice: a nil []HostService marshals to JSON `null`, not `[]`, which
+	// crashes the frontend's `.length` access the same way handleHosts'
+	// nil hosts slice did. Every return path below -- the owner
+	// fast-path (targets itself can be nil, e.g. an omitted "targets"
+	// field), the error path, and the loop -- must produce `[]`, not nil.
 	if role == authz.RoleOwner {
-		return targets, nil, nil
+		if targets == nil {
+			targets = []HostService{}
+		}
+		return targets, []blockedTarget{}, nil
 	}
 	floors, err := h.floor.FloorsByHost(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	now := time.Now().UTC()
-	var allowed []HostService
-	var blocked []blockedTarget
+	allowed := []HostService{}
+	blocked := []blockedTarget{}
 	for _, t := range targets {
 		days, hasFloor := floors[t.Host].Effective(t.Service)
 		if !hasFloor {
@@ -234,8 +244,15 @@ func (h *Handler) handleHosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// counts is ordered by host (Store.TargetsOlderThan), so contiguous
-	// rows for the same host can be grouped in one pass.
-	var hosts []hostEntry
+	// rows for the same host can be grouped in one pass. Starts as an
+	// empty (non-nil) slice, not `var hosts []hostEntry` -- a nil slice
+	// marshals to JSON `null`, not `[]`, and a genuinely empty result
+	// (no logs at all older than the requested age -- the normal state
+	// for a freshly-deployed instance) hit exactly that: the frontend's
+	// `hosts.length` on a `null` response threw mid-render, which is why
+	// this shipped with "Loading hosts…" stuck forever instead of the
+	// empty state ever painting.
+	hosts := []hostEntry{}
 	for _, c := range counts {
 		hf := floors[c.Host]
 		if len(hosts) == 0 || hosts[len(hosts)-1].Host != c.Host {
