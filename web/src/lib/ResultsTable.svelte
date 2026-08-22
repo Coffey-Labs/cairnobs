@@ -11,6 +11,8 @@
 	// column whose JSON got cut off).
 	import Table from '$lib/components/ui/Table.svelte';
 	import SeverityBadge from '$lib/components/ui/SeverityBadge.svelte';
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { formatTimestamp, isTimestamp, zoneLabel } from '$lib/time';
 
 	let {
 		columns,
@@ -23,8 +25,26 @@
 	function formatCell(value: unknown): string {
 		if (value === null || value === undefined) return '';
 		if (typeof value === 'object') return JSON.stringify(value);
+		// Timestamps are rendered in the reader's chosen zone; everything
+		// else is passed through untouched. Detection is per *value*, not
+		// per column name, because query output is arbitrary -- `stats
+		// max(timestamp) as newest` names the column whatever it likes,
+		// and an attribute called "timestamp" that holds something else
+		// shouldn't be mangled. See $lib/time.ts.
+		if (isTimestamp(value)) return formatTimestamp(value, getTimezone());
 		return String(value);
 	}
+
+	// Which columns hold timestamps, judged from the first row -- the
+	// header gets a zone suffix so a table read on its own (or
+	// screenshotted) still says which offset its times are in. Sampling
+	// one row is enough: a column is one type in practice, and the cost
+	// of being wrong is a missing label, not a wrong time.
+	let timestampCols = $derived.by(() => {
+		const first = rows[0];
+		if (!first) return new Set<number>();
+		return new Set(columns.map((_, i) => i).filter((i) => isTimestamp(first[i])));
+	});
 
 	let sortCol = $state<number | null>(null);
 	let sortDir = $state<1 | -1>(1);
@@ -87,7 +107,9 @@
 				{#each columns as col, i (col)}
 					<th style:width={widths[i] ? `${widths[i]}px` : undefined}>
 						<button type="button" class="sort-btn" onclick={() => toggleSort(i)}>
-							{col}
+							{col}{#if timestampCols.has(i)}<span class="zone-tag" title="Timestamps are stored in UTC and shown in your display timezone"
+									>· {zoneLabel(getTimezone())}</span
+								>{/if}
 							{#if sortCol === i}<span class="sort-ind">{sortDir === 1 ? '▲' : '▼'}</span>{/if}
 						</button>
 						<span
@@ -137,7 +159,16 @@
 							<dl>
 								{#each columns as col, j (col)}
 									<dt>{col}</dt>
-									<dd>{formatCell(row[j])}</dd>
+									<dd>
+										{formatCell(row[j])}
+										{#if isTimestamp(row[j])}
+											<!-- The full-precision UTC original: the cell above is
+											     rendered in the reader's zone and truncated to
+											     milliseconds, and a log's nanosecond ordering is
+											     sometimes exactly what's being investigated. -->
+											<span class="raw-utc">{row[j]}</span>
+										{/if}
+									</dd>
 								{/each}
 							</dl>
 						</td>
@@ -164,6 +195,19 @@
 	}
 	.chevron.open {
 		transform: rotate(90deg);
+	}
+	.zone-tag {
+		margin-left: var(--space-1);
+		color: var(--color-text-faint);
+		font-weight: var(--font-weight-normal);
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	.raw-utc {
+		display: block;
+		color: var(--color-text-faint);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
 	}
 	.sort-btn {
 		background: none;

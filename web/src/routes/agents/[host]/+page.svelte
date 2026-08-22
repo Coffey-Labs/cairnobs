@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { relativeTime, formatTimestamp, zoneLabel } from '$lib/time';
 	import { page } from '$app/state';
 	import { getAgent, setAgentConfig, clearAgentConfig, issueAgentCommand, type Agent } from '$lib/api';
 	import { Badge, Button, Input, Skeleton } from '$lib/components/ui';
@@ -174,13 +176,6 @@
 		}
 	}
 
-	function relativeTime(iso: string): string {
-		const ms = Date.now() - new Date(iso).getTime();
-		if (ms < 60_000) return `${Math.max(0, Math.round(ms / 1000))}s ago`;
-		if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
-		if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
-		return `${Math.round(ms / 86_400_000)}d ago`;
-	}
 </script>
 
 <main>
@@ -202,9 +197,9 @@
 				<dt>Source</dt>
 				<dd>{agent.source_kind}{agent.source_detail ? ` (${agent.source_detail})` : ''}</dd>
 				<dt>First seen</dt>
-				<dd>{relativeTime(agent.first_seen_at)}</dd>
+				<dd title={`${formatTimestamp(agent.first_seen_at, getTimezone())} ${zoneLabel(getTimezone())}`}>{relativeTime(agent.first_seen_at)}</dd>
 				<dt>Last seen</dt>
-				<dd>{relativeTime(agent.last_seen_at)}</dd>
+				<dd title={`${formatTimestamp(agent.last_seen_at, getTimezone())} ${zoneLabel(getTimezone())}`}>{relativeTime(agent.last_seen_at)}</dd>
 			</dl>
 		</section>
 

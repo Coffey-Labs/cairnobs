@@ -18,6 +18,15 @@
 	} from '$lib/api';
 	import { getTheme, setTheme, type Theme } from '$lib/theme.svelte';
 	import { getDensity, setDensity, type Density } from '$lib/density.svelte';
+	import {
+		getTimezone,
+		setTimezone,
+		browserTimezone,
+		timezoneOptions,
+		persistence,
+		DEFAULT_ZONE
+	} from '$lib/timezone.svelte';
+	import { formatTimestamp, zoneLabel } from '$lib/time';
 	import Skeleton from '$lib/components/ui/Skeleton.svelte';
 
 	let loading = $state(true);
@@ -222,14 +231,12 @@
 		return `${t.host}/${t.service}`;
 	}
 
+	// The deletion cutoff is the one timestamp on this page where getting
+	// the zone wrong has consequences -- it's the boundary someone is
+	// about to permanently delete data before -- so it renders in the
+	// same zone as everything else, with the zone spelled out.
 	function formatCutoff(iso: string): string {
-		return new Date(iso).toLocaleString(undefined, {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric',
-			hour: 'numeric',
-			minute: '2-digit'
-		});
+		return `${formatTimestamp(iso, getTimezone(), 'seconds')} ${zoneLabel(getTimezone())}`;
 	}
 
 	const themeOptions: { value: Theme; label: string; hint: string }[] = [
@@ -241,6 +248,37 @@
 		{ value: 'comfortable', label: 'Comfortable', hint: 'Dashboards, forms' },
 		{ value: 'compact', label: 'Compact', hint: 'Log tables, results' }
 	];
+
+	// --- display timezone (see $lib/timezone.svelte.ts) ---
+	const zones = timezoneOptions();
+	let tzError = $state('');
+	let tzSaving = $state(false);
+	// Ticks once a second so the sample below is a live clock -- the
+	// quickest way for someone to confirm they picked the right zone is
+	// to see the current time in it and recognize it.
+	let now = $state(new Date());
+	$effect(() => {
+		const id = setInterval(() => (now = new Date()), 1000);
+		return () => clearInterval(id);
+	});
+
+	const persistenceNote: Record<ReturnType<typeof persistence>, string> = {
+		account: 'Saved to your account, so it follows you to any browser you sign in from.',
+		session: 'Kept for this browser session only — this demo resets it every time you come back.',
+		browser: 'Saved in this browser only, since this deployment has no per-user accounts.'
+	};
+
+	async function chooseTimezone(tz: string) {
+		tzError = '';
+		tzSaving = true;
+		try {
+			await setTimezone(tz);
+		} catch (e) {
+			tzError = e instanceof Error ? e.message : String(e);
+		} finally {
+			tzSaving = false;
+		}
+	}
 </script>
 
 <main>
@@ -276,6 +314,54 @@
 				</button>
 			{/each}
 		</div>
+	</section>
+
+	<section>
+		<h2>Display timezone</h2>
+		<p class="note">
+			Timestamps are stored and queried in UTC everywhere in Cairn OBS. This setting only changes
+			how they're written on screen — searches, dashboards, and alerts all keep returning exactly
+			the same records, so two people in two timezones are always looking at the same log line.
+		</p>
+
+		<div class="tz-row">
+			<label class="tz-label" for="tz-select">Show times in</label>
+			<select
+				id="tz-select"
+				value={getTimezone()}
+				disabled={tzSaving}
+				onchange={(e) => chooseTimezone((e.currentTarget as HTMLSelectElement).value)}
+			>
+				{#each zones as z (z)}
+					<option value={z}>{z}</option>
+				{/each}
+			</select>
+			{#if getTimezone() !== browserTimezone()}
+				<button type="button" class="tz-detect" disabled={tzSaving} onclick={() => chooseTimezone(browserTimezone())}>
+					Use browser timezone ({browserTimezone()})
+				</button>
+			{/if}
+			{#if getTimezone() !== DEFAULT_ZONE}
+				<button type="button" class="tz-detect" disabled={tzSaving} onclick={() => chooseTimezone(DEFAULT_ZONE)}>
+					Back to UTC
+				</button>
+			{/if}
+		</div>
+
+		<p class="tz-sample">
+			<span class="tz-sample-label">Now</span>
+			<span class="tz-sample-value">{formatTimestamp(now.toISOString(), getTimezone(), 'seconds')}</span>
+			<span class="tz-sample-zone">{zoneLabel(getTimezone(), now)}</span>
+			{#if getTimezone() !== DEFAULT_ZONE}
+				<span class="tz-sample-utc">= {formatTimestamp(now.toISOString(), DEFAULT_ZONE, 'seconds')} UTC</span>
+			{/if}
+		</p>
+		<p class="note">{persistenceNote[persistence()]}</p>
+		<p class="note">
+			Time ranges you type into a query (<code>earliest=</code>/<code>latest=</code>) are still read
+			as UTC.
+		</p>
+		{#if tzError}<p class="error">Couldn't save timezone: {tzError}</p>{/if}
 	</section>
 
 	<section>
@@ -483,6 +569,71 @@
 	}
 	.note a {
 		color: var(--color-accent);
+	}
+	.tz-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3);
+		margin: var(--space-4) 0 var(--space-3);
+	}
+	.tz-label {
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
+	}
+	.tz-row select {
+		font-family: var(--font-ui);
+		font-size: var(--text-base);
+		color: var(--color-text);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: var(--space-2) var(--space-3);
+		min-width: 16rem;
+	}
+	.tz-detect {
+		font-family: var(--font-ui);
+		font-size: var(--text-sm);
+		color: var(--color-accent);
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+	}
+	.tz-detect:disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+	/* The live sample is the part that makes the setting self-evident,
+	   so it gets the surface treatment rather than sitting in body copy. */
+	.tz-sample {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: var(--space-3);
+		margin: 0 0 var(--space-3);
+		padding: var(--space-3) var(--space-4);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+	}
+	.tz-sample-label {
+		font-size: var(--text-xs);
+		font-weight: var(--font-weight-bold);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--color-text-faint);
+	}
+	.tz-sample-value {
+		font-family: var(--font-mono);
+		font-size: var(--text-md);
+		color: var(--color-text);
+	}
+	.tz-sample-zone,
+	.tz-sample-utc {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
 	}
 	.option-group {
 		display: flex;

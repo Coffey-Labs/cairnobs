@@ -286,3 +286,56 @@ func TestIntegrationGetPasswordHashByID(t *testing.T) {
 	}
 }
 
+// TestIntegrationDisplayTimezoneDefaultsAndPersists is the half
+// handler_test.go's fake can't prove: that migration 0042's column
+// actually exists with its NOT NULL DEFAULT 'UTC', that GetUserByID's
+// SELECT names it correctly, and that a session created before the
+// change keeps working after it (the UPDATE deliberately doesn't touch
+// local_sessions, unlike SetPasswordHash/SetRole).
+func TestIntegrationDisplayTimezoneDefaultsAndPersists(t *testing.T) {
+	store := integrationStore(t)
+	ctx := context.Background()
+	username := testUsername(t)
+
+	hash, _ := HashPassword("password1")
+	user, err := store.CreateUser(ctx, username, hash, authz.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	t.Cleanup(func() { _ = store.DeleteUser(ctx, user.ID) })
+
+	fetched, err := store.GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if fetched.DisplayTimezone != "UTC" {
+		t.Fatalf("new user DisplayTimezone = %q, want %q (schema default)", fetched.DisplayTimezone, "UTC")
+	}
+
+	raw, err := store.CreateSession(ctx, user.ID, "default", authz.RoleViewer, time.Hour)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	if err := store.SetDisplayTimezone(ctx, user.ID, "Australia/Adelaide"); err != nil {
+		t.Fatalf("SetDisplayTimezone: %v", err)
+	}
+	fetched, err = store.GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID after set: %v", err)
+	}
+	if fetched.DisplayTimezone != "Australia/Adelaide" {
+		t.Errorf("DisplayTimezone = %q, want %q", fetched.DisplayTimezone, "Australia/Adelaide")
+	}
+
+	if _, err := store.GetSession(ctx, hashToken(raw)); err != nil {
+		t.Errorf("session after timezone change: %v, want it to still be valid", err)
+	}
+}
+
+func TestIntegrationSetDisplayTimezoneUnknownUser(t *testing.T) {
+	store := integrationStore(t)
+	if err := store.SetDisplayTimezone(context.Background(), uuid.NewString(), "UTC"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SetDisplayTimezone on missing user = %v, want ErrNotFound", err)
+	}
+}

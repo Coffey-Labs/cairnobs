@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { relativeTime, formatTimestamp, zoneLabel } from '$lib/time';
 	import { listAgents, type Agent } from '$lib/api';
 	import { Badge, EmptyState, Skeleton, Table } from '$lib/components/ui';
 
@@ -31,13 +33,6 @@
 		return Date.now() - new Date(a.last_seen_at).getTime() > thresholdMs;
 	}
 
-	function relativeTime(iso: string): string {
-		const ms = Date.now() - new Date(iso).getTime();
-		if (ms < 60_000) return `${Math.max(0, Math.round(ms / 1000))}s ago`;
-		if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
-		if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
-		return `${Math.round(ms / 86_400_000)}d ago`;
-	}
 </script>
 
 <main>
@@ -77,7 +72,7 @@
 						<td><a href={`/agents/${encodeURIComponent(a.host)}`}>{a.host}</a></td>
 						<td>{a.service}</td>
 						<td>{a.agent_version || '—'}</td>
-						<td>{relativeTime(a.last_seen_at)}</td>
+						<td title={`${formatTimestamp(a.last_seen_at, getTimezone())} ${zoneLabel(getTimezone())}`}>{relativeTime(a.last_seen_at)}</td>
 						<td>
 							{#if isStale(a)}
 								<Badge tone="danger">stale</Badge>

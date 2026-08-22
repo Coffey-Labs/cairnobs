@@ -22,6 +22,37 @@ read at container start. Set it before `npm run build` (or pass
 `--build-arg VITE_API_BASE_URL=...` to `docker build`) — changing it later
 means rebuilding, not just restarting the container.
 
+## Timestamps and the display timezone
+
+Everything in Cairn OBS is UTC: ingest records Unix nanoseconds,
+ClickHouse stores UTC, and every API response is RFC3339 with a Z. The
+web UI renders those instants in whichever zone the reader picked
+(Settings → Display timezone), which changes **presentation only** --
+never which rows a query returns, never their order, and never what
+`earliest=`/`latest=` mean. Two people in two zones looking at one log
+line see the same instant written two ways.
+
+- `src/lib/time.ts` -- pure formatting. `formatTimestamp` is the one
+  entry point; it detects timestamps by value, not by column name, since
+  query output is arbitrary. Sub-second digits are copied verbatim from
+  the source string rather than round-tripped through a JS `Date`, which
+  is millisecond-precision and would silently drop the last six digits of
+  a ClickHouse nanosecond timestamp.
+- `src/lib/timezone.svelte.ts` -- where the choice is *stored*, which
+  differs by deployment on purpose: per named user server-side when local
+  login is on (`PUT /auth/timezone`, so it follows a person across
+  browsers), per browser session on a public demo (a shared account's
+  visitors shouldn't inherit each other's settings), per browser
+  otherwise.
+- Charts format their own axis and tooltip labels through the same
+  helper. ECharts' `type: 'time'` axis otherwise renders in the
+  *browser's* zone with no way to override it, which would put a chart's
+  clock out of step with the table beside it.
+
+The one place the UTC baseline is still visible to a user is query input:
+`earliest=`/`latest=` are parsed as UTC regardless of this setting. The
+Settings page says so explicitly rather than leaving it to be discovered.
+
 ## Building & running
 
 ```sh

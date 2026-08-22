@@ -40,7 +40,10 @@ func (f *fakeStore) CreateUser(_ context.Context, username, passwordHash string,
 	}
 	f.nextID++
 	id := "user-" + strconv.Itoa(f.nextID)
-	u := &User{ID: id, Username: username, Role: role, CreatedAt: time.Now()}
+	// DisplayTimezone mirrors the schema's NOT NULL DEFAULT 'UTC' (see
+	// migration 0042) -- a fake that left it empty would let a handler
+	// bug that drops the default pass unnoticed.
+	u := &User{ID: id, Username: username, Role: role, DisplayTimezone: "UTC", CreatedAt: time.Now()}
 	f.users[id] = u
 	f.hashes[id] = passwordHash
 	f.byUsername[username] = id
@@ -111,6 +114,18 @@ func (f *fakeStore) SetRole(_ context.Context, userID string, role authz.Role) e
 			delete(f.sessions, h)
 		}
 	}
+	return nil
+}
+
+// SetDisplayTimezone deliberately does not touch f.sessions -- unlike
+// SetRole/SetPasswordHash above, changing a rendering preference is not
+// a reason to sign anyone out, and the test for that asserts it.
+func (f *fakeStore) SetDisplayTimezone(_ context.Context, userID, tz string) error {
+	u, ok := f.users[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	u.DisplayTimezone = tz
 	return nil
 }
 

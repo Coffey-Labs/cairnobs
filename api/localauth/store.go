@@ -52,10 +52,15 @@ var (
 const defaultTenantID = "default"
 
 type User struct {
-	ID        string
-	Username  string
-	Role      authz.Role
-	CreatedAt time.Time
+	ID       string
+	Username string
+	Role     authz.Role
+	// DisplayTimezone is an IANA zone name the web UI renders timestamps
+	// in -- presentation only, never applied to stored or queried data
+	// (see metadata/migrations/0042_add_user_display_timezone.sql).
+	// 'UTC' for any user who has never changed it.
+	DisplayTimezone string
+	CreatedAt       time.Time
 }
 
 type Session struct {
@@ -174,11 +179,11 @@ func (s *Store) GetUserByID(ctx context.Context, id string) (*User, error) {
 	var u User
 	var role string
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id, u.username, tm.role, u.created_at
+		SELECT u.id, u.username, tm.role, u.display_timezone, u.created_at
 		FROM users u
 		JOIN tenant_memberships tm ON tm.user_id = u.id AND tm.tenant_id = $1
 		WHERE u.id = $2 AND u.username IS NOT NULL`, defaultTenantID, id).
-		Scan(&u.ID, &u.Username, &role, &u.CreatedAt)
+		Scan(&u.ID, &u.Username, &role, &u.DisplayTimezone, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -187,6 +192,25 @@ func (s *Store) GetUserByID(ctx context.Context, id string) (*User, error) {
 	}
 	u.Role = authz.Role(role)
 	return &u, nil
+}
+
+// SetDisplayTimezone stores one user's display-timezone preference. It
+// deliberately does NOT revoke sessions the way SetPasswordHash does --
+// this is a rendering preference, not a credential, and a user changing
+// how their clock reads has no reason to be signed out. The caller is
+// responsible for having validated tz against the tz database first
+// (see handleSetTimezone); the column has no CHECK constraint.
+func (s *Store) SetDisplayTimezone(ctx context.Context, id, tz string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users SET display_timezone = $1, updated_at = now()
+		WHERE id = $2 AND username IS NOT NULL`, tz, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteUser cascades to the user's tenant_memberships and

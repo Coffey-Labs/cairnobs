@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { formatDate as formatDateInZone } from '$lib/time';
 	import {
 		localAuthEnabled,
 		getLocalSession,
@@ -181,8 +183,12 @@
 		}
 	}
 
+	// Rendered in the reader's display timezone like every other
+	// timestamp -- a date is just a timestamp with the time cut off, and
+	// near midnight the two zones genuinely disagree about which day it
+	// was. See $lib/time.ts.
 	function formatDate(iso: string): string {
-		return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+		return formatDateInZone(iso, getTimezone());
 	}
 </script>
 

@@ -5,6 +5,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import { page } from '$app/state';
 	import { getLocalSession } from '$lib/api';
+	import { initTimezone } from '$lib/timezone.svelte';
 
 	let { children } = $props();
 	let paletteOpen = $state(false);
@@ -41,6 +42,12 @@
 	// mid-use redirects without re-blanking an already-rendered page (a
 	// full navigation to /login is already underway by the time that'd
 	// matter anyway).
+	// Storage-backed timezone modes (demo, and deployments without local
+	// login) can resolve immediately; account mode learns the real value
+	// from the session response below. Both run before any timestamp is
+	// rendered, since nothing renders until the guard resolves.
+	initTimezone();
+
 	$effect(() => {
 		if (isLoginPage) {
 			authorized = true;
@@ -48,6 +55,7 @@
 			return;
 		}
 		getLocalSession().then((session) => {
+			if (session !== null && session !== 'disabled') initTimezone(session.timezone);
 			if (session === null) {
 				const next = encodeURIComponent(page.url.pathname + page.url.search);
 				window.location.href = `/login?next=${next}`;

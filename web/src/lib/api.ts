@@ -430,13 +430,36 @@ export function injectTimeRange(query: string, earliest: string, latest: string)
 
 // --- local login (single-tenant mode, see api/localauth) --------------
 
-export type LocalSession = { user_id: string; tenant_id: string; username: string; role: string };
+export type LocalSession = {
+	user_id: string;
+	tenant_id: string;
+	username: string;
+	role: string;
+	// The user's stored display-timezone preference (IANA name).
+	// Optional: absent on deployments whose api predates the setting, and
+	// on the login response, which doesn't carry it -- both mean "UTC".
+	timezone?: string;
+};
+
 
 export function login(username: string, password: string): Promise<LocalSession & { token: string }> {
 	return request('/auth/login', {
 		method: 'POST',
 		credentials: 'include',
 		body: JSON.stringify({ username, password })
+	});
+}
+
+// Stores the caller's own display-timezone preference. Display only --
+// it changes nothing about what any query returns (see
+// metadata/migrations/0042_add_user_display_timezone.sql). Available to
+// every role, including Viewer, since it's a setting about the reader
+// rather than about the data.
+export function setDisplayTimezone(timezone: string): Promise<void> {
+	return request('/auth/timezone', {
+		method: 'PUT',
+		credentials: 'include',
+		body: JSON.stringify({ timezone })
 	});
 }
 
