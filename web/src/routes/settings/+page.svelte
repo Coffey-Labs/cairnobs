@@ -358,8 +358,10 @@
 		</p>
 		<p class="note">{persistenceNote[persistence()]}</p>
 		<p class="note">
-			Time ranges you type into a query (<code>earliest=</code>/<code>latest=</code>) are still read
-			as UTC.
+			Time ranges you type are read in this timezone too: <code>earliest=2026-08-22 09:00</code> means
+			9am here, converted to UTC before the query runs. Add an offset (<code>Z</code> or
+			<code>-07:00</code>) to pin an exact instant instead, or keep using relative ranges like
+			<code>-24h</code>, which don't depend on a timezone at all.
 		</p>
 		{#if tzError}<p class="error">Couldn't save timezone: {tzError}</p>{/if}
 	</section>
