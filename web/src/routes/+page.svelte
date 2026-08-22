@@ -7,6 +7,8 @@
 	import logoLight from '$lib/assets/logo-stacked-light.svg';
 	import { isLight } from '$lib/theme.svelte';
 	import { Button } from '$lib/components/ui';
+	import DemoNotice from '$lib/components/DemoNotice.svelte';
+	import { isPublicDemo } from '$lib/api';
 
 	const shortcuts: { href: string; label: string; hint: string }[] = [
 		{ href: '/search', label: 'Search', hint: 'Query logs with filters, free-text, or raw SQL' },
@@ -16,12 +18,19 @@
 	];
 </script>
 
-<main>
+<!-- The demo notice wants three readable columns, which 40rem can't
+	give it; widened only in that case so no other deployment's landing
+	page changes width. -->
+<main class:with-notice={isPublicDemo}>
 	<img src={isLight() ? logoLight : logoDark} alt="Cairn OBS" class="logo" />
 	<p class="tagline">
 		One query bar for filter/stats queries and free-text search across every host and service
 		you're shipping logs from.
 	</p>
+
+	{#if isPublicDemo}
+		<DemoNotice />
+	{/if}
 
 	<div class="shortcuts">
 		{#each shortcuts as s (s.href)}
@@ -42,6 +51,9 @@
 		max-width: 40rem;
 		margin: 0 auto;
 		padding-top: var(--space-8, 4rem);
+	}
+	main.with-notice {
+		max-width: 48rem;
 	}
 	.logo {
 		width: 11rem;
