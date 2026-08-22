@@ -25,6 +25,7 @@ type store interface {
 	DeleteUser(ctx context.Context, id string) error
 	SetPasswordHash(ctx context.Context, userID, hash string) error
 	SetRole(ctx context.Context, userID string, role authz.Role) error
+	SetDisplayTimezone(ctx context.Context, userID, tz string) error
 	CountUsersWithRole(ctx context.Context, role authz.Role) (int, error)
 	CreateSession(ctx context.Context, userID, tenantID string, role authz.Role, ttl time.Duration) (string, error)
 	DeleteSessionByHash(ctx context.Context, tokenHash string) error
@@ -113,6 +114,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/logout", h.handleLogout)
 	mux.HandleFunc("GET /auth/session", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleGetSession))
 	mux.HandleFunc("POST /auth/password", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleChangeOwnPassword))
+	// Self-service, same RoleViewer floor as the password change above:
+	// how a user's own clock is rendered is nobody else's permission to
+	// grant, and a Viewer -- the role most likely to be *only* reading
+	// logs -- needs it most.
+	mux.HandleFunc("PUT /auth/timezone", authz.RequireRole(h.authorizer, authz.RoleViewer, h.handleSetTimezone))
 
 	mux.HandleFunc("GET /auth/users", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleListUsers))
 	mux.HandleFunc("POST /auth/users", authz.RequireRole(h.authorizer, authz.RoleAdmin, h.handleCreateUser))
@@ -138,6 +144,12 @@ type sessionResponse struct {
 	TenantID string `json:"tenant_id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
+	// Timezone is the user's stored display preference (IANA zone name,
+	// "UTC" by default). Sent on the session so the web UI knows which
+	// offset to render in from its very first paint, without a second
+	// round trip -- omitted from the login response, where the store
+	// lookup that produces it hasn't happened.
+	Timezone string `json:"timezone,omitempty"`
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +229,7 @@ func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, sessionResponse{
 		UserID: user.ID, TenantID: identity.TenantID, Username: user.Username, Role: string(user.Role),
+		Timezone: user.DisplayTimezone,
 	})
 }
 
@@ -537,6 +550,62 @@ func (h *Handler) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request
 	}
 	if err := h.store.SetPasswordHash(r.Context(), identity.UserID, newHash); err != nil {
 		h.writeStoreErr(w, err, "changing password")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type setTimezoneRequest struct {
+	Timezone string `json:"timezone"`
+}
+
+// maxTimezoneLen bounds the input before it reaches LoadLocation, which
+// takes the value as a filesystem-ish lookup key. The longest real IANA
+// name is well under this ("America/Argentina/ComodRivadavia", 31).
+const maxTimezoneLen = 64
+
+// handleSetTimezone stores the caller's own display-timezone preference
+// -- see metadata/migrations/0042_add_user_display_timezone.sql for why
+// this is presentation-only and can never affect what data a query
+// returns.
+//
+// Validation is time.LoadLocation against the tzdata embedded in this
+// binary (see the time/tzdata import in cmd/api/main.go), not a
+// hand-maintained allowlist: the set of valid zone names is the tz
+// database's to define, and it changes a few times a year. Rejecting
+// unknown names here matters because the value is echoed back to every
+// client on the session response -- an unvalidated string would just be
+// a stored round trip for whatever someone put in.
+func (h *Handler) handleSetTimezone(w http.ResponseWriter, r *http.Request) {
+	var req setTimezoneRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Timezone == "" {
+		writeError(w, http.StatusBadRequest, "timezone must not be empty")
+		return
+	}
+	if len(req.Timezone) > maxTimezoneLen {
+		writeError(w, http.StatusBadRequest, "timezone is not a valid IANA zone name")
+		return
+	}
+	// "Local" is a valid LoadLocation argument but means "whatever zone
+	// the *server* process is in", which is meaningless as a per-user
+	// display preference and would render differently depending on which
+	// host answered. The browser's own zone is the client's business to
+	// resolve into a real name before sending it.
+	if req.Timezone == "Local" {
+		writeError(w, http.StatusBadRequest, "timezone must be a specific IANA zone name, not \"Local\"")
+		return
+	}
+	if _, err := time.LoadLocation(req.Timezone); err != nil {
+		writeError(w, http.StatusBadRequest, "timezone is not a valid IANA zone name")
+		return
+	}
+
+	identity, _ := authz.IdentityFromContext(r.Context())
+	if err := h.store.SetDisplayTimezone(r.Context(), identity.UserID, req.Timezone); err != nil {
+		h.writeStoreErr(w, err, "setting timezone")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { relativeTime, formatTimestamp, zoneLabel } from '$lib/time';
 	import { page } from '$app/state';
 	import { getHostMetrics, type HostMetrics } from '$lib/api';
 	import { Card, Skeleton } from '$lib/components/ui';
@@ -34,13 +36,6 @@
 		return Math.min(100, Math.max(0, (used / total) * 100));
 	}
 
-	function relativeTime(iso: string): string {
-		const ms = Date.now() - new Date(iso).getTime();
-		if (ms < 60_000) return `${Math.max(0, Math.round(ms / 1000))}s ago`;
-		if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
-		if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
-		return `${Math.round(ms / 86_400_000)}d ago`;
-	}
 
 	function formatUptime(seconds: number): string {
 		if (seconds <= 0) return '—';
@@ -64,7 +59,7 @@
 	{:else if !metrics}
 		<p class="hint">No metrics samples for this host yet.</p>
 	{:else}
-		<p class="hint">Last sample {relativeTime(metrics.timestamp)}.</p>
+		<p class="hint" title={`${formatTimestamp(metrics.timestamp, getTimezone())} ${zoneLabel(getTimezone())}`}>Last sample {relativeTime(metrics.timestamp)}.</p>
 
 		<section class="system">
 			<dl>

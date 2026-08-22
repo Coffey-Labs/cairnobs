@@ -5,6 +5,8 @@
 	// for "a timeline view of an alert's state history rather than just
 	// a flat delivery log" (Phase 5 task 7); this is the same
 	// DeliveryLogEntry list the old flat table read, framed differently.
+	import { getTimezone } from '$lib/timezone.svelte';
+	import { formatTimestamp } from '$lib/time';
 	import type { DeliveryLogEntry } from '$lib/api';
 
 	let { deliveries }: { deliveries: DeliveryLogEntry[] } = $props();
@@ -33,7 +35,7 @@
 				<div class="entry">
 					<div class="entry-head">
 						<span class="event {tierFor(d)}">{d.event_type}</span>
-						<time>{new Date(d.created_at).toLocaleString()}</time>
+						<time title={d.created_at}>{formatTimestamp(d.created_at, getTimezone())}</time>
 					</div>
 					<div class="entry-body">
 						<span class:danger={d.status === 'failed'}>{statusLabel(d)}</span>

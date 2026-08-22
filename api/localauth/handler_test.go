@@ -702,3 +702,93 @@ func TestChangeOwnPasswordRequiresAuth(t *testing.T) {
 		t.Fatalf("status = %d, want 401 with no session", rec.Code)
 	}
 }
+
+func TestSetTimezoneStoresAndReportsOnSession(t *testing.T) {
+	fs := newFakeStore()
+	// RoleViewer deliberately: a viewer is the role most likely to be
+	// only ever reading logs, and reading logs is what this setting is
+	// for -- if it needed a higher role it would be useless.
+	mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"vince","password":"vincepassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	// Defaults to UTC before anything is set.
+	before := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if got := decodeSessionTimezone(t, before); got != "UTC" {
+		t.Fatalf("initial session timezone = %q, want %q", got, "UTC")
+	}
+
+	rec := doRequest(t, mux, http.MethodPut, "/auth/timezone", `{"timezone":"America/New_York"}`, cookie)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// The same session keeps working -- unlike a password or role
+	// change, a rendering preference is no reason to sign anyone out.
+	after := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if after.Code != http.StatusOK {
+		t.Fatalf("session after timezone change: status = %d, want 200", after.Code)
+	}
+	if got := decodeSessionTimezone(t, after); got != "America/New_York" {
+		t.Errorf("session timezone = %q, want %q", got, "America/New_York")
+	}
+}
+
+func TestSetTimezoneRejectsInvalidZones(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"vince","password":"vincepassword"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	cases := map[string]string{
+		"empty":          `{"timezone":""}`,
+		"not a zone":     `{"timezone":"Mars/Olympus_Mons"}`,
+		"fixed offset":   `{"timezone":"-07:00"}`,
+		"server-local":   `{"timezone":"Local"}`,
+		"absurdly long":  `{"timezone":"` + strings.Repeat("x", 200) + `"}`,
+		"path traversal": `{"timezone":"../../etc/passwd"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			rec := doRequest(t, mux, http.MethodPut, "/auth/timezone", body, cookie)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// Nothing above should have changed the stored value.
+	sess := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if got := decodeSessionTimezone(t, sess); got != "UTC" {
+		t.Errorf("timezone after rejected requests = %q, want %q", got, "UTC")
+	}
+}
+
+func TestSetTimezoneRequiresAuth(t *testing.T) {
+	fs := newFakeStore()
+	mustCreateUser(t, fs, "vince", "vincepassword", authz.RoleViewer)
+	_, mux := newTestHandler(t, fs)
+
+	rec := doRequest(t, mux, http.MethodPut, "/auth/timezone", `{"timezone":"Europe/Berlin"}`, nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func decodeSessionTimezone(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("session status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Timezone string `json:"timezone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding session body: %v", err)
+	}
+	return body.Timezone
+}

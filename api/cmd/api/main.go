@@ -19,6 +19,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	// Embeds the IANA tz database in the binary. This image is
+	// distroless/static -- it has no /usr/share/zoneinfo at all, so
+	// time.LoadLocation would fail for every zone except UTC, and
+	// localauth's timezone validation would reject every real name a
+	// user could pick. ~450KB of binary for a feature whose whole job is
+	// knowing what "America/New_York" means.
+	_ "time/tzdata"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v5/pgxpool"

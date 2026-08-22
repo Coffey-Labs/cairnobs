@@ -1,0 +1,23 @@
+-- Per-user display timezone: a *presentation* preference only.
+--
+-- Every timestamp in this system is and stays UTC -- ingest records
+-- Unix nanoseconds, ClickHouse stores DateTime64 in UTC, and both the
+-- query API and every JSON response continue to emit RFC3339 with a Z
+-- offset. This column changes nothing about any of that. It only tells
+-- the web UI which offset to render those instants in, so two users in
+-- two timezones looking at the same log line see the same instant
+-- written two different ways, never two different log lines.
+--
+-- Stored as an IANA zone name ('UTC', 'America/New_York', ...) rather
+-- than a fixed numeric offset, because a fixed offset is wrong twice a
+-- year for anywhere that observes DST -- the zone name is what carries
+-- the rule, not just today's answer. Validated in Go against the
+-- embedded tzdata (see api/localauth's handleSetTimezone) rather than
+-- by a CHECK constraint: the valid set is the tz database's, which
+-- Postgres would have no way to keep in sync here.
+--
+-- Default 'UTC' matches the "standardize on UTC" baseline -- a user who
+-- never touches this setting sees exactly what they saw before it
+-- existed.
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS display_timezone TEXT NOT NULL DEFAULT 'UTC';
