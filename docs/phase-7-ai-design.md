@@ -265,7 +265,7 @@ with three levels (`ok`/`warn`/`reject`) and human-readable reasons:
   query"), decided here rather than left ambiguous: hand-written queries
   get the identical assessment an AI-generated one would, so there's
   real parity, but retroactively hard-blocking existing dashboard/
-  `sentryctl` query patterns that happen to have no time bound is a
+  `cairnobsctl` query patterns that happen to have no time bound is a
   behavioral change this phase didn't set out to make and could break
   real existing usage. `warnings` is `omitempty` -- a client that
   doesn't look for it sees no shape change at all. All existing
@@ -472,7 +472,7 @@ renders them is structurally the same conditional-message pattern
 already live-verified repeatedly for Explain/Fix/Optimize's own
 "unavailable" states, not new untested UI shape.
 
-CLI (task 11): `sentryctl query --nl "..."` in `cli/cmd/sentryctl/cmd_query.go`.
+CLI (task 11): `cairnobsctl query --nl "..."` in `cli/cmd/cairnobsctl/cmd_query.go`.
 Same posture as the UI, enforced identically regardless of how the
 result was produced: a low-confidence, non-compiling, or cost-guard-blocked
 translation is never run, even with `--execute` -- confirmed by
@@ -559,7 +559,7 @@ query at the moment of acceptance, not tracked keystroke-by-keystroke.
 
 **Genuinely verified against a live Postgres**, not just unit-tested
 against a fake `InteractionLogger`: `metadata/migrations/0036` was
-applied to the running dev stack's `sentry-metadata-postgres`
+applied to the running dev stack's `cairnobs-metadata-postgres`
 (`docker compose up -d --build metadata-migrate`, confirmed via `\d+
 audit_log` before/after showing `ai_interaction` added to the
 `event_type` CHECK constraint), and two new tests in
@@ -622,7 +622,7 @@ ends up with:
    handler/routing logic via `fakeProvider` -- fast, deterministic, no
    network, all run in CI today.
 2. **Integration tests** (this task, new): the mock-Ollama-server suite
-   above, plus `cli/cmd/sentryctl/cmd_query_test.go`'s existing
+   above, plus `cli/cmd/cairnobsctl/cmd_query_test.go`'s existing
    `httptest.Server`-backed coverage of `--nl`/`--execute` (already
    written during Track B, task 11) -- proves the plumbing (HTTP routing,
    JSON contracts, `planner.Compile`/`costguard.Assess` integration,

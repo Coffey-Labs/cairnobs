@@ -32,7 +32,7 @@ func integrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 		t.Skip("DASHBOARDS_TEST_POSTGRES_ADDR not set -- skipping live-Postgres integration test")
 	}
 	password := os.Getenv("DASHBOARDS_TEST_POSTGRES_PASSWORD")
-	dsn := fmt.Sprintf("postgres://sentry:%s@%s/sentry_metadata", password, addr)
+	dsn := fmt.Sprintf("postgres://cairnobs:%s@%s/cairnobs_metadata", password, addr)
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("opening pool: %v", err)

@@ -18,7 +18,7 @@ planning.
 ## How it fits together
 
 ```
-ingest (gRPC front end) --> Redpanda (sentry.logs.raw) --> ingest's ClickHouse-writer consumer --> ClickHouse
+ingest (gRPC front end) --> Redpanda (cairnobs.logs.raw) --> ingest's ClickHouse-writer consumer --> ClickHouse
                                     \
                                      `--> search's own consumer --> Tantivy index
 ```
@@ -121,7 +121,7 @@ Environment variables (see `src/config.rs`):
 |---|---|---|
 | `GRPC_LISTEN_ADDR` | `0.0.0.0:50052` | Full socket address — Rust's parser needs one, unlike Go's `:PORT` shorthand `ingest`/`api` use |
 | `REDPANDA_BROKERS` | `localhost:9092` | Comma-separated broker list |
-| `REDPANDA_TOPIC` | `sentry.logs.raw` | Must match `/ingest`'s topic |
+| `REDPANDA_TOPIC` | `cairnobs.logs.raw` | Must match `/ingest`'s topic |
 | `REDPANDA_TOPIC_PARTITIONS` | `6` | Must match what `/transport/provision-topics.sh` created |
 | `INDEX_PATH` | `/var/lib/cairnobs-search/index` | Default (non-tenant) Tantivy index directory |
 | `TENANTS_INDEX_PATH` | `/var/lib/cairnobs-search/tenants` | Per-tenant index directories live under here, one subdirectory per tenant_id (Phase 4) |

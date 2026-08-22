@@ -34,7 +34,7 @@ func testPool(t *testing.T, user, password string) *pgxpool.Pool {
 	if addr == "" {
 		t.Skip("AUDIT_TEST_POSTGRES_ADDR not set -- skipping live-Postgres integration test")
 	}
-	dsn := fmt.Sprintf("postgres://%s:%s@%s/sentry_metadata", user, password, addr)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s/cairnobs_metadata", user, password, addr)
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("opening pool: %v", err)
@@ -65,7 +65,7 @@ func cleanupAuditLog(t *testing.T, adminPool *pgxpool.Pool) {
 
 func TestAppendAndVerifyChainRealPostgres(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -104,7 +104,7 @@ func TestAppendAndVerifyChainRealPostgres(t *testing.T) {
 // field on QueryAuditEntry -- matching that type's own doc comment.
 func TestQueryAPILoggerWritesAttributedToContextIdentity(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -131,7 +131,7 @@ func TestQueryAPILoggerWritesAttributedToContextIdentity(t *testing.T) {
 
 func TestQueryAPILoggerRefusesWithoutIdentity(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -149,7 +149,7 @@ func TestQueryAPILoggerRefusesWithoutIdentity(t *testing.T) {
 // confidence/accepted/edited fields that don't have dedicated columns.
 func TestAIInteractionLoggerWritesAttributedToContextIdentity(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -199,7 +199,7 @@ func TestAIInteractionLoggerWritesAttributedToContextIdentity(t *testing.T) {
 
 func TestAIInteractionLoggerRefusesWithoutIdentity(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -216,7 +216,7 @@ func TestAIInteractionLoggerRefusesWithoutIdentity(t *testing.T) {
 // would also pass.
 func TestVerifyChainDetectsTampering(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -270,7 +270,7 @@ func TestVerifyChainDetectsTampering(t *testing.T) {
 // unit test of the Go code alone.
 func TestAppendConcurrentWritesProduceAValidChain(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 
@@ -316,7 +316,7 @@ func TestAppendConcurrentWritesProduceAValidChain(t *testing.T) {
 // the previous checkpoint's hash.
 func TestCheckpointerRun(t *testing.T) {
 	writerPool := testPool(t, "audit_writer", os.Getenv("AUDIT_TEST_POSTGRES_PASSWORD"))
-	adminPool := testPool(t, "sentry", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
+	adminPool := testPool(t, "cairnobs", os.Getenv("AUDIT_TEST_ADMIN_PASSWORD"))
 	cleanupAuditLog(t, adminPool)
 	defer cleanupAuditLog(t, adminPool)
 

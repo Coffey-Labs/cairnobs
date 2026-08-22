@@ -135,7 +135,7 @@ already configured for.
 ## Data model
 
 `metadata/migrations/0037_create_agents.sql`: one `agents` table, one
-row per `(tenant_id, host)`, in the same `sentry_metadata` Postgres
+row per `(tenant_id, host)`, in the same `cairnobs_metadata` Postgres
 dashboards/alert_rules already live in — not a new database, matching
 this project's established "shared schema, different services own
 different tables" shape. `tenant_id` defaults to `'default'` for
@@ -257,18 +257,18 @@ the process exits cleanly -- `pending_command` confirmed cleared and
 
 ## CLI surface (punch-list item 3)
 
-`sentryctl agents` (`cli/cmd/sentryctl/cmd_agents.go`), same list/get
+`cairnobsctl agents` (`cli/cmd/cairnobsctl/cmd_agents.go`), same list/get
 shape as `dashboards`/`alerts`, plus a `config` sub-subcommand
 (mirroring `dashboards permissions`) since an override has its own
 get/set/clear lifecycle distinct from the agent resource itself:
 
 ```
-sentryctl agents list|get <host>
-sentryctl agents config get <host>|clear <host>
-sentryctl agents config set <host> [--batch-max-size N] [--batch-flush-interval-ms N]
+cairnobsctl agents list|get <host>
+cairnobsctl agents config get <host>|clear <host>
+cairnobsctl agents config set <host> [--batch-max-size N] [--batch-flush-interval-ms N]
                             [--heartbeat-enabled true|false] [--heartbeat-interval-ms N]
                             [--journald-unit UNIT]
-sentryctl agents restart <host> [--yes]
+cairnobsctl agents restart <host> [--yes]
 ```
 
 `config set` is the one command with real logic beyond a thin HTTP

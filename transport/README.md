@@ -5,7 +5,7 @@ Redpanda for local development, plus the script that provisions the topic
 
 ## Topic naming contract
 
-`ingest` defaults to `REDPANDA_TOPIC=sentry.logs.raw` (see
+`ingest` defaults to `REDPANDA_TOPIC=cairnobs.logs.raw` (see
 `/ingest/internal/config`). `provision-topics.sh` defaults to the same
 name. These aren't wired together automatically — if you change one,
 change the other, or override `REDPANDA_TOPIC` consistently wherever

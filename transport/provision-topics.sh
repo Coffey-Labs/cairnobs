@@ -17,7 +17,7 @@ set -euo pipefail
 # of ever becoming healthy.
 BROKERS="${REDPANDA_BROKERS:-localhost:9092}"
 ADMIN_HOSTS="${REDPANDA_ADMIN_HOSTS:-localhost:9644}"
-TOPIC="${REDPANDA_TOPIC:-sentry.logs.raw}"
+TOPIC="${REDPANDA_TOPIC:-cairnobs.logs.raw}"
 PARTITIONS="${REDPANDA_TOPIC_PARTITIONS:-6}"
 
 echo "Waiting for Redpanda admin API at ${ADMIN_HOSTS}..."

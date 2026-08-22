@@ -46,7 +46,7 @@ Environment variables (see `internal/config/config.go`):
 |---|---|---|
 | `HTTP_LISTEN_ADDR` | `:8080` | |
 | `CLICKHOUSE_ADDR` | `localhost:9000` | Native protocol port |
-| `CLICKHOUSE_DATABASE` / `_USERNAME` / `_PASSWORD` | `sentry` / `default` / `` | |
+| `CLICKHOUSE_DATABASE` / `_USERNAME` / `_PASSWORD` | `cairnobs` / `default` / `` | |
 | `SEARCH_GRPC_ADDR` | `localhost:50052` | Must match `/search`'s `GRPC_LISTEN_ADDR` |
 | `QUERY_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `CORS_ALLOWED_ORIGIN` | `*` | Wide open by default since there's no auth yet; tighten together |
@@ -66,7 +66,7 @@ go test ./...
 
 ```sh
 # from the repo root, not api/
-docker build -f api/Dockerfile -t sentry-api .
+docker build -f api/Dockerfile -t cairnobs-api .
 ```
 
 ## Testing notes

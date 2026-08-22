@@ -81,7 +81,7 @@ This split is not to be changed without discussion — see CLAUDE.md.
 | `alerting` (Go, Phase 3) | Evaluates alert rules on an interval, calls `api`'s `POST /query` (via a `RoleService` credential once Phase 4 auth is configured — see `/docs/phase-4-isolation-design.md`'s alerting↔api gap), delivers firing/resolved notifications (webhook/Slack/PagerDuty). |
 | `enterprise` (Go, AGPLv3 — see "Licensing boundary" below, Phase 4) | OIDC login (`internal/loginhandler`'s `/auth/oidc/login`+`/auth/oidc/callback`) and SAML login (`/auth/saml/login`+`/auth/saml/acs`, via `internal/saml`'s `crewjam/saml` wiring) — both a real IdP round trip, each verified with a real fake IdP (`coreos/go-oidc`'s `oidctest`, `crewjam/saml`'s `samlidp`) but not a real external one, RBAC storage (`internal/rbacstore`), session/service-token issuance (`internal/session`), the append-only audit log (`internal/audit`), `enterprise-auth`'s HTTP surface (`/internal/authorize`, `/auth/features`), per-tenant ClickHouse provisioning (`internal/tenantprovision`) and query routing (`internal/chrunner`), and `cmd/enterprise-api` — a second binary combining core's `api/queryapi`/`api/dashboards` handlers with these tenant-aware implementations. Never imported by core — see "Licensing boundary" below. Also `internal/searchclient` (per-tenant Tantivy routing, wired the same way into `search`). |
 | `web` (SvelteKit, static build) | Query bar, dashboards, alerts, and (Phase 4) a settings page that renders SSO status via a runtime capability check (`GET /auth/features`) rather than bundling `enterprise/`'s components directly — an architectural choice (core builds and runs standalone) that predates and doesn't depend on Phase 6's relicensing. |
-| `cli` (`sentryctl`) | `ping`, `query`, `dashboards` (list/get/apply), `alerts` (list/get/apply). `$SENTRYCTL_TOKEN`, if set, is forwarded as a Bearer credential (Phase 4). |
+| `cli` (`cairnobsctl`) | `ping`, `query`, `dashboards` (list/get/apply), `alerts` (list/get/apply). `$CAIRNOBSCTL_TOKEN`, if set, is forwarded as a Bearer credential (Phase 4). |
 | `deploy` | A Helm chart covering every `docker-compose.yml` service, plus (Phase 4) a small Go Operator managing one CRD (`Tenant`) that provisions a per-tenant ClickHouse credential Secret. Never applied to a live cluster in the environment this was built in — see `/deploy/README.md`'s verification section before trusting it. |
 
 ## Tenant isolation model (Phase 4)
@@ -199,7 +199,7 @@ escape hatch is opaque to any compiler-injected filter.
   new credentials and still never touches ClickHouse/Postgres.
 
 **The deployment-topology gap is closed for both Helm and
-docker-compose**: `deploy/helm/sentry/templates/api.yaml`/
+docker-compose**: `deploy/helm/cairnobs/templates/api.yaml`/
 `enterprise-api.yaml` are mutually exclusive on `enterprise.enabled`,
 rendering to the same Service name and port either way, so a
 Helm-deployed cluster can't accidentally run the wrong binary — the same

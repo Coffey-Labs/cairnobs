@@ -23,8 +23,15 @@ new cross-backend join strategy from scratch.
 Pipe syntax, SPL-inspired, EBNF-ish:
 
 ```
-query        := base_search ("|" pipe_stage)*
+query        := (base_search | pipe_stage) ("|" pipe_stage)*
 base_search  := bool_expr                      // implicit filter/search, SPL convention
+                                                // omitted entirely when the query starts
+                                                // directly with a pipe-stage keyword (e.g.
+                                                // `stats count by host`, no leading filter,
+                                                // no leading "|") -- means match-everything.
+                                                // A field genuinely named "where"/"stats"/etc
+                                                // still parses as a filter (`where=foo`),
+                                                // disambiguated by comparator lookahead.
 pipe_stage   := "where" bool_expr
               | "stats" agg_call ("," agg_call)* ["by" field ("," field)*]
               | "sort" sort_field ("," sort_field)*

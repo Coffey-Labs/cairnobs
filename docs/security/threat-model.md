@@ -97,13 +97,13 @@ wire-level `SearchRequest` carries the right `tenant_id`. All pass, for
 real, no disclaimer needed for this specific claim.
 
 **Both Helm and docker-compose now close this.**
-`deploy/helm/sentry/templates/api.yaml` and `enterprise-api.yaml` are
+`deploy/helm/cairnobs/templates/api.yaml` and `enterprise-api.yaml` are
 mutually exclusive, gated on opposite sides of the same
 `enterprise.enabled` flag, rendering to the same Service name/port — so
 a Helm-deployed cluster runs exactly one of the two binaries, chosen by
 the same flag that turns on RBAC/audit/SSO, not a second
 independently-forgettable decision. Verified by parsing (not
-eyeballing) the rendered YAML under both values: exactly one `sentry-api`
+eyeballing) the rendered YAML under both values: exactly one `cairnobs-api`
 Deployment either way, with the right image. `docker-compose.yml`'s
 `api`/`enterprise-api` services are now the analogous mutually-exclusive
 choice, gated behind `COMPOSE_PROFILES` (`.env` checks in
@@ -233,7 +233,7 @@ Browser ──▶ enterprise-auth (GET /auth/oidc/login, /auth/oidc/callback)
               └─▶ external IdP (OIDC authorization code flow)
               └─▶ Postgres (rbacstore: users, tenant_memberships)
 
-sentryctl ──▶ api, alerting (Bearer token when SENTRYCTL_TOKEN is set)
+cairnobsctl ──▶ api, alerting (Bearer token when CAIRNOBSCTL_TOKEN is set)
 ```
 
 Ingest path (agent → Redpanda → ingest → ClickHouse, and Redpanda →
@@ -442,12 +442,12 @@ layer":
 
 1. A dedicated `audit_writer` Postgres role with only `INSERT`+`SELECT`
    grants (`metadata/migrations/0012-0014`), via its **own**
-   `pgxpool.Pool` — never the shared `sentry` role/pool every other
+   `pgxpool.Pool` — never the shared `cairnobs` role/pool every other
    store uses.
 2. A `BEFORE UPDATE OR DELETE ... RAISE EXCEPTION` trigger
    (`metadata/migrations/0015-0016`) that rejects the operation for
    *any* role, including the table owner — confirmed live: even the
-   `sentry` role cannot `UPDATE` a row without first disabling the
+   `cairnobs` role cannot `UPDATE` a row without first disabling the
    trigger, a privileged operation distinct from ordinary application
    access.
 
@@ -547,10 +547,10 @@ terms:
   cluster/trusted network (`api`/`alerting`/`web`), never exposed
   publicly. Nothing in this codebase enforces that at the network layer;
   it's a deployment responsibility (NetworkPolicy, or equivalent) not
-  yet codified in `/deploy/helm/sentry`.
+  yet codified in `/deploy/helm/cairnobs`.
 - `ENTERPRISE_SESSION_SIGNING_KEY`, ClickHouse/Postgres passwords, and
   (once minted) the `alerting` service token are all K8s `Secret`
-  objects in the Helm chart (`/deploy/helm/sentry/templates/
+  objects in the Helm chart (`/deploy/helm/cairnobs/templates/
   secrets.yaml`) — standard K8s `Secret` semantics apply (base64, not
   encrypted at rest without a cluster-level `EncryptionConfiguration`).
   No secrets-manager integration (Vault, cloud KMS) exists; the chart
@@ -571,7 +571,7 @@ terms:
 | Ingest tenant *identity* (credential validation, tagging) | **Built and tested** — fail-closed `TenantResolver`, `tenant_id` Kafka header attached per record |
 | Ingest tenant *write-routing*, ClickHouse | **Enforced, verified live** — `enterprise-ingest`/`chwriter.Registry` route each tagged batch to its tenant's own database, fail-closed on an untagged/unprovisioned tenant; both Docker-free and live-ClickHouse tests pass. Active-tenant snapshot refreshes every minute (`Registry.StartRefreshing`) — a deprovisioned tenant loses write access within a minute, not "until the next restart" |
 | Ingest tenant *write-routing*, Tantivy | **Built and genuinely verified** — `search/src/consumer.rs` routes each record into its own tenant's index via `IndexRegistry`, same registry the (already-verified) read side uses; no Docker needed, real tests pass. Active-tenant-gated too: `tenants::ActiveTenantTracker` polls `enterprise-auth` every 60s (off unless configured), refusing any tenant not in the polled allowlist — same one-minute staleness bound as ClickHouse's now-refreshing snapshot, no more asymmetry between the two |
-| Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO; a real `helm install` against a real `kind` cluster confirmed the `sentry-api` Deployment runs `sentry-enterprise-api:latest` with `enterprise.enabled=true`, real endpoints behind the `sentry-api` Service, not just `helm template`'s rendered YAML |
+| Deployment actually routing traffic to `enterprise-api` (Helm) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive, same flag as RBAC/audit/SSO; a real `helm install` against a real `kind` cluster confirmed the `cairnobs-api` Deployment runs `cairnobs-enterprise-api:latest` with `enterprise.enabled=true`, real endpoints behind the `cairnobs-api` Service, not just `helm template`'s rendered YAML |
 | Deployment actually routing traffic to `enterprise-api` (docker-compose) | **Enforced, verified live** — `api`/`enterprise-api` are mutually exclusive via `COMPOSE_PROFILES`, same flag choice as Helm's `enterprise.enabled`; a real `docker compose up` of `enterprise-api` was run in this environment (and caught/fixed a startup-crashing duplicate `GET /healthz` route registration bug in the process), not just `docker compose config` |
 | Human SSO login — OIDC | **Enforced, verified live** — real login against a real Auth0 developer tenant, full browser round trip; correctly failed closed on an identity with no `tenant_memberships` row, then succeeded and issued a real session after `-grant-membership-*`, with `POST /internal/authorize` returning exactly the granted tenant/role |
 | Human SSO login — SAML | **Enforced, verified live** — real login against Auth0's SAML2 Web App addon acting as a real SAML IdP, over real (self-signed, dev-only) TLS; a real signed assertion validated (audience, destination, signature), landed on `/select-tenant` with real memberships, and `POST /internal/authorize` confirmed the selected tenant/role. Found and fixed a real bug in the process: `loginhandler.go`'s cookies decided `Secure` from `r.TLS != nil` alone, which is wrong behind any TLS-terminating reverse proxy (the deployment shape this handler actually runs in) — `enterprise-auth` never terminates TLS itself, so `r.TLS` was nil even over a genuinely HTTPS connection, silently dropping `Secure` and breaking SAML's `SameSite=None` cookie |

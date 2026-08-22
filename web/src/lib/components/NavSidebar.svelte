@@ -9,9 +9,10 @@
 		type CurrentSession,
 		type LocalSession
 	} from '$lib/api';
-	import { getTheme, setTheme, type Theme } from '$lib/theme.svelte';
+	import { getTheme, setTheme, isLight, type Theme } from '$lib/theme.svelte';
 	import { getDensity, toggleDensity } from '$lib/density.svelte';
-	import logo from '$lib/assets/logo-horizontal-dark.svg';
+	import logoDark from '$lib/assets/logo-horizontal-dark.svg';
+	import logoLight from '$lib/assets/logo-horizontal-light.svg';
 
 	let {
 		onOpenPalette,
@@ -84,7 +85,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
 	<div class="brand">
 		<a href="/" class="brand-link" onclick={onCloseMobile}>
-			<img src={logo} alt="Cairn OBS" class="brand-logo" />
+			<img src={isLight() ? logoLight : logoDark} alt="Cairn OBS" class="brand-logo" />
 		</a>
 		<button type="button" class="close-mobile" onclick={onCloseMobile} aria-label="Close menu">✕</button>
 	</div>

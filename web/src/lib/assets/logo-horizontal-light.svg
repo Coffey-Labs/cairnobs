@@ -1,12 +1,12 @@
 <svg width="600" height="140" viewBox="0 0 600 140" xmlns="http://www.w3.org/2000/svg">
-  <!-- Horizontal lockup for dark backgrounds -->
+  <!-- Horizontal lockup for light backgrounds -->
   <g transform="translate(20,10) scale(0.6)">
     <path d="M32,184 L20,172 L26,155 L18,146 L46,138 L82,144 L112,134 L150,140 L176,150 L182,168 L170,184 L142,192 L100,182 L64,190 Z" fill="#E6690E"/>
     <path d="M54,144 L42,134 L50,118 L44,108 L68,100 L96,106 L118,98 L142,106 L156,116 L150,132 L160,142 L132,150 L100,140 L70,148 Z" fill="#FF8A00"/>
     <path d="M68,106 L58,96 L64,82 L60,72 L80,66 L100,72 L116,64 L132,74 L138,86 L130,98 L138,106 L112,112 L88,104 L72,110 Z" fill="#FF9D2E"/>
     <path d="M80,70 L72,60 L78,48 L74,40 L92,36 L106,42 L116,34 L126,44 L124,56 L130,66 L108,72 L92,64 L82,70 Z" fill="#FFB157"/>
   </g>
-  <text x="160" y="87" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="48" font-weight="700" fill="#F2F2F2" letter-spacing="-1">cairn</text>
-  <text x="342" y="87" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="48" font-weight="700" fill="#FF8A00" letter-spacing="1"> obs</text>
-  <rect x="540" y="49" width="14" height="38" fill="#FF8A00"/>
+  <text x="160" y="87" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="48" font-weight="700" fill="#111315" letter-spacing="-1">cairn</text>
+  <text x="342" y="87" font-family="'JetBrains Mono','Fira Code',ui-monospace,monospace" font-size="48" font-weight="700" fill="#E6690E" letter-spacing="1"> obs</text>
+  <rect x="540" y="49" width="14" height="38" fill="#E6690E"/>
 </svg>

@@ -9,8 +9,8 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: sentry_metadata
-      POSTGRES_USER: sentry
+      POSTGRES_DB: cairnobs_metadata
+      POSTGRES_USER: cairnobs
       POSTGRES_PASSWORD: "cairnobs-dev-only" # not a real secret, see root docker-compose.yml
     volumes:
       - metadata-postgres-data:/var/lib/postgresql/data

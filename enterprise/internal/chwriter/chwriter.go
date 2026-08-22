@@ -16,7 +16,7 @@
 // chrunner.RunSQL resolves exactly one tenant per call from ctx (a
 // single request always belongs to one identity); WriteBatch resolves
 // per *record*, since one Kafka batch pulled off the shared
-// sentry.logs.raw topic can freely mix records from many different
+// cairnobs.logs.raw topic can freely mix records from many different
 // tenants -- see ingest/internal/grpcserver's doc comment for why
 // there's one shared topic, not topic-per-tenant.
 package chwriter

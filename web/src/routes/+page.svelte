@@ -3,7 +3,9 @@
 	// /search (the old root; every prior link/shortcut/drill-down that
 	// used to point at "/" expecting the query page now points at
 	// "/search" explicitly, see NavSidebar/CommandPalette/drilldown.ts).
-	import logo from '$lib/assets/logo-stacked-dark.svg';
+	import logoDark from '$lib/assets/logo-stacked-dark.svg';
+	import logoLight from '$lib/assets/logo-stacked-light.svg';
+	import { isLight } from '$lib/theme.svelte';
 	import { Button } from '$lib/components/ui';
 
 	const shortcuts: { href: string; label: string; hint: string }[] = [
@@ -15,7 +17,7 @@
 </script>
 
 <main>
-	<img src={logo} alt="Cairn OBS" class="logo" />
+	<img src={isLight() ? logoLight : logoDark} alt="Cairn OBS" class="logo" />
 	<p class="tagline">
 		One query bar for filter/stats queries and free-text search across every host and service
 		you're shipping logs from.

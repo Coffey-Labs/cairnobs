@@ -26,8 +26,8 @@ type Config struct {
 	// AgentRegistry enables agent inventory/remote config
 	// (internal/agentregistry, internal/grpcserver.AgentRegistry) when
 	// Postgres.Addr is set -- same "off unless configured" shape as
-	// EnterpriseAuthURL above. Writes into the same sentry_metadata
-	// database api/web already use, via the same shared "sentry" role
+	// EnterpriseAuthURL above. Writes into the same cairnobs_metadata
+	// database api/web already use, via the same shared "cairnobs" role
 	// every other non-audit table in this schema uses (unlike
 	// audit_log's dedicated restricted role -- agent inventory carries
 	// no tamper-evidence requirement).
@@ -110,12 +110,12 @@ func Load() (Config, error) {
 		},
 		Redpanda: RedpandaConfig{
 			Brokers:       strings.Split(getenv("REDPANDA_BROKERS", "localhost:9092"), ","),
-			Topic:         getenv("REDPANDA_TOPIC", "sentry.logs.raw"),
-			ConsumerGroup: getenv("REDPANDA_CONSUMER_GROUP", "sentry-ingest"),
+			Topic:         getenv("REDPANDA_TOPIC", "cairnobs.logs.raw"),
+			ConsumerGroup: getenv("REDPANDA_CONSUMER_GROUP", "cairnobs-ingest"),
 		},
 		ClickHouse: ClickHouseConfig{
 			Addr:     getenv("CLICKHOUSE_ADDR", "localhost:9000"),
-			Database: getenv("CLICKHOUSE_DATABASE", "sentry"),
+			Database: getenv("CLICKHOUSE_DATABASE", "cairnobs"),
 			Username: getenv("CLICKHOUSE_USERNAME", "default"),
 			Password: getenv("CLICKHOUSE_PASSWORD", ""),
 		},
@@ -123,8 +123,8 @@ func Load() (Config, error) {
 		AgentRegistry: AgentRegistryConfig{
 			Postgres: PostgresConfig{
 				Addr:     getenv("AGENT_REGISTRY_POSTGRES_ADDR", ""),
-				Database: getenv("AGENT_REGISTRY_POSTGRES_DATABASE", "sentry_metadata"),
-				Username: getenv("AGENT_REGISTRY_POSTGRES_USERNAME", "sentry"),
+				Database: getenv("AGENT_REGISTRY_POSTGRES_DATABASE", "cairnobs_metadata"),
+				Username: getenv("AGENT_REGISTRY_POSTGRES_USERNAME", "cairnobs"),
 				Password: getenv("AGENT_REGISTRY_POSTGRES_PASSWORD", ""),
 			},
 		},

@@ -49,7 +49,7 @@ docker compose up -d --build
 ```
 
 This builds and starts, in dependency order: `redpanda` → `redpanda-provision`
-(creates the `sentry.logs.raw` topic, then exits) → `clickhouse` →
+(creates the `cairnobs.logs.raw` topic, then exits) → `clickhouse` →
 `clickhouse-migrate` (applies `/storage/migrations`, then exits) →
 `ingest` and `api` → `web`.
 
@@ -133,7 +133,7 @@ In another terminal, **after** the agent is running and connected
 started won't be picked up):
 
 ```sh
-logger "hello from sentry phase 0"
+logger "hello from cairnobs phase 0"
 ```
 
 `logger` (part of util-linux, present on virtually every Linux distro)
@@ -150,7 +150,7 @@ interval by default, so the line won't hit ingest instantly.
 starts every service in the file). Open `http://localhost:3000`, run the
 default query (`SELECT * FROM logs
 ORDER BY timestamp DESC LIMIT 100`), and look for a row with
-`message = "hello from sentry phase 0"`.
+`message = "hello from cairnobs phase 0"`.
 
 **Or via curl, if you want to skip the browser:**
 
@@ -160,11 +160,11 @@ curl -X POST http://localhost:8080/query \
   -d '{"sql": "SELECT * FROM logs ORDER BY timestamp DESC LIMIT 10"}'
 ```
 
-**Or via sentryctl, just to confirm api is up (doesn't check the data
+**Or via cairnobsctl, just to confirm api is up (doesn't check the data
 itself):**
 
 ```sh
-cd cli && go run ./cmd/sentryctl ping
+cd cli && go run ./cmd/cairnobsctl ping
 ```
 
 If you see the row: that's Phase 0 done, end to end. If you don't, see
@@ -199,7 +199,7 @@ Check each hop in order rather than guessing:
    at-least-once design (see `/ingest/README.md`), so this may just need
    more time rather than intervention.
 3. `docker compose exec redpanda rpk topic list` — confirm
-   `sentry.logs.raw` exists (if `redpanda-provision` failed, it won't).
+   `cairnobs.logs.raw` exists (if `redpanda-provision` failed, it won't).
 
 **`docker compose up` fails on `service_completed_successfully`.**
 You're likely on Compose v1 (`docker-compose`, hyphenated) rather than v2

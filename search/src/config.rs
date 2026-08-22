@@ -67,7 +67,7 @@ impl Config {
                 .split(',')
                 .map(str::to_string)
                 .collect(),
-            redpanda_topic: getenv("REDPANDA_TOPIC", "sentry.logs.raw"),
+            redpanda_topic: getenv("REDPANDA_TOPIC", "cairnobs.logs.raw"),
             index_path: PathBuf::from(getenv("INDEX_PATH", "/var/lib/cairnobs-search/index")),
             offsets_path: PathBuf::from(getenv(
                 "OFFSETS_PATH",

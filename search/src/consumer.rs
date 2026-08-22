@@ -23,7 +23,7 @@ use crate::tenants::ActiveTenantTracker;
 /// `TestTenantIDHeaderKeyConstantsMatch` does on the Go side.
 const TENANT_ID_HEADER_KEY: &str = "tenant_id";
 
-/// Reads the same `sentry.logs.raw` topic ingest's ClickHouse-writer
+/// Reads the same `cairnobs.logs.raw` topic ingest's ClickHouse-writer
 /// consumer reads, as an independent consumer group in spirit (its own
 /// offset tracking, own failure domain) even though rskafka doesn't speak
 /// Kafka's broker-side consumer-group protocol -- see offsets.rs. One

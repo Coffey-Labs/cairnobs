@@ -54,7 +54,7 @@ docker compose logs search
 ```
 
 You should see "search gRPC server listening" and rskafka connecting to
-all of `sentry.logs.raw`'s partitions. If you see nothing at all, check
+all of `cairnobs.logs.raw`'s partitions. If you see nothing at all, check
 `RUST_LOG=info` is set on the `search` service in `docker-compose.yml`.
 
 ### A2. Generate a log line and confirm both query paths agree

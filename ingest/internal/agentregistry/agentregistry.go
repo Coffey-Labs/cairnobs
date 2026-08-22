@@ -1,7 +1,7 @@
 // Package agentregistry is the Postgres-backed implementation of
 // grpcserver.AgentRegistry -- ingest's half of agent inventory/remote
 // config (see /docs/agent-management-design.md). Writes into the same
-// sentry_metadata Postgres api reads/writes from for the web UI's
+// cairnobs_metadata Postgres api reads/writes from for the web UI's
 // inventory and edit-config views (api/agents), the same shared-schema-
 // different-services shape alerting and api already use for dashboards/
 // alert_rules.

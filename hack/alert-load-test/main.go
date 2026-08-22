@@ -43,7 +43,7 @@ var (
 	pollInterval = flag.Duration("poll-interval", 5*time.Second, "how often to poll GET /rules while observing")
 	concurrency  = flag.Int("concurrency", 20, "concurrent rule-creation requests")
 	skipCleanup  = flag.Bool("no-cleanup", false, "leave the seeded rules/target in place after the run")
-	webhookURL   = flag.String("webhook-url", "http://sentry-webhook-sink:9099/", "notification target URL -- default assumes a webhook-sink container reachable on the compose network")
+	webhookURL   = flag.String("webhook-url", "http://cairnobs-webhook-sink:9099/", "notification target URL -- default assumes a webhook-sink container reachable on the compose network")
 )
 
 func main() {

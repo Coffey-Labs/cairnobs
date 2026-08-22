@@ -86,13 +86,13 @@ full list and defaults) — no config file format for Phase 0:
 | Var | Default | Purpose |
 |---|---|---|
 | `GRPC_LISTEN_ADDR` | `:4317` | Agent-facing gRPC listen address |
-| `TLS_CERT_FILE` / `TLS_KEY_FILE` | `/etc/sentry-ingest/server{,-key}.pem` | ingest's own mTLS identity |
-| `TLS_CLIENT_CA_FILE` | `/etc/sentry-ingest/ca.pem` | CA used to verify agent client certs |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE` | `/etc/cairnobs-ingest/server{,-key}.pem` | ingest's own mTLS identity |
+| `TLS_CLIENT_CA_FILE` | `/etc/cairnobs-ingest/ca.pem` | CA used to verify agent client certs |
 | `REDPANDA_BROKERS` | `localhost:9092` | Comma-separated broker list |
-| `REDPANDA_TOPIC` | `sentry.logs.raw` | Must match the topic provisioned in `/transport` |
-| `REDPANDA_CONSUMER_GROUP` | `sentry-ingest` | Consumer group id |
+| `REDPANDA_TOPIC` | `cairnobs.logs.raw` | Must match the topic provisioned in `/transport` |
+| `REDPANDA_CONSUMER_GROUP` | `cairnobs-ingest` | Consumer group id |
 | `CLICKHOUSE_ADDR` | `localhost:9000` | Native protocol port, not HTTP |
-| `CLICKHOUSE_DATABASE` / `_USERNAME` / `_PASSWORD` | `sentry` / `default` / `` | |
+| `CLICKHOUSE_DATABASE` / `_USERNAME` / `_PASSWORD` | `cairnobs` / `default` / `` | |
 | `CONSUMER_BATCH_MAX_SIZE` | `500` | Records per ClickHouse batch insert |
 | `CONSUMER_BATCH_FLUSH_INTERVAL_MS` | `2000` | Max time a partial batch waits before flushing |
 | `ENTERPRISE_AUTH_URL` | (empty) | Enables `internal/grpcserver.TenantResolver` -- empty means PushBatch never requires a bearer credential and no `tenant_id` header is ever attached, same as every Phase 0-3 deployment |
@@ -108,12 +108,12 @@ go test ./...
 Requires `google.golang.org/protobuf/cmd/protoc-gen-go` and
 `google.golang.org/grpc/cmd/protoc-gen-go-grpc` only if you're
 regenerating `/proto`'s Go bindings — ingest itself just imports the
-already-generated `github.com/sentry/sentry/proto` module (see the
+already-generated `github.com/cairnobs/cairnobs/proto` module (see the
 `replace` directive in `go.mod`, pointing at `../proto`).
 
 ```sh
 # from the repo root, not ingest/
-docker build -f ingest/Dockerfile -t sentry-ingest .
+docker build -f ingest/Dockerfile -t cairnobs-ingest .
 ```
 
 ## Testing notes
