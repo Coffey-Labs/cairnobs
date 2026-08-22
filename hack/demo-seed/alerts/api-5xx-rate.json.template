@@ -1,0 +1,13 @@
+{
+  "name": "High API 5xx rate",
+  "description": "The API tier is returning server errors well above its normal background rate",
+  "query": "service=api earliest=-5m | where status>=500 | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 1,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 4
+}

@@ -1,0 +1,11 @@
+{
+  "name": "legacy-01 agent unavailable",
+  "description": "No heartbeat from legacy-01 within its heartbeat window -- the agent or the host is gone",
+  "query": "earliest=-5m host=\"legacy-01\" cairnobs.heartbeat=true",
+  "query_language": "spl",
+  "condition_type": "absence",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true
+}

@@ -1,0 +1,39 @@
+# The live half of the demo deployment: /hack/demo-simulator kept running
+# so the demo's agents keep checking in, its hosts keep reporting metrics,
+# and its logs keep arriving. -backfill 0 because history is seeded once
+# per night by reset-demo.sh, which stops this unit for the duration and
+# starts it again afterwards.
+#
+# Installed on the demo box at /etc/systemd/system/, not built into any
+# image -- this is demo scaffolding, not part of the product.
+[Unit]
+Description=Cairn OBS demo data simulator
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=john
+WorkingDirectory=/home/john/cairnobs-demo
+ExecStart=/home/john/cairnobs-demo/bin/demo-simulator \
+    -addr 127.0.0.1:4317 \
+    -ca /home/john/cairnobs-demo/hack/dev-certs/out/ca.pem \
+    -cert /home/john/cairnobs-demo/hack/dev-certs/out/client.pem \
+    -key /home/john/cairnobs-demo/hack/dev-certs/out/client-key.pem \
+    -backfill 0 -live
+Restart=always
+RestartSec=10
+
+# Same unprivileged posture the real agents' units were moved to during
+# the 2026-08-19 security remediation -- a data generator has no business
+# with write access to anything on this box.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

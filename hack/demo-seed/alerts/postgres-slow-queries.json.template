@@ -1,0 +1,13 @@
+{
+  "name": "Slow database queries",
+  "description": "Statements taking over a second are piling up, which usually shows up as API latency next",
+  "query": "service=postgres earliest=-10m | where duration_ms>1000 | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 2,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 5
+}

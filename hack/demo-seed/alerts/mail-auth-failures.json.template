@@ -1,0 +1,13 @@
+{
+  "name": "Mail authentication failures",
+  "description": "Repeated SMTP auth failures on the mail host -- credential stuffing against the mail server",
+  "query": "service=smtp result=auth_failed earliest=-15m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 120,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 6
+}

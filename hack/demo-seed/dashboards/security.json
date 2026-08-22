@@ -1,0 +1,113 @@
+{
+  "name": "Security",
+  "description": "SSH authentication, firewall blocks, and Windows logon failures across the fleet",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Failed SSH logins",
+      "query": "service=system auth_result=failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Firewall blocks",
+      "query": "service=system ufw_action=BLOCK | stats count",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Windows logon failures",
+      "query": "winevt.event_id=4625 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Top source addresses",
+      "query": "service=system auth_result=failed | stats count by remote_addr | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "remote_addr",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Blocked destination ports",
+      "query": "service=system ufw_action=BLOCK | stats count by dst_port | sort -count | head 12",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "dst_port",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Source address by blocked port",
+      "query": "service=system ufw_action=BLOCK | stats count by remote_addr, dst_port",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "remote_addr",
+        "y_column": "dst_port",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Failed logins by host",
+      "query": "service=system auth_result=failed | stats count by host | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Recent authentication failures",
+      "query": "service=system auth_result=failed | sort -timestamp | head 50 | fields timestamp, host, ssh_user, remote_addr, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

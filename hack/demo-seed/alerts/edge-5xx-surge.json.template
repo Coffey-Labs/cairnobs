@@ -1,0 +1,13 @@
+{
+  "name": "Edge 5xx surge",
+  "description": "nginx is serving 5xx to clients -- either upstreams are failing or the edge itself is",
+  "query": "service=nginx earliest=-5m | where status>=500 | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 1,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 4
+}

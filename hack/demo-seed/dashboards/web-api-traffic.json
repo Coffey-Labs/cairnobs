@@ -1,0 +1,113 @@
+{
+  "name": "Web & API traffic",
+  "description": "Edge (nginx) and application (api) tiers: status mix, hot routes, and latency",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Edge requests",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=nginx | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Avg API latency (ms)",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=api | stats avg(latency_ms) as avg_latency_ms",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "API 5xx",
+      "query": "service=api | where status>=500 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Edge responses by status",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=nginx | stats count by status | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "status",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Busiest routes",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=nginx | stats count by route | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "route",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Status by edge host",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=nginx | stats count by host, status",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "host",
+        "y_column": "status",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Slowest API routes (avg ms)",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=api | stats avg(latency_ms) as avg_latency_ms by route | sort -avg_latency_ms | head 10",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "route",
+        "value_column": "avg_latency_ms"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Slow API requests (>800ms)",
+      "query": "service=api | where latency_ms>800 | sort -timestamp | head 50 | fields timestamp, host, route, status, latency_ms, trace_id",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

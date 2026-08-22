@@ -1,0 +1,113 @@
+{
+  "name": "Mail delivery",
+  "description": "SMTP delivery outcomes, authentication failures, and spam rejections on the mail host",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Delivered",
+      "query": "service=smtp result=delivered | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Auth failures",
+      "query": "service=smtp result=auth_failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 4,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Spam rejections",
+      "query": "service=smtp result=spam_reject | stats count",
+      "viz_type": "single_stat",
+      "position_x": 8,
+      "position_y": 0,
+      "width": 4,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Outcomes",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=smtp | stats count by result | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "result",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Top sender domains",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=smtp | stats count by sender_domain | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "sender_domain",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Outcome by sender domain",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true service=smtp | stats count by sender_domain, result",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "sender_domain",
+        "y_column": "result",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Auth failures by source address",
+      "query": "service=smtp result=auth_failed | stats count by remote_addr | sort -count | head 10",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "remote_addr",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Recent rejections",
+      "query": "service=smtp result=spam_reject | sort -timestamp | head 50 | fields timestamp, remote_addr, sender_domain, spam_score, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 6,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}
