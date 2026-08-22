@@ -35,7 +35,7 @@ func integrationStore(t *testing.T) *Store {
 		t.Skip("LOCALAUTH_TEST_POSTGRES_ADDR not set -- skipping live-Postgres integration test")
 	}
 	password := os.Getenv("LOCALAUTH_TEST_POSTGRES_PASSWORD")
-	dsn := fmt.Sprintf("postgres://sentry:%s@%s/sentry_metadata", password, addr)
+	dsn := fmt.Sprintf("postgres://cairnobs:%s@%s/cairnobs_metadata", password, addr)
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("opening pool: %v", err)
@@ -285,3 +285,4 @@ func TestIntegrationGetPasswordHashByID(t *testing.T) {
 		t.Errorf("GetPasswordHashByID for an unknown ID: err = %v, want ErrNotFound", err)
 	}
 }
+

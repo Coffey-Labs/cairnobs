@@ -2,8 +2,8 @@
   <!-- Favicon: simplified 3-stone mark on terminal-dark rounded square -->
   <rect x="0" y="0" width="64" height="64" rx="14" fill="#0D1117"/>
   <g>
-    <rect x="12" y="38" width="40" height="13" rx="6.5" fill="#FF8A00" transform="rotate(-2 32 44.5)"/>
-    <rect x="18" y="24" width="28" height="12" rx="6" fill="#FF9D2E" transform="rotate(3 32 30)"/>
-    <rect x="23" y="12" width="18" height="10" rx="5" fill="#FFB157" transform="rotate(-3 32 17)"/>
+    <path d="M14,50 L10,45 L13,40 L22,37 L34,40 L44,37 L53,41 L50,47 L40,51 L26,48 Z" fill="#FF8A00"/>
+    <path d="M20,35 L16,30 L19,25 L28,23 L36,26 L44,23 L47,28 L43,34 L32,36 L24,33 Z" fill="#FF9D2E"/>
+    <path d="M24,21 L21,16 L25,12 L32,11 L38,13 L41,17 L38,21 L31,22 L27,20 Z" fill="#FFB157"/>
   </g>
 </svg>

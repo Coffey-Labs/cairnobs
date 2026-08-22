@@ -40,7 +40,7 @@ section for exactly what "not yet run" means here and why. Don't read
 - `/alerting`'s `queryclient` presents a `RoleService` Bearer token
   (`API_SERVICE_TOKEN`) when configured -- see
   `/docs/phase-4-isolation-design.md`'s `alerting`↔`api` gap.
-- `sentryctl` presents `$SENTRYCTL_TOKEN` as a Bearer credential on every
+- `cairnobsctl` presents `$CAIRNOBSCTL_TOKEN` as a Bearer credential on every
   request when set.
 - `internal/rbacstore`: full CRUD over `users`/`tenants`/
   `tenant_memberships`/`data_sources` (`metadata/migrations/0017-0032`).
@@ -155,7 +155,7 @@ issues a `session.Manager.IssuePendingLogin` token (a distinct Go/JWT
 type from a real session -- see that type's doc comment for a real bug
 this design caught in its own tests: a shared JSON key would have let a
 full session token double as a pending login) as a
-`sentry_pending_login` cookie (`Path=/auth`) and redirects to
+`cairnobs_pending_login` cookie (`Path=/auth`) and redirects to
 `SELECT_TENANT_REDIRECT_URL` (defaults to
 `{POST_LOGIN_REDIRECT_URL}/select-tenant`) instead of completing the
 login. From there:
@@ -204,7 +204,7 @@ below) and Tantivy (`/search/README.md`'s "Per-tenant indices" section
 -- needed no code in this module at all, since `search`'s
 `IndexRegistry` already lived in AGPL core); and deployment-topology
 routing (does traffic actually reach `enterprise-api` instead of
-`api`), now a single-flag choice in both `deploy/helm/sentry` and
+`api`), now a single-flag choice in both `deploy/helm/cairnobs` and
 `docker-compose.yml` (`enterprise.enabled` / `COMPOSE_PROFILES`), see
 CLAUDE.md.
 
@@ -285,7 +285,7 @@ for both directions is the simpler, still-correctly-scoped choice).
 A real multi-tenant deployment runs `ingest -mode=server` (agent-facing,
 tags records, unchanged) alongside `enterprise-ingest` (consumer,
 per-tenant writes) *instead of* `ingest -mode=consumer` -- see `deploy/
-helm/sentry`'s `ingest.requireTenantCredential` value (gates both the
+helm/cairnobs`'s `ingest.requireTenantCredential` value (gates both the
 credential-validation requirement and this mode split together, since
 write-routing is only meaningful once records actually carry a
 tenant_id to route on) and `docker-compose.yml`'s `enterprise-ingest`
@@ -318,7 +318,7 @@ internal/saml/            crewjam/saml wiring: SP setup, login redirect, respons
 internal/session/          issues/validates signed session + RoleService tokens
 internal/authhandler/       POST /internal/authorize, GET /auth/features
 internal/loginhandler/       GET /auth/oidc/{login,callback} + GET /auth/saml/login + POST /auth/saml/acs -- the human login flow
-internal/rbacstore/          users/tenants/tenant_memberships/data_sources/dashboard_permissions CRUD (pgx against sentry_metadata)
+internal/rbacstore/          users/tenants/tenant_memberships/data_sources/dashboard_permissions CRUD (pgx against cairnobs_metadata)
 internal/tenantprovision/     real ClickHouse CREATE DATABASE/USER/GRANT
 internal/tenantcrd/            syncs -provision-tenant's real result into deploy/operator's Tenant CRD (K8s dynamic client, no cluster needed to test)
 internal/chrunner/             tenant-scoped api/querylang/executor.SQLRunner
@@ -431,7 +431,7 @@ SEARCH_TOKEN=$(docker compose run --rm enterprise-auth -mint-service-token=searc
 ```
 
 ```sh
-docker build -f Dockerfile -t sentry-enterprise-auth .   # context is enterprise/, not the repo root
+docker build -f Dockerfile -t cairnobs-enterprise-auth .   # context is enterprise/, not the repo root
 ```
 
 ## Bootstrapping a tenant and its first human user
@@ -484,7 +484,7 @@ comment already worries about). Changing a non-Owner role is just
 re-running `-grant-membership-*` with a different
 `-grant-membership-role` (`SetMembership`'s upsert already supports
 it). `dashboard_permissions` grants have no `enterprise-auth` flag and
-don't need one -- `sentryctl dashboards permissions list|grant|revoke`
+don't need one -- `cairnobsctl dashboards permissions list|grant|revoke`
 covers them over the HTTP endpoints `api/dashboards`' handler already
 exposes (`PUT`/`DELETE /dashboards/{id}/permissions/{userId}`,
 `GET .../permissions`), see `/cli/README.md`.
@@ -514,8 +514,8 @@ curl -s http://localhost:8080/healthz
 `internal/tenantcrd` sync step is a documented no-op in this deployment
 shape, same as everywhere else this codebase has an "off unless
 configured" optional dependency. It only does anything in a real
-cluster with `deploy/helm/sentry`'s `tenantOperator.enabled=true` -- see
-`/deploy/helm/sentry/README.md`'s "Trying the two-tenant example."
+cluster with `deploy/helm/cairnobs`'s `tenantOperator.enabled=true` -- see
+`/deploy/helm/cairnobs/README.md`'s "Trying the two-tenant example."
 
 `-provision-tenant` creates the tenant/data_source rows in rbacstore if
 they don't exist, provisions ClickHouse, persists the credentials, and
@@ -529,8 +529,8 @@ to, see `tenantprovision.ProvisionClickHouse`'s doc comment).
 |---|---|
 | `HTTP_LISTEN_ADDR` | `:8082` |
 | `POSTGRES_ADDR` | `localhost:5432` |
-| `POSTGRES_DATABASE` | `sentry_metadata` |
-| `POSTGRES_USERNAME` | `sentry` |
+| `POSTGRES_DATABASE` | `cairnobs_metadata` |
+| `POSTGRES_USERNAME` | `cairnobs` |
 | `POSTGRES_PASSWORD` | (empty) |
 | `OIDC_ISSUER_URL` | (empty — OIDC discovery skipped if unset) |
 | `OIDC_CLIENT_ID` | (empty) |
@@ -554,8 +554,8 @@ to, see `tenantprovision.ProvisionClickHouse`'s doc comment).
 | `CLICKHOUSE_ADMIN_PASSWORD` | (empty) |
 | `SEARCH_GRPC_ADDR` | `localhost:50052` |
 | `POSTGRES_ADDR` | `localhost:5432` |
-| `POSTGRES_DATABASE` | `sentry_metadata` |
-| `POSTGRES_USERNAME` | `sentry` |
+| `POSTGRES_DATABASE` | `cairnobs_metadata` |
+| `POSTGRES_USERNAME` | `cairnobs` |
 | `POSTGRES_PASSWORD` | (empty) |
 | `AUDIT_WRITER_USERNAME` | `audit_writer` |
 | `AUDIT_WRITER_PASSWORD` | (empty) |

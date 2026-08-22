@@ -2,7 +2,7 @@
 // role schema (metadata/migrations/0017-0021) described in
 // /docs/phase-4-rbac-design.md: users (global SSO identity), tenants,
 // and tenant_memberships (per-tenant role). It uses the same shared
-// "sentry" Postgres role/pool every other metadata store does (unlike
+// "cairnobs" Postgres role/pool every other metadata store does (unlike
 // enterprise/internal/audit's deliberately separate, narrower-granted
 // pool) -- ordinary read/write CRUD on control-plane config, not an
 // append-only ledger, so it has no analogous reason to restrict its own

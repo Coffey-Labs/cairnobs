@@ -38,7 +38,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # One-shot: creates the sentry.logs.raw topic, then exits 0. ingest
+  # One-shot: creates the cairnobs.logs.raw topic, then exits 0. ingest
   # waits on this completing successfully before it starts.
   redpanda-provision:
     build:
@@ -120,13 +120,13 @@ services:
     image: postgres:16-alpine
     container_name: cairnobs-metadata-postgres
     environment:
-      POSTGRES_DB: sentry_metadata
-      POSTGRES_USER: sentry
+      POSTGRES_DB: cairnobs_metadata
+      POSTGRES_USER: cairnobs
       POSTGRES_PASSWORD: "cairnobs-dev-only" # not a real secret, same framing as CLICKHOUSE_PASSWORD above
     volumes:
       - metadata-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentry -d sentry_metadata"]
+      test: ["CMD-SHELL", "pg_isready -U cairnobs -d cairnobs_metadata"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -143,12 +143,12 @@ services:
     environment:
       POSTGRES_HOST: "metadata-postgres"
       POSTGRES_PORT: "5432"
-      POSTGRES_USER: "sentry"
+      POSTGRES_USER: "cairnobs"
       POSTGRES_PASSWORD: "cairnobs-dev-only"
-      POSTGRES_DATABASE: "sentry_metadata"
+      POSTGRES_DATABASE: "cairnobs_metadata"
       # Password for the restricted audit_writer Postgres role (Phase 4
       # task 4) -- INSERT+SELECT only on audit_log, never UPDATE/DELETE,
-      # via its own connection pool distinct from the shared "sentry"
+      # via its own connection pool distinct from the shared "cairnobs"
       # role every other store uses. See /docs/phase-4-isolation-design.md.
       AUDIT_WRITER_PASSWORD: "audit-writer-dev-only"
 
@@ -185,19 +185,19 @@ services:
       # compose file provisions one.
       #
       # AGENT_REGISTRY_POSTGRES_ADDR enables agent inventory/remote
-      # config (see /docs/agent-management-design.md) -- same "sentry"
+      # config (see /docs/agent-management-design.md) -- same "cairnobs"
       # shared Postgres role api/dashboards already uses (agent
       # inventory carries no tamper-evidence requirement, unlike
       # audit_log's dedicated restricted role). Set here (unlike
       # ENTERPRISE_AUTH_URL above) since this feature has no multi-
       # tenancy prerequisite -- it works the same in single-tenant core.
       AGENT_REGISTRY_POSTGRES_ADDR: "metadata-postgres:5432"
-      AGENT_REGISTRY_POSTGRES_USERNAME: "sentry"
+      AGENT_REGISTRY_POSTGRES_USERNAME: "cairnobs"
       AGENT_REGISTRY_POSTGRES_PASSWORD: "cairnobs-dev-only"
     volumes:
       - ./hack/dev-certs/out:/etc/cairnobs-ingest:ro
 
-  # Reads the same sentry.logs.raw topic ingest's consumer does (own
+  # Reads the same cairnobs.logs.raw topic ingest's consumer does (own
   # offset tracking, own failure domain — see /search/README.md) and
   # builds a Tantivy full-text index over the message field.
   search:
@@ -255,8 +255,8 @@ services:
       CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
       SEARCH_GRPC_ADDR: "search:50052"
       POSTGRES_ADDR: "metadata-postgres:5432"
-      POSTGRES_DATABASE: "sentry_metadata"
-      POSTGRES_USERNAME: "sentry"
+      POSTGRES_DATABASE: "cairnobs_metadata"
+      POSTGRES_USERNAME: "cairnobs"
       POSTGRES_PASSWORD: "cairnobs-dev-only"
     healthcheck:
       # alerting (Phase 3 task 5) depends_on api -- without this, that
@@ -293,8 +293,8 @@ services:
       - "8081:8081"
     environment:
       POSTGRES_ADDR: "metadata-postgres:5432"
-      POSTGRES_DATABASE: "sentry_metadata"
-      POSTGRES_USERNAME: "sentry"
+      POSTGRES_DATABASE: "cairnobs_metadata"
+      POSTGRES_USERNAME: "cairnobs"
       POSTGRES_PASSWORD: "cairnobs-dev-only"
       # Resolves to whichever of api/enterprise-api is actually active --
       # enterprise-api declares a `default.aliases: [api]` network alias
@@ -337,8 +337,8 @@ services:
       # secret. Must be at least 32 bytes (see internal/config.Load).
       ENTERPRISE_SESSION_SIGNING_KEY: "cairnobs-dev-only-session-signing-key-32bytes+"
       POSTGRES_ADDR: "metadata-postgres:5432"
-      POSTGRES_DATABASE: "sentry_metadata"
-      POSTGRES_USERNAME: "sentry"
+      POSTGRES_DATABASE: "cairnobs_metadata"
+      POSTGRES_USERNAME: "cairnobs"
       POSTGRES_PASSWORD: "cairnobs-dev-only"
       # Where the browser lands after internal/loginhandler sets a
       # session cookie -- web's mapped host port (see web's build args
@@ -391,8 +391,8 @@ services:
       CLICKHOUSE_ADMIN_PASSWORD: "cairnobs-dev-only"
       SEARCH_GRPC_ADDR: "search:50052"
       POSTGRES_ADDR: "metadata-postgres:5432"
-      POSTGRES_DATABASE: "sentry_metadata"
-      POSTGRES_USERNAME: "sentry"
+      POSTGRES_DATABASE: "cairnobs_metadata"
+      POSTGRES_USERNAME: "cairnobs"
       POSTGRES_PASSWORD: "cairnobs-dev-only"
       AUDIT_WRITER_USERNAME: "audit_writer"
       AUDIT_WRITER_PASSWORD: "audit-writer-dev-only"
@@ -434,8 +434,8 @@ services:
       REDPANDA_BROKERS: "redpanda:9092"
       CLICKHOUSE_ADDR: "clickhouse:9000"
       POSTGRES_ADDR: "metadata-postgres:5432"
-      POSTGRES_DATABASE: "sentry_metadata"
-      POSTGRES_USERNAME: "sentry"
+      POSTGRES_DATABASE: "cairnobs_metadata"
+      POSTGRES_USERNAME: "cairnobs"
       POSTGRES_PASSWORD: "cairnobs-dev-only"
     healthcheck:
       test: ["CMD", "/enterprise-ingest", "-healthcheck"]

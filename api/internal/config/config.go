@@ -37,8 +37,8 @@ type LocalAuthConfig struct {
 	SessionTTL time.Duration
 	// CookieDomain empty means a host-only cookie (fine for local dev,
 	// where web/api are both localhost:<port>). Set to e.g.
-	// ".sentry.example.com" in production so the cookie is also sent to
-	// api.sentry.example.com/alerting.sentry.example.com.
+	// ".cairnobs.example.com" in production so the cookie is also sent to
+	// api.cairnobs.example.com/alerting.cairnobs.example.com.
 	CookieDomain string
 	// CookieSecure defaults true (never sent over plain HTTP) --
 	// deliberately opt-out via LOCAL_AUTH_COOKIE_SECURE=false, only
@@ -108,14 +108,14 @@ func Load() (Config, error) {
 		HTTPListenAddr: getenv("HTTP_LISTEN_ADDR", ":8080"),
 		ClickHouse: ClickHouseConfig{
 			Addr:     getenv("CLICKHOUSE_ADDR", "localhost:9000"),
-			Database: getenv("CLICKHOUSE_DATABASE", "sentry"),
+			Database: getenv("CLICKHOUSE_DATABASE", "cairnobs"),
 			Username: getenv("CLICKHOUSE_USERNAME", "default"),
 			Password: getenv("CLICKHOUSE_PASSWORD", ""),
 		},
 		Postgres: PostgresConfig{
 			Addr:     getenv("POSTGRES_ADDR", "localhost:5432"),
-			Database: getenv("POSTGRES_DATABASE", "sentry_metadata"),
-			Username: getenv("POSTGRES_USERNAME", "sentry"),
+			Database: getenv("POSTGRES_DATABASE", "cairnobs_metadata"),
+			Username: getenv("POSTGRES_USERNAME", "cairnobs"),
 			Password: getenv("POSTGRES_PASSWORD", ""),
 		},
 		// Search service's gRPC address (see /search) -- default matches

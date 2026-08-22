@@ -125,8 +125,8 @@ func Load() (Config, error) {
 		},
 		Postgres: PostgresConfig{
 			Addr:     getenv("POSTGRES_ADDR", "localhost:5432"),
-			Database: getenv("POSTGRES_DATABASE", "sentry_metadata"),
-			Username: getenv("POSTGRES_USERNAME", "sentry"),
+			Database: getenv("POSTGRES_DATABASE", "cairnobs_metadata"),
+			Username: getenv("POSTGRES_USERNAME", "cairnobs"),
 			Password: getenv("POSTGRES_PASSWORD", ""),
 		},
 		AI: AIConfig{

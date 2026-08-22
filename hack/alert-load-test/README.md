@@ -14,7 +14,7 @@ go run . --count 500000
 
 # 2. Run a webhook-sink so the (never-firing, by design) rules have a
 #    valid notification target to point at:
-docker run -d --name sentry-webhook-sink --network sentry_default \
+docker run -d --name cairnobs-webhook-sink --network sentry_default \
   -p 9099:9099 -v $(pwd)/../webhook-sink:/src -w /src golang:1.25-alpine go run .
 
 # 3. Run the load test:

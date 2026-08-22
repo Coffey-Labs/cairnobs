@@ -1,6 +1,6 @@
 // Command enterprise-ingest is the multi-tenant-aware alternative to
 // running `ingest -mode=consumer` -- reads the same shared
-// sentry.logs.raw Redpanda topic ingest/cmd/ingest's agent-facing
+// cairnobs.logs.raw Redpanda topic ingest/cmd/ingest's agent-facing
 // server half (PushBatch) produces onto (see that binary's doc
 // comment), but writes each record into its own tenant's dedicated
 // ClickHouse database (enterprise/internal/chwriter) instead of the one
@@ -21,7 +21,7 @@
 // alongside) `ingest -mode=consumer` -- `ingest -mode=server` (the
 // agent-facing half, which tags records with a tenant_id via
 // TenantResolver) keeps running unchanged and unconditionally either
-// way; only which process consumes sentry.logs.raw and where it writes
+// way; only which process consumes cairnobs.logs.raw and where it writes
 // changes.
 package main
 

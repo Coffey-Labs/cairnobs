@@ -27,7 +27,7 @@ func TestNewRejectsMissingConfig(t *testing.T) {
 }
 
 func TestNewRejectsMissingIDPMetadata(t *testing.T) {
-	_, err := New(Config{EntityID: "https://sentry.example.com/saml/metadata", ACSURL: "https://sentry.example.com/saml/acs"})
+	_, err := New(Config{EntityID: "https://cairnobs.example.com/saml/metadata", ACSURL: "https://cairnobs.example.com/saml/acs"})
 	if err == nil {
 		t.Fatalf("expected an error when IDPMetadata is missing")
 	}
@@ -40,8 +40,8 @@ func TestNewRejectsMissingIDPMetadata(t *testing.T) {
 // redirect rather than just "the code compiles."
 func TestLoginURLBuildsAgainstRealIDPMetadata(t *testing.T) {
 	sp, err := New(Config{
-		EntityID:    "https://sentry.example.com/saml/metadata",
-		ACSURL:      "https://sentry.example.com/saml/acs",
+		EntityID:    "https://cairnobs.example.com/saml/metadata",
+		ACSURL:      "https://cairnobs.example.com/saml/acs",
 		IDPMetadata: fakeIDPMetadata(),
 	})
 	if err != nil {

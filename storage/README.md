@@ -100,7 +100,7 @@ defaults so the two stay in sync out of the box):
 | `CLICKHOUSE_HTTP` | `http://localhost:8123` |
 | `CLICKHOUSE_USER` | `default` |
 | `CLICKHOUSE_PASSWORD` | (empty — override, see above) |
-| `CLICKHOUSE_DATABASE` | `sentry` |
+| `CLICKHOUSE_DATABASE` | `cairnobs` |
 
 There's also a `Dockerfile` (bash + curl baked in, `migrations/` copied in
 at build time) used by the root-level `docker-compose.yml` as a one-shot

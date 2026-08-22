@@ -74,26 +74,26 @@ func Load() (Config, error) {
 		ClickHouseAddr: getenv("CLICKHOUSE_ADDR", "localhost:9000"),
 		Postgres: PostgresConfig{
 			Addr:     getenv("POSTGRES_ADDR", "localhost:5432"),
-			Database: getenv("POSTGRES_DATABASE", "sentry_metadata"),
-			Username: getenv("POSTGRES_USERNAME", "sentry"),
+			Database: getenv("POSTGRES_DATABASE", "cairnobs_metadata"),
+			Username: getenv("POSTGRES_USERNAME", "cairnobs"),
 			Password: getenv("POSTGRES_PASSWORD", ""),
 		},
 		Redpanda: RedpandaConfig{
 			Brokers: strings.Split(getenv("REDPANDA_BROKERS", "localhost:9092"), ","),
 			// Same default topic ingest/internal/config uses -- this
-			// binary reads the identical shared sentry.logs.raw topic
+			// binary reads the identical shared cairnobs.logs.raw topic
 			// ingest/cmd/ingest's server half (agent-facing PushBatch)
 			// produces onto; there's no per-tenant topic, see
 			// ingest/internal/grpcserver's doc comment.
-			Topic: getenv("REDPANDA_TOPIC", "sentry.logs.raw"),
+			Topic: getenv("REDPANDA_TOPIC", "cairnobs.logs.raw"),
 			// A distinct consumer group from ingest/cmd/ingest's own
-			// default ("sentry-ingest") -- this binary and a
+			// default ("cairnobs-ingest") -- this binary and a
 			// single-tenant `ingest -mode=consumer` must never share a
 			// group (each message would only ever reach one of them,
 			// silently splitting traffic) even though in practice a
 			// real multi-tenant deployment runs this binary *instead
 			// of*, not alongside, `ingest -mode=consumer`.
-			ConsumerGroup: getenv("REDPANDA_CONSUMER_GROUP", "sentry-enterprise-ingest"),
+			ConsumerGroup: getenv("REDPANDA_CONSUMER_GROUP", "cairnobs-enterprise-ingest"),
 		},
 	}
 

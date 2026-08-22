@@ -43,10 +43,10 @@ go run . --count 500000
 
 Create a dashboard and a couple of panels, either through the web UI
 (`http://localhost:3000/dashboards` → "+ Create" → "+ Add panel") or via
-`sentryctl`:
+`cairnobsctl`:
 
 ```sh
-sentryctl dashboards apply my-dashboard.json   # shape = GET /dashboards/{id}/export
+cairnobsctl dashboards apply my-dashboard.json   # shape = GET /dashboards/{id}/export
 ```
 
 **Verified live**: a table panel (`severity=INFO | head 10`) and a bar
@@ -95,7 +95,7 @@ Bring up a local webhook receiver for testing (no real Slack/PagerDuty
 needed):
 
 ```sh
-docker run -d --name sentry-webhook-sink --network sentry_default \
+docker run -d --name cairnobs-webhook-sink --network sentry_default \
   -p 9099:9099 -v $(pwd)/hack/webhook-sink:/src -w /src golang:1.25-alpine go run .
 ```
 
@@ -104,7 +104,7 @@ Create a notification target and a rule, either via the web UI
 
 ```sh
 curl -X POST http://localhost:8081/targets -H 'Content-Type: application/json' -d '{
-  "name": "local sink", "kind": "webhook", "webhook_url": "http://sentry-webhook-sink:9099/"
+  "name": "local sink", "kind": "webhook", "webhook_url": "http://cairnobs-webhook-sink:9099/"
 }'
 
 curl -X POST http://localhost:8081/rules -H 'Content-Type: application/json' -d '{
@@ -119,7 +119,7 @@ curl -X POST http://localhost:8081/rules -H 'Content-Type: application/json' -d 
 rule via the `/alerts/new` form, watched it transition in the browser):
 the rule transitions `ok` → `firing` on its first evaluation
 (`for_minutes: 0`), the delivery log shows `firing / sent / 200`, and
-`docker logs sentry-webhook-sink` shows the real received payload.
+`docker logs cairnobs-webhook-sink` shows the real received payload.
 
 Also verified live: a threshold rule whose query returns **zero rows**
 records `last_eval_status: "error"` with the exact expected message
@@ -205,13 +205,13 @@ already claimed. Moving off a single-process ticker to a distributed
 scheduler, and materially larger rule counts (10,000+), are both
 explicitly out of scope for this phase.
 
-## 5. Confirm `sentryctl`
+## 5. Confirm `cairnobsctl`
 
 ```sh
-sentryctl dashboards list
-sentryctl dashboards apply exported-dashboard.json
-sentryctl alerts list
-sentryctl alerts apply rule.json
+cairnobsctl dashboards list
+cairnobsctl dashboards apply exported-dashboard.json
+cairnobsctl alerts list
+cairnobsctl alerts apply rule.json
 ```
 
 Both `dashboards` and `alerts` hit the exact same REST endpoints the web

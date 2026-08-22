@@ -108,7 +108,7 @@ yet. Stated plainly so this doesn't read as more built than it is.
 
 ## Schema
 
-Lives in `/metadata` (`sentry_metadata`), alongside everything else from
+Lives in `/metadata` (`cairnobs_metadata`), alongside everything else from
 Phase 3, per `/docs/phase-4-isolation-design.md`'s existing schema
 additions (`tenants`, the `tenant_id` backfill on `alert_state`/
 `delivery_log`). New tables, continuing that migration sequence:

@@ -8,9 +8,9 @@ set -euo pipefail
 
 POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-POSTGRES_USER="${POSTGRES_USER:-sentry}"
+POSTGRES_USER="${POSTGRES_USER:-cairnobs}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
-POSTGRES_DATABASE="${POSTGRES_DATABASE:-sentry_metadata}"
+POSTGRES_DATABASE="${POSTGRES_DATABASE:-cairnobs_metadata}"
 # Password for the restricted audit-log-writer Postgres role (Phase 4
 # task 4, see /docs/phase-4-isolation-design.md's audit logging
 # section) -- a second, narrower-granted role, not the shared

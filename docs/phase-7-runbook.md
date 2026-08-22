@@ -12,7 +12,7 @@ document is verification only.
 Every AI operation (`complete`, `explain`, `fix`, `optimize`,
 `translate`, and the audit-logging endpoint behind it) has been run
 end-to-end against a real `docker compose` stack — real HTTP requests
-into the real `sentry-api` container, through the real
+into the real `cairnobs-api` container, through the real
 `api/ai/provider/ollama.Client`, over a real network call, into a real
 process answering Ollama's actual `/api/chat` wire contract. **No real
 model weights are used anywhere in this verification** — see
@@ -74,7 +74,7 @@ Run it as a container on the compose network with a network alias of
 `OLLAMA_BASE_URL` at it via a throwaway compose override:
 
 ```sh
-docker run -d --rm --name sentry-mock-ollama --network sentry_default --network-alias ollama \
+docker run -d --rm --name cairnobs-mock-ollama --network sentry_default --network-alias ollama \
   -v "$(pwd)/hack/mock-ollama:/src" -w /src golang:1.25-alpine \
   sh -c "go build -o /tmp/mock-ollama . && /tmp/mock-ollama"
 
@@ -106,7 +106,7 @@ wired into a stack anyone else might reach:
 
 ```sh
 docker compose up -d api   # drops back to the plain env, no -f override
-docker rm -f sentry-mock-ollama
+docker rm -f cairnobs-mock-ollama
 rm /tmp/docker-compose.ai-verify.yml
 curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8080/ai/translate -d '{}'
 # 404 -- confirms AI routes are unregistered again
@@ -118,7 +118,7 @@ With AI routes enabled (step 2) and the web dev server running against
 `localhost:8080`, open the Search page's query bar:
 
 - Type a partial query and pause — ghost text should appear inline
-  after ~300ms; Tab accepts it. Stop `sentry-mock-ollama` and confirm
+  after ~300ms; Tab accepts it. Stop `cairnobs-mock-ollama` and confirm
   ghost text just silently stops appearing (no error toast, no
   console noise) — this is the "graceful degradation" requirement,
   not incidental behavior.
@@ -149,7 +149,7 @@ separately click "Run query".
 CLI:
 
 ```sh
-cd cli && go run ./cmd/sentryctl query --nl "errors in the last hour" --api http://localhost:8080
+cd cli && go run ./cmd/cairnobsctl query --nl "errors in the last hour" --api http://localhost:8080
 # prints the translated query and, in an interactive terminal, prompts y/N before running
 ```
 
@@ -164,7 +164,7 @@ pattern applied to that service instead:
 1. Accept or dismiss a Fix/Optimize/Translate suggestion in the web UI.
 2. Confirm a row landed in `audit_log`:
    ```sh
-   docker exec sentry-metadata-postgres psql -U sentry -d sentry_metadata \
+   docker exec cairnobs-metadata-postgres psql -U cairnobs -d cairnobs_metadata \
      -c "SELECT event_type, query_text, detail FROM audit_log WHERE event_type='ai_interaction' ORDER BY id DESC LIMIT 5;"
    ```
    `detail` should show `operation`/`accepted`/`edited` matching what you

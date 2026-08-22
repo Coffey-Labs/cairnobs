@@ -3,11 +3,11 @@
 // section. Two independent defenses back the "no update/delete path
 // from the application layer" requirement -- both verified against a
 // live Postgres, not just written: audit_writer (this package's own
-// Postgres role, via its own connection pool, never the shared `sentry`
+// Postgres role, via its own connection pool, never the shared `cairnobs`
 // role every other store uses) has only INSERT+SELECT grants, and a
 // BEFORE UPDATE OR DELETE trigger (metadata/migrations/0015-0016)
 // rejects the operation for *any* role, including the table owner --
-// confirmed live: even `sentry` cannot UPDATE a row without first
+// confirmed live: even `cairnobs` cannot UPDATE a row without first
 // disabling the trigger, a privileged operation distinct from ordinary
 // application access.
 //

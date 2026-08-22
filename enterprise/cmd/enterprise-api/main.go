@@ -17,7 +17,7 @@
 // keeps running plain api/cmd/api, unchanged; a real multi-tenant
 // deployment runs this one instead.
 //
-// Both Helm (deploy/helm/sentry/templates/api.yaml vs
+// Both Helm (deploy/helm/cairnobs/templates/api.yaml vs
 // enterprise-api.yaml) and docker-compose.yml (COMPOSE_PROFILES) now
 // make this the deployment-topology choice, not just a binary sitting
 // unused alongside api's -- see this repo's CLAUDE.md. `search`'s write

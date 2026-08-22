@@ -11,7 +11,7 @@ correctness properties this implementation follows exactly).
 POSTGRES_PASSWORD=cairnobs-dev-only API_QUERY_URL=http://localhost:8080 go run ./cmd/alerting
 ```
 
-Talks to the same `sentry_metadata` Postgres database as `/api`
+Talks to the same `cairnobs_metadata` Postgres database as `/api`
 (different tables — see `/metadata/README.md`), and to `/api`'s
 `POST /query` over plain HTTP for rule evaluation. Never connects to
 ClickHouse or Tantivy directly.
@@ -48,8 +48,8 @@ only, not separate delivery paths.
 |---|---|
 | `HTTP_LISTEN_ADDR` | `:8081` |
 | `POSTGRES_ADDR` | `localhost:5432` |
-| `POSTGRES_DATABASE` | `sentry_metadata` |
-| `POSTGRES_USERNAME` | `sentry` |
+| `POSTGRES_DATABASE` | `cairnobs_metadata` |
+| `POSTGRES_USERNAME` | `cairnobs` |
 | `POSTGRES_PASSWORD` | (empty — must be set) |
 | `API_QUERY_URL` | `http://localhost:8080` |
 | `CORS_ALLOWED_ORIGIN` | `*` |
@@ -94,5 +94,5 @@ go test ./...
 ```
 
 ```sh
-docker build -f Dockerfile -t sentry-alerting .   # context is alerting/, not the repo root -- no /proto needed
+docker build -f Dockerfile -t cairnobs-alerting .   # context is alerting/, not the repo root -- no /proto needed
 ```

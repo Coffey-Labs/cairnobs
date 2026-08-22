@@ -10,8 +10,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.GRPC.ListenAddr != ":4317" {
 		t.Errorf("GRPC.ListenAddr = %q, want :4317", cfg.GRPC.ListenAddr)
 	}
-	if cfg.Redpanda.Topic != "sentry.logs.raw" {
-		t.Errorf("Redpanda.Topic = %q, want sentry.logs.raw", cfg.Redpanda.Topic)
+	if cfg.Redpanda.Topic != "cairnobs.logs.raw" {
+		t.Errorf("Redpanda.Topic = %q, want cairnobs.logs.raw", cfg.Redpanda.Topic)
 	}
 	if cfg.Batch.MaxSize != 500 {
 		t.Errorf("Batch.MaxSize = %d, want 500", cfg.Batch.MaxSize)

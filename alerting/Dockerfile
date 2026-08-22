@@ -1,7 +1,7 @@
 # alerting never needs /proto (it talks to /api over plain HTTP, no gRPC),
 # so unlike api/ingest/search this build context is just alerting/ itself,
 # same shape as cli/Dockerfile:
-#   docker build -f alerting/Dockerfile -t sentry-alerting alerting/
+#   docker build -f alerting/Dockerfile -t cairnobs-alerting alerting/
 FROM golang:1.25-alpine AS builder
 WORKDIR /src
 COPY . .

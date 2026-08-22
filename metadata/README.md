@@ -11,14 +11,14 @@ doesn't provide.
 
 ## Schema
 
-Seven tables across three features, one shared database (`sentry_metadata`):
+Seven tables across three features, one shared database (`cairnobs_metadata`):
 
 - `dashboards`, `dashboard_panels` — owned by `/api` (`api/internal/dashboards`)
 - `notification_targets`, `alert_rules`, `alert_state`, `delivery_log` —
   owned by `/alerting`
 - `audit_log` — owned by `enterprise/internal/audit` (Phase 4). Unlike
   every other table here, this one is **not** written through the shared
-  `sentry` role/pool — see "The `audit_writer` role" below.
+  `cairnobs` role/pool — see "The `audit_writer` role" below.
 
 "Owned" here is a documentation convention, not a technical boundary —
 both services connect to the same Postgres instance/database, each with
@@ -39,13 +39,13 @@ written:
    with **only** `INSERT`/`SELECT` grants on `audit_log` — no
    `UPDATE`/`DELETE`/`TRUNCATE`, ever. `enterprise/internal/audit.Store`
    connects using this role's credentials via its **own** `pgxpool.Pool`,
-   never the shared `sentry` pool `api`/`alerting`'s other stores use —
+   never the shared `cairnobs` pool `api`/`alerting`'s other stores use —
    reusing the shared pool for audit writes would give audit_log's
    application-level credential the same `UPDATE`/`DELETE` grants every
    other metadata table has, silently defeating the whole point.
 2. A `BEFORE UPDATE OR DELETE` trigger (`migrations/0015`-`0016`) that
    rejects the operation for **any** role, including the table owner
-   (`sentry`) — confirmed live: even `sentry` needs to explicitly
+   (`cairnobs`) — confirmed live: even `cairnobs` needs to explicitly
    `ALTER TABLE audit_log DISABLE TRIGGER audit_log_immutable` (a
    privileged, distinct-from-normal-access operation) before it can
    modify a row. This is redundant defense-in-depth independent of the
@@ -89,9 +89,9 @@ Environment variables `migrate.sh` reads (all optional except
 |---|---|
 | `POSTGRES_HOST` | `localhost` |
 | `POSTGRES_PORT` | `5432` |
-| `POSTGRES_USER` | `sentry` |
+| `POSTGRES_USER` | `cairnobs` |
 | `POSTGRES_PASSWORD` | (empty — must be set) |
-| `POSTGRES_DATABASE` | `sentry_metadata` |
+| `POSTGRES_DATABASE` | `cairnobs_metadata` |
 | `AUDIT_WRITER_PASSWORD` | `audit-writer-dev-only` |
 
 The database itself isn't created by `migrate.sh` — the `postgres:16-alpine`
