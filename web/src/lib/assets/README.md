@@ -62,6 +62,48 @@ other byte alone, and skips files that have none, so it is safe to re-run.
 Editing the wordmark's copy or spacing now means editing the upstream
 `<text>` and re-running the script -- not hand-editing path data.
 
+## Repository social preview
+
+**`/docs/assets/social-preview.png` is derived, not vendored.** GitHub's
+social card wants a 1280x640 raster; the package ships no such file, and
+`hero-grid.svg` alone shows the mark with no project name -- fine as a
+splash, wrong for a card that several platforms render without any
+accompanying repo title.
+
+Built from two files already here, so it re-derives rather than needing
+a redraw:
+
+```sh
+# 1. hero-grid without its cairn: the four stones live in one
+#    <g transform="translate(200,60)"> -- drop that group and the base
+#    fill, grid pattern and vignette are left intact.
+# 2. render background at target resolution, then crop 5:3 -> 2:1.
+#    96px off the top (empty grid) and 32px off the bottom, NOT a
+#    centre-crop: the composition sits low and crowds the bottom edge.
+rsvg-convert -w 1280 -h 768 hero-grid-no-cairn.svg -o bg.png
+magick bg.png -crop 1280x640+0+96 +repage bg640.png
+
+# 3. composite the package's own horizontal lockup, so mark-to-wordmark
+#    spacing stays the designer's rather than something re-invented.
+rsvg-convert -w 900 -h 225 logo-horizontal-dark.svg -o lockup.png
+magick bg640.png lockup.png -gravity center -composite social-preview.png
+```
+
+`-dark` on purpose: the banner ground is `#0A0B10`, so the lockup needs
+the `#F2F2F2` ink meant for dark surfaces.
+
+Re-running the above reproduces the committed file pixel for pixel
+(`magick compare -metric AE` returns 0), but *not* byte for byte -- PNG
+writes a timestamp chunk. Compare pixels, not `sha256sum`.
+
+The wide gaps in `cairn   obs   |` are the wordmark's intended spacing,
+not a missing font -- the glyphs are outlined `<path>` data and there is
+no `font-family` anywhere in the file. Do not "fix" them.
+
+**Not yet applied.** GitHub only offers Settings -> General -> Social
+preview on public repositories; the section is absent while this repo is
+private. Upload it when that changes.
+
 ## Aspect ratios
 
 Changed from v1 -- constrain one axis and leave the other `auto`:
