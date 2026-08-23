@@ -103,6 +103,7 @@ Kubernetes deployment via the Helm chart in [`deploy/`](deploy/README.md).
 ## Status
 
 Built in phases; each has a runbook in `docs/` recording how it was verified.
+Full per-phase detail is in [`docs/status.md`](docs/status.md).
 
 | Phase | Scope | Status |
 |---|---|---|
