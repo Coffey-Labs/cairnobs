@@ -4,7 +4,7 @@
 // wouldn't actually exercise it. Skipped unless RBACSTORE_TEST_POSTGRES_ADDR
 // is set; run via:
 //
-//	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
+//	docker run --rm --network cairnobs_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
 //	  -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./internal/rbacstore/... -v

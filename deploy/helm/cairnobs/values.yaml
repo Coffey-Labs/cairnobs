@@ -79,7 +79,7 @@ ingest:
   # -create-ingest-credential-tenant=<id>`) or be refused outright. Also
   # controls per-tenant write-routing: true switches ingest.yaml's
   # Deployment to -mode=server only and renders enterprise-ingest.yaml
-  # to take over consuming sentry.logs.raw, writing each tenant's
+  # to take over consuming cairnobs.logs.raw, writing each tenant's
   # records into their own ClickHouse database instead of the one
   # shared table -- both flags gate together since write-routing is only
   # meaningful once records actually carry a tenant_id to route on.
@@ -164,7 +164,7 @@ enterprise:
     tag: latest
   # enterprise-ingest (templates/enterprise-ingest.yaml) -- only
   # rendered when ingest.requireTenantCredential is also true (see that
-  # value's comment); takes over consuming sentry.logs.raw from
+  # value's comment); takes over consuming cairnobs.logs.raw from
   # ingest.yaml's own consumer once per-tenant write-routing is on. Same
   # "repo root build context" reasoning as apiImage above -- see
   # enterprise/cmd/enterprise-ingest/Dockerfile.

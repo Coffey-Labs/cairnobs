@@ -1,4 +1,4 @@
-# Build context must be the repo root (sentry/), not agent/, since this
+# Build context must be the repo root (cairnobs/), not agent/, since this
 # needs both agent/ and proto/:
 #   docker build -f agent/Dockerfile -t cairnobs-agent .
 

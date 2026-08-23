@@ -26,7 +26,7 @@ spec:
           # -mode=server only: this Deployment stops running the
           # ClickHouse-writing consumer half (the default -mode=all)
           # once per-tenant write-routing is on -- enterprise-ingest.yaml
-          # (below) takes over consuming sentry.logs.raw instead, so it
+          # (below) takes over consuming cairnobs.logs.raw instead, so it
           # can write each tenant's records to their own database rather
           # than the one shared table ingest's own consumer always
           # writes to. The agent-facing server half (PushBatch, tenant

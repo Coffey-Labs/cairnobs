@@ -344,7 +344,7 @@ This is the fix from Phase 4 task 7/8 (see `/docs/security/threat-model.md`)
 tenant. Verify the real SQL, not just the fake-store unit tests:
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/api:/src -w /src \
+docker run --rm --network cairnobs_default -v $(pwd)/api:/src -w /src \
   -e DASHBOARDS_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e DASHBOARDS_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./dashboards/... -run Integration -v
@@ -373,7 +373,7 @@ PermissionStore`) have real integration tests, same skip-gated shape as
 §6 below:
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd):/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -run DashboardPermission -v
@@ -394,12 +394,12 @@ when `enterprise-api` (not plain `api`) is serving traffic -- see
 ## 6. `enterprise/internal/rbacstore` and `internal/audit` (already verified — reconfirm here)
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd):/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -v
 
-docker run --rm --network sentry_default -v $(pwd):/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd):/src -w /src/enterprise \
   -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
   -e AUDIT_TEST_ADMIN_PASSWORD=cairnobs-dev-only \
@@ -536,12 +536,12 @@ as an integration test instead of a curl walkthrough since a full login
 walkthrough isn't scripted yet):
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+docker run --rm --network cairnobs_default -v $(pwd)/enterprise:/src -w /src \
   -e CHRUNNER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
   -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/chrunner/... -v
 
-docker run --rm --network sentry_default -v $(pwd)/enterprise:/src -w /src \
+docker run --rm --network cairnobs_default -v $(pwd)/enterprise:/src -w /src \
   -e TENANTPROVISION_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
   -e TENANTPROVISION_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/tenantprovision/... -v

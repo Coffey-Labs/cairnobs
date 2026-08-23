@@ -11,7 +11,7 @@
 // same reason: no live model, deterministic output, fast.
 //
 // Not part of any docker-compose service by default -- run it
-// standalone (or as a throwaway container on the sentry_default
+// standalone (or as a throwaway container on the cairnobs_default
 // network) and point OLLAMA_BASE_URL at it. See
 // /docs/phase-7-runbook.md for the exact recipe.
 package main
