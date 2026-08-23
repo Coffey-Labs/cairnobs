@@ -70,6 +70,23 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
+    { id = "RUSTSEC-2024-0384", reason = """
+`instant` is unmaintained -- a maintenance advisory, not a vulnerability:
+no CVE, no known exploit, nothing to patch.
+
+It reaches us only transitively (tantivy 0.22.1 -> measure_time 0.8.3 ->
+instant 0.1.13), so it cannot be dropped without moving off the pinned
+Tantivy version, and CLAUDE.md pins the stack deliberately.
+
+The advisory's substance does not apply to this build either: `instant`
+exists to paper over std::time::Instant being unavailable on wasm, and
+the recommended replacement (web-time) addresses that same wasm gap.
+search builds for native musl, where instant is a thin pass-through to
+std.
+
+Revisit when Tantivy is next upgraded -- check whether measure_time has
+dropped the dependency, and delete this entry if so rather than letting
+it become permanent.""" },
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
