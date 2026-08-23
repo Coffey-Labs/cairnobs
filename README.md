@@ -1,3 +1,12 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)"
+            srcset="web/src/lib/assets/logo-horizontal-dark.svg">
+    <img src="web/src/lib/assets/logo-horizontal-light.svg"
+         alt="Cairn OBS" width="420">
+  </picture>
+</p>
+
 # Cairn OBS
 
 Open-core, Kubernetes-native log aggregation and observability. Built to match
