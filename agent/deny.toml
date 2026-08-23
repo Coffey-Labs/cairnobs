@@ -70,6 +70,22 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
+    { id = "RUSTSEC-2025-0134", reason = """
+`rustls-pemfile` is unmaintained -- its repository was archived in
+August 2025. A maintenance advisory, not a vulnerability: no CVE, no
+known exploit, and the advisory itself states "No safe upgrade is
+available".
+
+It reaches us transitively (cairnobs-agent -> tonic 0.12.3 ->
+rustls-pemfile 2.2.0), so there is nothing to fix on our side; the
+upstream migration is tonic's to make, to the PemObject API that
+rustls-pki-types has carried since 1.9.0. The last rustls-pemfile
+release is a thin wrapper over that same code, so the archived crate is
+not running different logic from its replacement.
+
+Revisit when tonic is next upgraded -- check whether it has moved to
+rustls-pki-types directly, and delete this entry if so rather than
+letting it become permanent.""" },
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
