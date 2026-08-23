@@ -33,7 +33,20 @@ ADMIN_PASSWORD_FILE="$DEMO_ROOT/.admin-password"
 # demo host's docker-compose.override.yml. Change one without the other
 # and the demo's own login form stops working.
 DEMO_PASSWORD='CairnDemo_2026!'
-EVALUATOR_PASSWORD='REDACTED_ROTATED_CREDENTIAL'
+# Generated fresh every run, never committed. This account exists only
+# to mint the ALERTING_SERVICE_TOKEN a few lines below, and `docker
+# compose down -v` above has already destroyed the previous one, so the
+# value never needs to outlive a single reset -- there is nothing to
+# remember and therefore no reason to hardcode it. It used to be a
+# literal in this file, which put a working service-account password in
+# the repo: anyone who could read the source could mint an
+# alerting-evaluator token against the live demo at will, and rotating
+# the token achieved nothing while the password that mints it stayed
+# published.
+#
+# Unlike DEMO_PASSWORD above, this one is never shown to a user and is
+# not baked into the web bundle, so randomising it breaks nothing.
+EVALUATOR_PASSWORD="$(openssl rand -base64 24)"
 
 echo "=== $(date -u +%FT%TZ) reset starting ==="
 
