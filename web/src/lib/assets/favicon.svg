@@ -1,9 +1,20 @@
 <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <!-- Favicon: simplified 3-stone mark on terminal-dark rounded square -->
-  <rect x="0" y="0" width="64" height="64" rx="14" fill="#0D1117"/>
-  <g>
-    <path d="M14,50 L10,45 L13,40 L22,37 L34,40 L44,37 L53,41 L50,47 L40,51 L26,48 Z" fill="#FF8A00"/>
-    <path d="M20,35 L16,30 L19,25 L28,23 L36,26 L44,23 L47,28 L43,34 L32,36 L24,33 Z" fill="#FF9D2E"/>
-    <path d="M24,21 L21,16 L25,12 L32,11 L38,13 L41,17 L38,21 L31,22 L27,20 Z" fill="#FFB157"/>
-  </g>
+  <defs>
+    <linearGradient id="fs1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#D67A0C"/>
+      <stop offset="1" stop-color="#AD5E08"/>
+    </linearGradient>
+    <linearGradient id="fs2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F08E12"/>
+      <stop offset="1" stop-color="#C96E09"/>
+    </linearGradient>
+    <linearGradient id="fs3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB84D"/>
+      <stop offset="1" stop-color="#FF8A00"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#0D0B10"/>
+  <polygon points="12,42 34,40 48,45 46,52 32,56 16,55 9,50 10,44" fill="url(#fs1)"/>
+  <polygon points="18,30 38,32 46,35 44,42 34,45 20,44 14,39 15,33" fill="url(#fs2)"/>
+  <polygon points="24,15 34,11 40,20 37,30 29,33 22,29 20,20" fill="url(#fs3)"/>
 </svg>

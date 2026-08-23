@@ -56,8 +56,10 @@
 		max-width: 48rem;
 	}
 	.logo {
+		/* The stacked lockup is 360x320, not square -- height must stay
+		   auto or the wordmark under the cairn stretches. */
 		width: 11rem;
-		height: 11rem;
+		height: auto;
 	}
 	.tagline {
 		margin-top: var(--space-4);
