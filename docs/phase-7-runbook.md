@@ -74,7 +74,7 @@ Run it as a container on the compose network with a network alias of
 `OLLAMA_BASE_URL` at it via a throwaway compose override:
 
 ```sh
-docker run -d --rm --name cairnobs-mock-ollama --network sentry_default --network-alias ollama \
+docker run -d --rm --name cairnobs-mock-ollama --network cairnobs_default --network-alias ollama \
   -v "$(pwd)/hack/mock-ollama:/src" -w /src golang:1.25-alpine \
   sh -c "go build -o /tmp/mock-ollama . && /tmp/mock-ollama"
 
@@ -188,7 +188,7 @@ cd api && go build ./... && go vet ./... && go test ./...
 cd enterprise && go build ./... && go vet ./... && go test ./...
 
 # live-Postgres audit tests specifically, against the real dev stack:
-docker run --rm --network sentry_default -v "$(pwd):/src" -w /src/enterprise \
+docker run --rm --network cairnobs_default -v "$(pwd):/src" -w /src/enterprise \
   -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
   -e AUDIT_TEST_ADMIN_PASSWORD=cairnobs-dev-only \

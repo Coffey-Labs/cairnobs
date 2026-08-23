@@ -4,7 +4,7 @@
 // mocked pgxpool can't actually exercise. Skipped unless
 // AUDIT_TEST_POSTGRES_ADDR is set; run via:
 //
-//	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
+//	docker run --rm --network cairnobs_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
 //	  -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
 //	  -e AUDIT_TEST_ADMIN_PASSWORD=cairnobs-dev-only \

@@ -1,4 +1,4 @@
-# Build context must be the repo root (sentry/), since this needs both
+# Build context must be the repo root (cairnobs/), since this needs both
 # search/ and proto/:
 #   docker build -f search/Dockerfile -t cairnobs-search .
 #

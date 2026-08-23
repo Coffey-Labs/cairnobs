@@ -369,7 +369,7 @@ integration tests are skipped by default and only run with
 `AUDIT_TEST_POSTGRES_ADDR` set:
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/..:/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd)/..:/src -w /src/enterprise \
   -e AUDIT_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e AUDIT_TEST_POSTGRES_PASSWORD=audit-writer-dev-only \
   -e AUDIT_TEST_ADMIN_PASSWORD=cairnobs-dev-only \
@@ -380,7 +380,7 @@ docker run --rm --network sentry_default -v $(pwd)/..:/src -w /src/enterprise \
 constraints), skipped unless `RBACSTORE_TEST_POSTGRES_ADDR` is set:
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/..:/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd)/..:/src -w /src/enterprise \
   -e RBACSTORE_TEST_POSTGRES_ADDR=metadata-postgres:5432 \
   -e RBACSTORE_TEST_POSTGRES_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/rbacstore/... -v
@@ -392,12 +392,12 @@ since `internal/chrunner` imports `api/authz`/`api/querylang/executor`
 via `go.mod`'s `replace` directives to `../api`):
 
 ```sh
-docker run --rm --network sentry_default -v $(pwd)/..:/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd)/..:/src -w /src/enterprise \
   -e TENANTPROVISION_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
   -e TENANTPROVISION_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/tenantprovision/... -v
 
-docker run --rm --network sentry_default -v $(pwd)/..:/src -w /src/enterprise \
+docker run --rm --network cairnobs_default -v $(pwd)/..:/src -w /src/enterprise \
   -e CHRUNNER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
   -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
   golang:1.25-alpine go test ./internal/chrunner/... -v

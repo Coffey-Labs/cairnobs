@@ -72,7 +72,7 @@ spec:
     - name: admin
       port: 9644
 ---
-# One-shot: creates the sentry.logs.raw topic. Same image
+# One-shot: creates the cairnobs.logs.raw topic. Same image
 # transport/Dockerfile builds for docker-compose.yml's redpanda-provision
 # service. Deliberately a plain Job, not a Helm hook -- see
 # deploy/helm/cairnobs/README.md's "Startup ordering" section for why

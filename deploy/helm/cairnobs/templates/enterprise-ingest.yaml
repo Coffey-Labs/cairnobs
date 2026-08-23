@@ -1,7 +1,7 @@
 {{/*
 Only rendered once per-tenant write-routing is actually turned on (see
 ingest.yaml's -mode=server comment) -- this Deployment is what takes
-over consuming sentry.logs.raw once ingest.yaml's own consumer half
+over consuming cairnobs.logs.raw once ingest.yaml's own consumer half
 stops, routing each record to its own tenant's dedicated ClickHouse
 database (enterprise/internal/chwriter) instead of the one shared table.
 No Service: this is a pure background worker, nothing calls it, only

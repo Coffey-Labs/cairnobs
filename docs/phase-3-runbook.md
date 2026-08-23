@@ -95,7 +95,7 @@ Bring up a local webhook receiver for testing (no real Slack/PagerDuty
 needed):
 
 ```sh
-docker run -d --name cairnobs-webhook-sink --network sentry_default \
+docker run -d --name cairnobs-webhook-sink --network cairnobs_default \
   -p 9099:9099 -v $(pwd)/hack/webhook-sink:/src -w /src golang:1.25-alpine go run .
 ```
 

@@ -1,7 +1,7 @@
 // Package v1alpha1 contains the Tenant API's Go types -- kubebuilder's
 // standard api/<version>/ layout, hand-written rather than scaffolded
 // (no kubebuilder/controller-gen binary available in this environment;
-// see /home/john/Projects/sentry/deploy/README.md's verification
+// see /deploy/README.md's verification
 // section for what that means for this package specifically: it's real,
 // compiling, unit-tested Go code, never reconciled against a live
 // cluster).

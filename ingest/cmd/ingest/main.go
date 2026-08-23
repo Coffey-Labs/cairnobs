@@ -1,4 +1,4 @@
-// Command ingest is the Sentry ingest service. It has two halves that can
+// Command ingest is the Cairn OBS ingest service. It has two halves that can
 // run in one process or be split across deployments via --mode:
 //
 //   - server:   mTLS gRPC front end that agents push batches to; forwards

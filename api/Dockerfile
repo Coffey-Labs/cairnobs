@@ -1,4 +1,4 @@
-# Build context must be the repo root (sentry/), since this needs both
+# Build context must be the repo root (cairnobs/), since this needs both
 # api/ and proto/ (api now speaks gRPC to /search, using proto's checked-in
 # Go bindings via the `replace` directive in api/go.mod):
 #   docker build -f api/Dockerfile -t cairnobs-api .

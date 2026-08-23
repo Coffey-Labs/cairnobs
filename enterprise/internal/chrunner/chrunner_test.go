@@ -11,7 +11,7 @@
 //
 // Skipped unless CHRUNNER_TEST_CLICKHOUSE_ADDR is set; run via:
 //
-//	docker run --rm --network sentry_default -v $(pwd)/../../..:/src -w /src/enterprise \
+//	docker run --rm --network cairnobs_default -v $(pwd)/../../..:/src -w /src/enterprise \
 //	  -e CHRUNNER_TEST_CLICKHOUSE_ADDR=clickhouse:9000 \
 //	  -e CHRUNNER_TEST_CLICKHOUSE_PASSWORD=cairnobs-dev-only \
 //	  golang:1.25-alpine go test ./internal/chrunner/... -v

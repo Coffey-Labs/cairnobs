@@ -1,4 +1,4 @@
-# Build context must be the repo root (sentry/), not ingest/, since this
+# Build context must be the repo root (cairnobs/), not ingest/, since this
 # needs both ingest/ and proto/:
 #   docker build -f ingest/Dockerfile -t cairnobs-ingest .
 
