@@ -7,7 +7,7 @@ search/target/
 /ingest/ingest
 /api/api
 /cli/cairnobsctl
-/terraform/terraform-provider-sentry
+/terraform/terraform-provider-cairnobs
 /alerting/alerting
 /hack/windows-fixture/windows-fixture
 /hack/benchmark-fixture/benchmark-fixture
