@@ -67,10 +67,27 @@ services:
       # CLICKHOUSE_USER or CLICKHOUSE_PASSWORD is set to a genuinely
       # non-empty value — confirmed by testing, not just reading docs: an
       # explicitly-empty CLICKHOUSE_PASSWORD="" still triggers the
-      # lockdown, silently returning 403 to every other container. This
-      # password isn't a real secret (mTLS between agent and ingest is
-      # the actual security boundary here) — it exists purely to satisfy
-      # this image's login gate for local/homelab use.
+      # lockdown, silently returning 403 to every other container.
+      #
+      # TREAT THIS AS A REAL SECRET in any deployment. It began as
+      # nothing more than a login gate — mTLS between agent and ingest
+      # is still the security boundary that matters for *ingestion* —
+      # but CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT below (added for Phase
+      # 4's per-tenant provisioning) promoted the default user to a
+      # ClickHouse superuser: `SHOW GRANTS FOR default` returns ACCESS
+      # MANAGEMENT and CLUSTER ON *.* WITH GRANT OPTION. Whoever holds
+      # this password can read and write every tenant's logs and mint
+      # further users at will.
+      #
+      # The value below is a dev-only default and must be overridden via
+      # docker-compose.override.yml (gitignored) anywhere real --
+      # api/internal/config warns at startup if it is still in use.
+      #
+      # Rotating it is not just an env-var edit: the image's entrypoint
+      # consumes this only at volume-init time, so on an existing volume
+      # you must ALTER USER default IDENTIFIED BY '<new>' inside
+      # ClickHouse first, then update the override and restart
+      # clickhouse, api, and ingest -- the three services that carry it.
       CLICKHOUSE_PASSWORD: "cairnobs-dev-only"
       # Phase 4's per-tenant provisioning (enterprise/internal/tenantprovision)
       # runs CREATE USER/GRANT against this connection as the ClickHouse
