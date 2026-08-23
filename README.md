@@ -7,14 +7,16 @@
   </picture>
 </p>
 
-# Cairn OBS
+<p align="center">
+  Open-core, Kubernetes-native log aggregation and observability.<br>
+  Built to match Splunk on capability while winning on cost-per-GB,<br>
+  with honest multi-tenant RBAC and a modern language stack.
+</p>
 
-Open-core, Kubernetes-native log aggregation and observability. Built to match
-Splunk on capability while winning on cost-per-GB, with honest multi-tenant
-RBAC and a modern language stack.
-
-Licensed **AGPLv3 in its entirety** — including `enterprise/`. See
-[Licensing](#licensing).
+<p align="center">
+  Licensed <strong>AGPLv3 in its entirety</strong> — including
+  <code>enterprise/</code>. See <a href="#licensing">Licensing</a>.
+</p>
 
 ## What it does
 
