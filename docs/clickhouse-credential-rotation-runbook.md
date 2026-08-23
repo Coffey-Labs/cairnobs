@@ -3,7 +3,11 @@
 Applies to the docker-compose deployments (`proto.cairnobs.org`,
 `demo.cairnobs.org`). For Helm deployments the value is a K8s `Secret`
 (`/deploy/helm/cairnobs/templates/secrets.yaml`) and the procedure is a
-secret update plus a rollout restart — only steps 1 and 5 below apply.
+secret update plus a rollout restart. The `users_xml` mechanics in "The
+trap" below apply there too — the chart's ClickHouse pod builds the same
+`default-user.xml` from the same env var — so the shape is identical:
+change the value, recreate the pod, verify. Only the sed-the-override
+steps differ.
 
 ## What you are rotating
 
@@ -32,14 +36,33 @@ wider model.
   do not assume a value recovered from one applies to the other.
 - **Rotate demo before proto**, matching the deploy risk order.
 
-## The trap
+## The trap: do NOT reach for `ALTER USER`
 
-`CLICKHOUSE_PASSWORD` is read by the official image's entrypoint **only
-when it initialises an empty data volume**. On a box that has already
-been running, editing the env var and restarting does *not* change the
-stored password — ClickHouse keeps the old one, the clients present the
-new one, and every query starts returning 403. The password must be
-changed *inside* ClickHouse first.
+The obvious move — change the password inside ClickHouse, then update
+the env to match — **does not work here, and fails loudly**:
+
+```
+$ docker exec cairnobs-clickhouse clickhouse-client \
+    --query "SELECT name, storage FROM system.users"
+default	users_xml
+```
+
+`storage = users_xml` means the `default` user is defined by a config
+file, not by SQL. ClickHouse treats that storage as read-only and
+rejects `ALTER USER` against it. There is no in-database password to
+change.
+
+The password lives in `/etc/clickhouse-server/users.d/default-user.xml`,
+which the official image's entrypoint **regenerates from
+`CLICKHOUSE_PASSWORD` on every container start** — not only on first
+init. That directory is part of the container filesystem; only
+`/var/lib/clickhouse` (the data) is a volume, so the file is rebuilt
+each time and the data survives untouched.
+
+So the env var *is* the source of truth, and recreating the container is
+what applies it. Verify by comparing the file's mtime against
+`docker inspect <container> --format '{{.State.StartedAt}}'` — they
+match to the second, before and after a rotation.
 
 ## Procedure
 
@@ -53,60 +76,111 @@ up` will run the migrate step with a stale password and fail.
 `web`, `alerting`, `search`, `enterprise-auth`, `metadata-postgres`, and
 `redpanda` do not carry it and do not need restarting.
 
-**1. Generate a new value** and keep it somewhere you can paste from.
+**1. Back up the override file.** It is the only copy of these
+credentials, and it is the rollback path.
 
 ```sh
-openssl rand -base64 24
+cd /opt/sentry   # or /home/john/cairnobs-demo on demo
+cp -p docker-compose.override.yml \
+      docker-compose.override.yml.bak.$(date +%Y%m%d-%H%M%S)
 ```
 
-**2. Change it inside ClickHouse first.**
+**2. Generate the value on the box, and never let it leave.** Use hex,
+not base64: this string is interpolated into the generated
+`default-user.xml`, and base64's `/`, `+`, and `=` are needless risk in
+XML. Generating it remotely also keeps it out of your terminal
+scrollback and out of any AI-assistant transcript.
 
 ```sh
-docker exec cairnobs-clickhouse clickhouse-client \
-  --query "ALTER USER default IDENTIFIED BY '<new-password>'"
+NEW="$(openssl rand -hex 24)"
 ```
 
-Existing connections keep working; this affects authentication of new
-ones. Expect the next `api`/`ingest` query to fail until step 4.
+**3. Update all four occurrences in the override file.** Match only
+indented `KEY: value` lines, so the header comment (which mentions
+`CLICKHOUSE_PASSWORD` in prose) is left alone:
 
-**3. Update the override file** — `docker-compose.override.yml` in the
-deployment directory (`/opt/sentry` on proto, `/home/john/cairnobs-demo`
-on demo). This file is gitignored precisely because it carries real
-credentials; it is not in the repo and rsync will not overwrite it
-unless you tell it to.
+```sh
+sed -i -E "s|^( +)CLICKHOUSE_PASSWORD: .*|\1CLICKHOUSE_PASSWORD: \"${NEW}\"|" \
+  docker-compose.override.yml
+grep -cE '^ +CLICKHOUSE_PASSWORD: ' docker-compose.override.yml   # expect 4
+```
 
-Update every occurrence, not just the `clickhouse` service's — `api` and
-`ingest` each set their own copy.
+The file is gitignored precisely because it carries real credentials; it
+is not in the repo, and an rsync deploy will not overwrite it unless you
+explicitly tell it to.
 
-**4. Restart the three services that carry it.**
+**4. Validate before touching anything live.**
+
+```sh
+docker compose config -q && echo OK
+```
+
+If this fails, restore the backup and stop.
+
+**5. Recreate the three long-running services.** This is what applies
+the new password — the entrypoint rewrites `default-user.xml` as
+`clickhouse` comes up.
 
 ```sh
 docker compose up -d clickhouse api ingest
 ```
 
-**5. Verify.** All three must pass:
+`clickhouse-migrate` and the other one-shots will run and exit cleanly
+as dependencies; that is expected, and is why step 3 had to update their
+copy too.
+
+**6. Verify.** All four must pass:
 
 ```sh
-# a) the credential works
-docker exec cairnobs-clickhouse clickhouse-client \
-  --user default --password '<new-password>' --query "SELECT 1"
+# a) the OLD password is now rejected -- read it from the backup rather
+#    than retyping it anywhere
+OLD=$(grep -m1 -E '^ +CLICKHOUSE_PASSWORD: ' docker-compose.override.yml.bak.* \
+      | sed -E 's/.*: *"?([^"]*)"?$/\1/')
+docker exec cairnobs-clickhouse clickhouse-client --user default \
+  --password "$OLD" --query "SELECT 1" && echo "FAILED: old still works"
 
-# b) the app can still read logs (non-zero, and climbing on a live box)
+# b) the new password is accepted
+docker exec cairnobs-clickhouse clickhouse-client --user default \
+  --password "$NEW" --query "SELECT 1"
+
+# c) the app can still read logs, and the count climbs on a live box
 docker exec cairnobs-clickhouse clickhouse-client \
   --query "SELECT count() FROM cairnobs.logs"
 
-# c) no auth failures since the restart
-docker compose logs --since 5m api ingest | grep -iE 'auth|403|denied'
+# d) no auth failures since the restart
+docker compose logs --since 5m api ingest | grep -icE '403|auth.*fail|denied'
 ```
 
-If (a) passes but (b) or (c) fail, the override file still holds the old
-value somewhere — recheck every service block in step 3.
+If (b) passes but (c) or (d) fail, the override still holds the old value
+somewhere — recheck every service block from step 3.
 
 ## Rollback
 
-Re-run step 2 with the previous password and restart the three services.
-There is no schema or data change here, so rollback is symmetric and
-carries no data-loss risk.
+Restore the backup from step 1 and recreate the same three services:
+
+```sh
+cp -p docker-compose.override.yml.bak.<timestamp> docker-compose.override.yml
+docker compose config -q && docker compose up -d clickhouse api ingest
+```
+
+Nothing else has to be undone. The rotation changes no schema and no
+data — `/var/lib/clickhouse` is a volume and is never rewritten by this
+procedure — so rollback is symmetric and carries no data-loss risk.
+
+## Verification status
+
+This procedure was executed end-to-end against `proto.cairnobs.org` on
+2026-08-23: old password confirmed rejected, new one accepted,
+`default-user.xml` mtime matching the new `StartedAt`, zero auth
+failures, and the ingest row count still climbing afterwards. No
+downtime beyond the recreate of `clickhouse`, `api`, and `ingest`.
+
+An earlier draft of this runbook had it backwards — it opened with
+`ALTER USER` and claimed the entrypoint only reads `CLICKHOUSE_PASSWORD`
+at volume-init. Both were wrong, and `/opt/sentry`'s own
+`docker-compose.override.yml` header had already recorded the correct
+mechanism during the 2026-08-19 rotation. Check that file before
+trusting anything here.
 
 ## Known gap
 
