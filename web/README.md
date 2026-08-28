@@ -124,6 +124,30 @@ The repo convention prefers distroless/scratch base images. Serving a
 static SPA still needs *some* HTTP server, though, and `nginx:alpine` is
 the boring, standard choice for that job — writing a custom static-file
 binary just to stay distroless would be more engineering than a Phase 0
-placeholder page justifies. `nginx.conf` here is minimal: serve `build/`,
-fall back to `index.html` for client-side routing (only one route exists
-today, but this is what you want the moment a second one is added).
+placeholder page justifies. `nginx.conf` serves `build/`, and resolves a
+request in this order: the file itself, then the flat `<route>.html`
+adapter-static prerenders each route to, then — for the handful of routes
+that have no file on disk — the `200.html` SPA shell.
+
+### 404s
+
+Anything that matches none of the above answers **404**, not 200. That
+took explicit work, because the natural static-SPA config falls back to
+the shell unconditionally and hands every junk URL a success status;
+crawlers, uptime checks and vulnerability scanners then can't tell a real
+page from a miss. The 404 still *renders* the shell, so a human sees the
+app's own not-found page exactly as before — only the status line
+changed.
+
+Two kinds of route legitimately have no file to match and so are named
+explicitly in `nginx.conf`: dynamic routes (`dashboards/[id]` and
+friends), whose params don't exist at build time, and routes that never
+opted into prerendering (`/data-sources`, which has no `+page.ts`). Those
+two allowlists are the only thing here that can drift out of sync with
+`src/routes` — and drift would break *only production*, since `vite dev`
+and `npm run preview` route from the client manifest and never read
+`nginx.conf`. `hack/check-web-routes.sh` fails CI when they disagree; run
+it after adding a dynamic or non-prerendered route.
+
+Trailing slashes redirect (308) to the canonical no-slash form rather
+than 404ing, matching SvelteKit's default `trailingSlash: 'never'`.
