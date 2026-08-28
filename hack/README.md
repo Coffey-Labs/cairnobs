@@ -25,6 +25,13 @@ monorepos (Kubernetes among them).
   history, then keeps generating in real time. Distinct from
   `benchmark-fixture/` (volume, for the Phase 2 latency benchmark) and
   `windows-fixture/` (correctness, for the Windows ingest path).
+- `check-web-routes.sh` — asserts `web/nginx.conf`'s hand-maintained
+  route allowlists still match `web/src/routes`. `nginx.conf` 404s
+  unknown paths, so it has to name the routes that have no prerendered
+  file to match (dynamic ones, and any route without `prerender = true`).
+  Drift here breaks production only — dev and `npm run preview` never
+  read `nginx.conf` — so this runs in CI, like
+  `check-tenant-boundary.sh`.
 - `demo-seed/` — the rest of the demo deployment: its reset script,
   dashboards, alert rules, and the systemd unit that runs
   `demo-simulator`.
