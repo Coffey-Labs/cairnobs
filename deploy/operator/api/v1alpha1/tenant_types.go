@@ -18,7 +18,7 @@ import (
 // internal/controller/tenant_controller.go's doc comment for how
 // TenantReconciler derives Phase/Conditions from those fields rather
 // than fabricating its own "provisioned" claim. This is the "lightweight
-// unification" named in CLAUDE.md/docs/phase-4-runbook.md's "two
+// unification" named in PROJECT-SPEC.md/docs/phase-4-runbook.md's "two
 // independent provisioning mechanisms" gap: -provision-tenant stays the
 // real actor; this operator's reconcile loop never touches Postgres or
 // ClickHouse and gained no new credentials.

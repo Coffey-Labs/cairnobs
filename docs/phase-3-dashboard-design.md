@@ -1,6 +1,6 @@
 # Dashboard design
 
-> **Status:** Approved, in progress. Task 2 of Phase 3 — see `/CLAUDE.md`'s
+> **Status:** Approved, in progress. Task 2 of Phase 3 — see `/PROJECT-SPEC.md`'s
 > "What done looks like for Phase 3" section for the exit criteria this is
 > built against. Task 3 (dashboard CRUD API + web UI) implements this
 > doc; if implementation reveals this design is wrong somewhere, fix this
@@ -24,7 +24,7 @@ saved query itself.
 ## Why not ClickHouse: PostgreSQL for control-plane config
 
 This phase adds PostgreSQL as a new pinned-stack component — flagged and
-confirmed with the project owner before implementation, per CLAUDE.md's
+confirmed with the project owner before implementation, per PROJECT-SPEC.md's
 "ask before... making an architectural decision not already specified in
 `/docs/architecture.md`." Scope is strictly control-plane config
 (dashboards, panels, and — per `/docs/phase-3-alerting-design.md` —

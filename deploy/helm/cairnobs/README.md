@@ -99,7 +99,7 @@ unconditional by design, no disable switch.
 both tenants reached `status.phase: Active` with real credentials.
 
 This proves Phase 4's "two tenants... with their own users, roles,
-dashboards" exit criteria (`/CLAUDE.md`) end to end at the deployment-
+dashboards" exit criteria (`/PROJECT-SPEC.md`) end to end at the deployment-
 topology layer: `-provision-tenant` (`enterprise/internal/
 tenantprovision`) is what actually creates each tenant's ClickHouse
 database/user/grant and marks it active in `rbacstore`; running inside

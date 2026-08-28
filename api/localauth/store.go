@@ -2,7 +2,7 @@
 // login: a real login page and session-based auth covering both /api
 // and /alerting, plus a simple admin-managed user list, for deployments
 // reachable over the internet that can no longer rely on Phase 0-3's
-// "no auth yet" default (see /docs/architecture.md and CLAUDE.md's
+// "no auth yet" default (see /docs/architecture.md and PROJECT-SPEC.md's
 // Phase 4 section for the enterprise/ SSO alternative this is not --
 // this package has no tenant/RBAC-service concept, just "is this a
 // valid logged-in user").

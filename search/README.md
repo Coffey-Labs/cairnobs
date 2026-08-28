@@ -8,7 +8,7 @@ aggregation queries.
 
 Tantivy is a Rust library with no maintained Go bindings — using it from
 `ingest` (Go) would mean cgo-bridging to a compiled Rust cdylib, exactly
-the fragile FFI complexity CLAUDE.md's "prefer boring, well-understood
+the fragile FFI complexity PROJECT-SPEC.md's "prefer boring, well-understood
 dependencies... operators need to trust it" principle steers away from.
 It would also couple ClickHouse-write latency to Tantivy-write latency in
 the same request path. See `/docs/architecture.md` for the fuller

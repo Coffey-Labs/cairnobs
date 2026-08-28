@@ -65,7 +65,7 @@ one instead of deferring it, and keeps Kafka credentials off the edge agent.
   family isn't a fit for this (no real row-level locking/transactional
   read-modify-write).
 
-This split is not to be changed without discussion — see CLAUDE.md.
+This split is not to be changed without discussion — see PROJECT-SPEC.md.
 
 ## Component responsibilities
 
@@ -213,7 +213,7 @@ both the Helm and docker-compose layers, the two provisioning
 mechanisms unified, both storage engines' write paths per-tenant-routed,
 and the tenant-picker frontend page now built and browser-verified
 (`web/src/routes/select-tenant`, `api/httpserver.WithCredentialedCORS`
-— see `/CLAUDE.md`'s Phase 4 section and `/web/README.md`'s "Tenant
+— see `/PROJECT-SPEC.md`'s Phase 4 section and `/web/README.md`'s "Tenant
 picker" section), the remaining gaps in this phase are entirely the
 already-disclosed live-verification caveats: the ClickHouse/Postgres-
 backed pieces have never run against a real database in this
@@ -244,18 +244,18 @@ plain HTTP instead (`api/authz.HTTPAuthorizer`, `web`'s
 `GET /auth/features`) — the same "network boundary, not import boundary"
 shape `/alerting`↔`api` already used before `enterprise/` existed.
 
-## Non-negotiables carried from CLAUDE.md
+## Non-negotiables carried from PROJECT-SPEC.md
 
 - Rust agent: statically linked musl, `x86_64-unknown-linux-musl` and
   `aarch64-unknown-linux-musl`, no glibc runtime deps.
 - Windows support via native ETW/Event Log API, not WSL — designed
   (Phase 1) but still unverified on real Windows hardware.
 - Every UI action maps to a documented REST/gRPC call — no UI-only logic.
-- Pinned stack (see CLAUDE.md table) — no substitutions without discussion.
+- Pinned stack (see PROJECT-SPEC.md table) — no substitutions without discussion.
 
 ## Explicitly out of scope (current, Phase 4)
 
-Per `/CLAUDE.md`'s Phase 4 non-goals and `/docs/security/threat-model.md`:
+Per `/PROJECT-SPEC.md`'s Phase 4 non-goals and `/docs/security/threat-model.md`:
 deny-override permission grants, a data retention/deletion policy for
 deprovisioned tenants, general multi-cluster orchestration in `/deploy`,
 and any defense against a privileged ClickHouse/Postgres administrator —

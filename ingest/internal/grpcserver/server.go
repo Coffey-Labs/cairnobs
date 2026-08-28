@@ -9,7 +9,7 @@
 // tenant the call's bearer credential belongs to and attaches it as a
 // "tenant_id" Kafka message header on every record produced -- the first
 // step of Phase 4's ingest tenant-awareness (see
-// /docs/phase-4-runbook.md and CLAUDE.md's "ingest itself has no tenant
+// /docs/phase-4-runbook.md and PROJECT-SPEC.md's "ingest itself has no tenant
 // concept" gap). Deliberately scoped no further than that for now:
 // nothing downstream (this package's own consumer, or `search`'s
 // separate Redpanda consumer) reads that header yet to route a record's

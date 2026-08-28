@@ -9,7 +9,7 @@ and `/docs/query-language-reference.md` for the user-facing syntax.
 
 ## Why plain REST, not gRPC + REST gateway
 
-CLAUDE.md pins the control plane to "Go, gRPC + REST gateway." This
+PROJECT-SPEC.md pins the control plane to "Go, gRPC + REST gateway." This
 service is plain `net/http` instead — a deliberate simplification, not a
 change to the pinned stack. Wiring up a `.proto` service,
 `google.api.http` annotations, and `protoc-gen-grpc-gateway` codegen for

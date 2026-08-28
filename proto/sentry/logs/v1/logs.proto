@@ -43,7 +43,7 @@ message LogRecord {
 
   // Original, unparsed log line. Always populated, even when structured
   // fields below are also present, per the schema-on-read fallback
-  // requirement in CLAUDE.md.
+  // requirement in PROJECT-SPEC.md.
   string message = 5;
 
   // Structured fields extracted by the agent's parser (e.g. RFC 5424

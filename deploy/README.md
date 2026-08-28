@@ -1,7 +1,7 @@
 # deploy
 
 Kubernetes deployment for Cairn OBS, added in Phase 4 (`/deploy` was
-deliberately stubbed through Phase 3 -- see `/CLAUDE.md`'s Phase 3
+deliberately stubbed through Phase 3 -- see `/PROJECT-SPEC.md`'s Phase 3
 non-goals). Two pieces:
 
 - `operator/` -- a small Go controller-runtime Operator managing one CRD
@@ -18,7 +18,7 @@ map of per-tenant ClickHouse connection pools via `internal/chrunner`;
 `search` holds a map of per-tenant Tantivy indices via
 `src/registry.rs`) -- not at the Kubernetes layer. This directory is
 **not** "one Deployment per tenant" or a general multi-cluster system;
-that's an explicit Phase 4 non-goal (see `/CLAUDE.md`). What it *does*
+that's an explicit Phase 4 non-goal (see `/PROJECT-SPEC.md`). What it *does*
 add:
 
 - A `Tenant` CRD + controller (`operator/internal/controller`) that

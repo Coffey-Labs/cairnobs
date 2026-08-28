@@ -221,7 +221,7 @@ Key facts, verified against primary sources:
    already speak. Real tradeoff: Redpanda was originally chosen partly
    for its lightweight single-binary footprint (`docker-compose.yml`
    runs it with `--smp=1 --memory=1G --overprovisioned`, tuned for a
-   resource-constrained local/homelab deployment per `CLAUDE.md`'s
+   resource-constrained local/homelab deployment per `PROJECT-SPEC.md`'s
    stated deployment targets); Kafka's JVM-based broker has a materially
    larger minimum memory/startup footprint. This is a real regression
    for the project's stated "docker-compose for local/homelab" use case,
@@ -263,7 +263,7 @@ project's own logo package.
 
 **Before this audit**: no root `LICENSE` file existed anywhere in the
 repo — not at the root, not in `enterprise/`. The only license
-declarations were prose statements in `CLAUDE.md`/`docs/architecture.md`
+declarations were prose statements in `PROJECT-SPEC.md`/`docs/architecture.md`
 and correct `license = "AGPL-3.0-only"` fields in the two Rust
 workspaces' `Cargo.toml`s. `web/package.json` had no `license` field at
 all (npm's tooling reported the package itself as `UNLICENSED` as a
@@ -324,10 +324,10 @@ assumed.
 - Every prose reference to `enterprise/` as "commercial license" or
   "commercial-licensed" across the repo was updated. Present-tense
   claims (code comments, `README.md` files describing current state,
-  `CLAUDE.md`'s non-negotiable constraints) were corrected outright.
+  `PROJECT-SPEC.md`'s non-negotiable constraints) were corrected outright.
   Historical, phase-specific documents (`docs/phase-4-isolation-design.md`,
   `docs/phase-4-rbac-design.md`, `docs/phase-4-runbook.md`, and the
-  relevant parts of `CLAUDE.md`'s and `docs/architecture.md`'s Phase 4
+  relevant parts of `PROJECT-SPEC.md`'s and `docs/architecture.md`'s Phase 4
   sections) were given forward-pointing corrections — "commercial
   license at the time this was written; AGPLv3 as of Phase 6" — rather
   than rewritten as if the commercial-license period never happened,
@@ -400,7 +400,7 @@ Redpanda decision below, every item has one.
 
 **Every task-2 (c)/unresolved-(b) item now has an explicit resolution**
 — fixed, isolated, or, for Redpanda, flagged and decided. Phase 6's exit
-criteria in `CLAUDE.md` are updated accordingly.
+criteria in `PROJECT-SPEC.md` are updated accordingly.
 
 ## Legal disclaimer (repeated, deliberately)
 

@@ -206,7 +206,7 @@ below) and Tantivy (`/search/README.md`'s "Per-tenant indices" section
 routing (does traffic actually reach `enterprise-api` instead of
 `api`), now a single-flag choice in both `deploy/helm/cairnobs` and
 `docker-compose.yml` (`enterprise.enabled` / `COMPOSE_PROFILES`), see
-CLAUDE.md.
+PROJECT-SPEC.md.
 
 ## Ingest tenant identity
 

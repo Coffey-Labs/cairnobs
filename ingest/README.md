@@ -43,7 +43,7 @@ database, regardless of any `tenant_id` tag a message carries -- routing
 a tagged record into its own tenant's dedicated database is
 `enterprise/internal/chwriter` and `enterprise/cmd/enterprise-ingest`'s
 job (a separate module by architectural convention, not a licensing
-split -- both are AGPLv3, see `/CLAUDE.md`'s licensing boundary), not
+split -- both are AGPLv3, see `/PROJECT-SPEC.md`'s licensing boundary), not
 this package's. `consumer` and `clickhousewriter` live outside
 `internal/` (moved there once `enterprise/internal/chwriter` needed to
 import them directly -- Go's compiler-enforced `internal/` visibility

@@ -2,7 +2,7 @@
 // built on HashiCorp's terraform-plugin-framework (not the legacy
 // SDKv2 -- the framework is the actively-developed, currently-
 // recommended library for a provider started from scratch, matching
-// CLAUDE.md's "prefer boring, well-understood dependencies" read
+// PROJECT-SPEC.md's "prefer boring, well-understood dependencies" read
 // forward rather than backward).
 package provider
 

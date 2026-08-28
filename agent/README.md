@@ -211,7 +211,7 @@ escalation, not a footnote: think about whether your environment wants
 the log-shipping agent running with that level of access before turning
 on the `etw` feature and an `[source] kind = "etw"` config. Event Log
 alone (no elevated privileges needed) covers the common case and is what
-Phase 1's exit criteria in `/CLAUDE.md` actually requires to be running.
+Phase 1's exit criteria in `/PROJECT-SPEC.md` actually requires to be running.
 
 Providers are configured by **GUID**, not friendly name — ETW's own API
 requires it. Look one up with `logman query providers "<Friendly Name>"`.

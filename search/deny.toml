@@ -76,7 +76,7 @@ no CVE, no known exploit, nothing to patch.
 
 It reaches us only transitively (tantivy 0.22.1 -> measure_time 0.8.3 ->
 instant 0.1.13), so it cannot be dropped without moving off the pinned
-Tantivy version, and CLAUDE.md pins the stack deliberately.
+Tantivy version, and PROJECT-SPEC.md pins the stack deliberately.
 
 The advisory's substance does not apply to this build either: `instant`
 exists to paper over std::time::Instant being unavailable on wasm, and

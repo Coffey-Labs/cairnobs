@@ -77,7 +77,7 @@ pub enum SourceConfig {
     // Dead-code-on-default-build, same reasoning as EventLog/Etw below:
     // these fields are only read by the `file-tail`-gated arm in
     // spawn_source (main.rs), which doesn't exist in the default build
-    // (`default = ["journald"]`). Pre-existing gap from Phase 0 — CLAUDE.md
+    // (`default = ["journald"]`). Pre-existing gap from Phase 0 — PROJECT-SPEC.md
     // mandates plain `cargo clippy --all-targets -- -D warnings` (no
     // --all-features), which this broke silently since only
     // --all-features clippy was ever actually run.
@@ -202,7 +202,7 @@ impl Default for MetricsConfig {
 /// way. Kept as a small hand-rolled parser rather than pulling in a
 /// duration-parsing crate for this one field -- this is the
 /// statically-linked edge agent every "no glibc runtime deps" constraint
-/// in CLAUDE.md is about keeping lean, and the grammar needed here is a
+/// in PROJECT-SPEC.md is about keeping lean, and the grammar needed here is a
 /// handful of lines.
 fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where

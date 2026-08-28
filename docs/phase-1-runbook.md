@@ -72,7 +72,7 @@ curl -X POST http://localhost:8080/search -H 'Content-Type: application/json' \
 ```
 
 **The `record_id` in both responses should match.** That's the actual
-Phase 1 exit criterion (`/CLAUDE.md`) for the Linux half: the same
+Phase 1 exit criterion (`/PROJECT-SPEC.md`) for the Linux half: the same
 record, reachable both ways. If `/search` returns nothing yet, give it a
 few more seconds — Tantivy commits on a timer (`COMMIT_INTERVAL_MS`,
 default 2s), so there's a small window where a record is in ClickHouse

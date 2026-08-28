@@ -2,7 +2,7 @@
 
 Phase-by-phase record of what was built, what "done" meant for each phase,
 and how it was verified. Conventions and constraints live in
-[`/CLAUDE.md`](../CLAUDE.md); the architecture spec is
+[`/PROJECT-SPEC.md`](../PROJECT-SPEC.md); the architecture spec is
 [`/docs/architecture.md`](architecture.md).
 
 Each phase has a runbook in this directory recording the actual

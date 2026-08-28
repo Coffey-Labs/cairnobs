@@ -20,7 +20,7 @@
 // Both Helm (deploy/helm/cairnobs/templates/api.yaml vs
 // enterprise-api.yaml) and docker-compose.yml (COMPOSE_PROFILES) now
 // make this the deployment-topology choice, not just a binary sitting
-// unused alongside api's -- see this repo's CLAUDE.md. `search`'s write
+// unused alongside api's -- see this repo's PROJECT-SPEC.md. `search`'s write
 // side (ingest, and by extension the Redpanda consumer search itself
 // runs) is still not tenant-aware -- see enterprise/internal/searchclient
 // and search/src/registry.rs's doc comments, and

@@ -1,6 +1,6 @@
 // Package tenantcrd syncs enterprise-api -provision-tenant's real
 // provisioning result into the Tenant CRD (deploy/operator/api/
-// v1alpha1) -- the "lightweight unification" named in CLAUDE.md's "two
+// v1alpha1) -- the "lightweight unification" named in PROJECT-SPEC.md's "two
 // independent provisioning mechanisms" gap: -provision-tenant stays the
 // sole real actor (rbacstore + tenantprovision.ProvisionClickHouse, see
 // runProvisionTenant's doc comment in cmd/enterprise-api/main.go); this

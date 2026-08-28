@@ -37,7 +37,7 @@ ships entirely in `enterprise/`, not AGPL core. Core (`/api`,
 `/alerting`, `/web`) stays genuinely single-tenant: no multi-tenant
 mechanism present at all, not merely a missing management UI on top of
 otherwise-functional isolation. This was an explicit choice put to the
-project owner rather than assumed, because CLAUDE.md's licensing
+project owner rather than assumed, because PROJECT-SPEC.md's licensing
 boundary text names multi-tenancy as enterprise-gated, and a
 "mechanism in core, feature in enterprise" split would have let a
 sufficiently motivated self-hosting AGPL user wire up real isolation

@@ -1,6 +1,6 @@
 # terraform-provider-cairnobs
 
-Cairn OBS's Terraform provider -- `CLAUDE.md`'s "Repo conventions" section
+Cairn OBS's Terraform provider -- `PROJECT-SPEC.md`'s "Repo conventions" section
 names this a first-class deliverable alongside `cairnobsctl`
 ("CLI and Terraform provider are first-class, not afterthoughts"), but
 no phase before this one had actually built any of it. Four resources

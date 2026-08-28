@@ -94,7 +94,7 @@ search:
   # A second replica would form a second, independent consumer instance
   # against the same partitions with no coordination -- correctness,
   # not just resource waste, is the reason this isn't a `replicas` knob
-  # yet. Matches CLAUDE.md's Phase 4 non-goal: "no general multi-cluster
+  # yet. Matches PROJECT-SPEC.md's Phase 4 non-goal: "no general multi-cluster
   # orchestration."
   replicas: 1
   resources: {}

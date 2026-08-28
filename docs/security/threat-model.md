@@ -495,7 +495,7 @@ handler to call them from).
 
 ## Known residual risks (explicitly out of scope, not silently assumed away)
 
-Per `/CLAUDE.md`'s Phase 4 non-goals, restated here in threat-model
+Per `/PROJECT-SPEC.md`'s Phase 4 non-goals, restated here in threat-model
 terms:
 
 - **A privileged ClickHouse/Postgres administrator is not defended

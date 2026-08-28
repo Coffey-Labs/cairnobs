@@ -1,5 +1,5 @@
 // Command terraform-provider-cairnobs is Cairn OBS's Terraform provider --
-// CLAUDE.md names it a first-class deliverable alongside cairnobsctl
+// PROJECT-SPEC.md names it a first-class deliverable alongside cairnobsctl
 // ("CLI and Terraform provider are first-class, not afterthoughts"),
 // but this is the first phase to actually build any of it.
 //

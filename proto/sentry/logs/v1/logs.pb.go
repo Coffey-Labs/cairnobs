@@ -100,7 +100,7 @@ type LogRecord struct {
 	Severity Severity `protobuf:"varint,4,opt,name=severity,proto3,enum=sentry.logs.v1.Severity" json:"severity,omitempty"`
 	// Original, unparsed log line. Always populated, even when structured
 	// fields below are also present, per the schema-on-read fallback
-	// requirement in CLAUDE.md.
+	// requirement in PROJECT-SPEC.md.
 	Message string `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
 	// Structured fields extracted by the agent's parser (e.g. RFC 5424
 	// syslog header fields), plus source-provided fields (e.g. Windows

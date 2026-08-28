@@ -97,7 +97,7 @@ not a projection):
 | `SELECT count() FROM logs WHERE service='web'` (raw SQL) | Pure ClickHouse | 17.5ms |
 
 All four "well under a second" — the Phase 2 exit criteria in
-`/CLAUDE.md`. The combined text+aggregation case (the one everyone should
+`/PROJECT-SPEC.md`. The combined text+aggregation case (the one everyone should
 be nervous about, since it's a two-backend query) came in at 46ms, not
 meaningfully slower than the pure-ClickHouse case — the Tantivy prefilter
 step is fast, and 5,000 UUIDs (see below) is a small `IN` clause by

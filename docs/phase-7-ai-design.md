@@ -61,7 +61,7 @@ Design choices worth calling out explicitly:
 | Hardware floor | Runs on CPU (slow) or a single consumer GPU via quantized (GGUF) models | Needs a real GPU; not practically CPU-viable |
 | Deployment complexity | Single binary/container, `ollama pull <model>`, built-in REST API | Python server, CUDA/driver management, more moving parts |
 | Throughput under concurrency | Adequate for one-user-at-a-time interactive use; not built for high concurrent QPS | Purpose-built for high-throughput serving (continuous batching, PagedAttention) |
-| Fit for this project | Matches `docker-compose for local/homelab` (CLAUDE.md's stated deployment target) — most self-hosters won't have a dedicated inference GPU | Fits a provisioned-GPU SaaS inference tier — not this phase's target (cloud is the opt-in secondary path, not primary) |
+| Fit for this project | Matches `docker-compose for local/homelab` (PROJECT-SPEC.md's stated deployment target) — most self-hosters won't have a dedicated inference GPU | Fits a provisioned-GPU SaaS inference tier — not this phase's target (cloud is the opt-in secondary path, not primary) |
 
 Cairn OBS's actual AI workload shape is one interactive query bar per user
 at a time, not a high-QPS inference-serving problem — vLLM's real
