@@ -1,0 +1,27 @@
+name: Web route check
+
+# web/nginx.conf answers 404 for any path that isn't a route, which means
+# it has to know which routes exist. Most it infers from the build output,
+# but dynamic routes (dashboards/[id] and friends) and non-prerendered
+# routes (/data-sources) have no file on disk and are hand-listed there.
+#
+# That list drifting is a production-only failure: `vite dev` and
+# `npm run preview` route from the client manifest and never read
+# nginx.conf, so a new dynamic route works perfectly everywhere a
+# developer would look and 404s the moment it ships. This job is what
+# catches it. Its own workflow rather than another job bolted onto
+# license-compliance.yml, which already carries one unrelated check
+# (tenant-boundary) for historical reasons worth not compounding.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  web-routes:
+    name: nginx route allowlist check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash hack/check-web-routes.sh
