@@ -17,7 +17,7 @@ By participating in this project you agree to abide by the [Code of Conduct](COD
 
 ### Reporting Bugs
 
-Search [existing issues](https://github.com/LINUXexpert-org/cairnobs/issues) first. When filing a bug, include:
+Search [existing issues](https://github.com/Coffey-Labs/cairnobs/issues) first. When filing a bug, include:
 
 - A clear, descriptive title
 - Steps to reproduce, and expected vs. actual behaviour
@@ -92,6 +92,6 @@ Please **do not** open a public issue for security vulnerabilities. See [SECURIT
 
 ## Questions?
 
-If you're unsure whether something is a good fit, open an issue and ask, or start a [discussion](https://github.com/LINUXexpert-org/cairnobs/discussions). Discussion before you invest time in a PR is welcome.
+If you're unsure whether something is a good fit, open an issue and ask, or start a [discussion](https://github.com/Coffey-Labs/cairnobs/discussions). Discussion before you invest time in a PR is welcome.
 
 Thanks again for helping improve Cairn OBS.
