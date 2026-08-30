@@ -158,6 +158,8 @@ update against. Tenant and RBAC resources are disclosed future work —
 
 ## Licensing
 
+Copyright (C) 2026 Coffey Labs.
+
 AGPLv3, no exceptions — see [`LICENSE`](LICENSE). `enterprise/` was under a
 commercial-license stub from Phase 4 through Phase 5; Phase 6 relicensed it to
 match core. The full record and its business-model consequences are in
