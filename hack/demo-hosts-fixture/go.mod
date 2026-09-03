@@ -6,7 +6,7 @@ replace github.com/cairnobs/cairnobs/proto => ../../proto
 
 require (
 	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.1
 )
 
 require (

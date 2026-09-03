@@ -30,5 +30,8 @@
 		"@codemirror/view": "^6.43.8",
 		"echarts": "^6.1.0",
 		"gridstack": "^11.5.0"
+	},
+	"overrides": {
+		"cookie": "^0.7.2"
 	}
 }

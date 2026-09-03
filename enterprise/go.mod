@@ -29,15 +29,15 @@ require (
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
+	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.1
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
