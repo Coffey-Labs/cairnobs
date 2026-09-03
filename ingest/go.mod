@@ -6,11 +6,12 @@ replace github.com/cairnobs/cairnobs/proto => ../proto
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
-	github.com/google/uuid v1.6.0
-	github.com/segmentio/kafka-go v0.4.51
 	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
+	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.10.0
+	github.com/segmentio/kafka-go v0.4.51
 	golang.org/x/sync v0.22.0
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -22,7 +23,6 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.10.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/paulmach/orb v0.13.0 // indirect
