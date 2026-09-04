@@ -31,3 +31,13 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 *.swp
+
+# `go build` inside a main package drops its binary beside the source, and
+# `git add -A` will take it. One got as far as main at 18 MB (fa7c6c0) --
+# every clone of this repo carries it for good now. These are the main
+# packages whose directory name is also their binary name.
+/hack/demo-simulator/demo-simulator
+/hack/benchmark-fixture/benchmark-fixture
+/hack/alert-load-test/alert-load-test
+/hack/webhook-sink/webhook-sink
+/hack/mock-ollama/mock-ollama
