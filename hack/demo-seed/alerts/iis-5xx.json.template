@@ -1,0 +1,13 @@
+{
+  "name": "IIS 5xx surge",
+  "description": "The Windows web tier is failing requests -- normally under one per ten minutes across all three IIS hosts",
+  "query": "service=iis earliest=-10m | where status>=500 | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 2,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 5
+}

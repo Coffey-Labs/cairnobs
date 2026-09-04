@@ -1,0 +1,13 @@
+{
+  "name": "Checkout errors on WooCommerce",
+  "description": "Checkout is refusing customers above baseline -- an expired coupon campaign, a shipping rule change, or sessions timing out",
+  "query": "service=woocommerce event_kind=checkout_error earliest=-15m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 30
+}

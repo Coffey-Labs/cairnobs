@@ -1,0 +1,13 @@
+{
+  "name": "Payment decline rate elevated",
+  "description": "Declines are running well above the ~7.5% baseline. Either a gateway is unwell or something upstream is sending bad authorisations -- both cost orders directly",
+  "query": "auth_result=declined earliest=-15m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 5,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 120
+}

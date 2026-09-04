@@ -1,0 +1,145 @@
+{
+  "name": "Security posture",
+  "description": "Authentication, authorisation and the outbound edge -- every place a credential or a request gets refused",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Failed SSH",
+      "query": "service=system auth_result=failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Failed Windows logons",
+      "query": "service=eventlog winevt.event_id=4625 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Failed SQL logins",
+      "query": "service=mssql event_kind=login_failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Denied share access",
+      "query": "service=smb event_kind=share_denied | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Source addresses probing SSH",
+      "query": "service=system auth_result=failed | stats count by remote_addr | sort -count | head 12",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "remote_addr",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Accounts targeted on Windows",
+      "query": "service=eventlog winevt.event_id=4625 | stats count by winevt.target_user | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "winevt.target_user",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Blocked outbound destinations",
+      "query": "service=squid status=403 | stats count by dest_host | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "dest_host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "NXDOMAIN by client",
+      "query": "service=bind dns_rcode=NXDOMAIN | stats count by remote_addr | sort -count | head 12",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "remote_addr",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    },
+    {
+      "title": "Failed LDAP binds",
+      "query": "service=openldap event_kind=bind_failed | sort -timestamp | head 20 | fields timestamp, host, bind_dn, remote_addr, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 8
+    },
+    {
+      "title": "Vault authentication failures",
+      "query": "service=vault event_kind=auth_failed | sort -timestamp | head 20 | fields timestamp, host, vault_path, remote_addr, message",
+      "viz_type": "table",
+      "position_x": 6,
+      "position_y": 13,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 9
+    },
+    {
+      "title": "Account lockouts",
+      "query": "service=eventlog winevt.event_id=4740 | sort -timestamp | head 20 | fields timestamp, host, winevt.target_user, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 18,
+      "width": 12,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 10
+    }
+  ]
+}

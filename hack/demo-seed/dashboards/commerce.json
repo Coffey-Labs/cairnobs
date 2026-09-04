@@ -1,0 +1,164 @@
+{
+  "name": "Commerce",
+  "description": "Orders, revenue and the checkout funnel across both storefronts",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Orders",
+      "query": "event_kind=order | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Revenue",
+      "query": "event_kind=order | stats sum(order_total) as revenue",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Average order value",
+      "query": "event_kind=order | stats avg(order_total) as aov",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Items per order",
+      "query": "event_kind=order | stats avg(order_items) as items",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Revenue by storefront",
+      "query": "event_kind=order | stats sum(order_total) as revenue by service | sort -revenue",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "service",
+        "value_column": "revenue"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Orders by store view",
+      "query": "service=magento event_kind=order | stats count by store_view | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "store_view",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Checkout funnel",
+      "query": "service=magento event_kind=checkout | stats count by checkout_step | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "checkout_step",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Payment methods",
+      "query": "event_kind=order | stats count by payment_method | sort -count",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "payment_method",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    },
+    {
+      "title": "Best sellers",
+      "query": "event_kind=order | stats count by sku | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "sku",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 8
+    },
+    {
+      "title": "Out of stock",
+      "query": "service=magento event_kind=out_of_stock | stats count by sku | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 13,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "sku",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 9
+    },
+    {
+      "title": "Checkout errors",
+      "query": "service=woocommerce event_kind=checkout_error | sort -timestamp | head 20 | fields timestamp, host, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 18,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 10
+    },
+    {
+      "title": "Storefront exceptions",
+      "query": "event_kind=exception | sort -timestamp | head 20 | fields timestamp, host, service, message",
+      "viz_type": "table",
+      "position_x": 6,
+      "position_y": 18,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 11
+    }
+  ]
+}

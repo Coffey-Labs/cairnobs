@@ -1,0 +1,133 @@
+{
+  "name": "Golden signals",
+  "description": "Traffic, errors, latency and saturation across everything that serves a request",
+  "default_earliest": "-6h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Requests served",
+      "query": "| where status>=100 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "5xx responses",
+      "query": "| where status>=500 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "API latency (avg ms)",
+      "query": "service=api | stats avg(duration_ms) as avg_ms",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Slow Postgres statements",
+      "query": "service=postgres | where duration_ms>1000 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Traffic by service and host",
+      "query": "| where status>=100 | stats count by service, host",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "service",
+        "value_column": "count",
+        "series_column": "host",
+        "stacked": "true"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Where the errors are",
+      "query": "severity=ERROR | stats count by service, host | sort -count | head 20",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "API latency by route",
+      "query": "service=api | stats avg(duration_ms) as avg_ms by route | sort -avg_ms | head 12",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "route",
+        "value_column": "avg_ms"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Status codes by service",
+      "query": "| where status>=100 | stats count by service, status",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "service",
+        "y_column": "status",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    },
+    {
+      "title": "Slow operations, wherever they are",
+      "query": "| where duration_ms>1000 | stats count by service, host | sort -count | head 15",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 18,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 8
+    },
+    {
+      "title": "Saturation by host",
+      "query": "cairnobs.metrics=true | stats avg(cpu_percent) as avg_cpu, max(mem_used_bytes) as peak_mem by host | sort -avg_cpu | head 15",
+      "viz_type": "table",
+      "position_x": 6,
+      "position_y": 18,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 9
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Kubernetes readiness probes failing",
+  "description": "Readiness probes are failing across the cluster at roughly double the normal rate -- pods are being pulled out of service",
+  "query": "service=kubelet event_kind=probe_failed earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 5,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 55
+}

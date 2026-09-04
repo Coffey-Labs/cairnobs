@@ -679,6 +679,12 @@ func primaryRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.Log
 		return exchangeRecord(h, t, r, c)
 	case "smb":
 		return smbRecord(h, t, r, c)
+	case "magento":
+		return magentoRecord(h, t, r, c)
+	case "woocommerce":
+		return wooRecord(h, t, r, c)
+	case "payments":
+		return paymentsRecord(h, t, r, c)
 	default:
 		return newRecord(h, h.service, t, logsv1.Severity_SEVERITY_INFO, "heartbeat", nil)
 	}
@@ -1055,5 +1061,238 @@ func smbRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogReco
 		return newRecord(h, "smb", t, logsv1.Severity_SEVERITY_WARN,
 			fmt.Sprintf("A network share object access was denied. Share Name: %s  Account Name: %s", share, user),
 			map[string]string{"share": share, "winevt.target_user": user, "event_kind": "share_denied"})
+	}
+}
+
+// ---------------------------------------------------------------------
+// Commerce.
+//
+// Two storefronts and the gateway behind both, because the questions a
+// business asks of its logs are not the questions an operator asks, and
+// a demo that only answers the second one is only half a demo. Orders,
+// revenue, average order value, where checkout is losing people and why
+// a card was declined are all in the log line rather than in a separate
+// metrics system -- which is the argument for keeping the two together.
+//
+// Two platforms rather than one on purpose: Magento and WooCommerce
+// write differently about the same events, so a panel that groups by
+// service rather than assuming one shape is the honest way to build one.
+// ---------------------------------------------------------------------
+
+var (
+	storeViews = []string{"uk", "us", "de", "fr"}
+
+	skus = []struct {
+		sku, name string
+		price     float64
+	}{
+		{"CH-1042", "Aeron-style task chair", 489.00},
+		{"DK-2201", "Standing desk 160x80", 629.00},
+		{"MN-3310", "27\" 4K monitor", 379.99},
+		{"KB-4407", "Mechanical keyboard, tactile", 129.50},
+		{"MS-5120", "Vertical ergonomic mouse", 74.95},
+		{"LT-6003", "Desk lamp, warm CCT", 59.00},
+		{"CB-7788", "Cable management tray", 24.99},
+		{"HS-8890", "Noise-cancelling headset", 219.00},
+	}
+
+	checkoutSteps = []string{"cart", "shipping", "payment", "review", "placed"}
+
+	gateways = []string{"stripe", "adyen", "paypal"}
+
+	declineReasons = []struct {
+		code, text string
+		weight     int
+	}{
+		{"insufficient_funds", "Insufficient funds", 30},
+		{"do_not_honor", "Do not honour", 22},
+		{"expired_card", "Expired card", 14},
+		{"incorrect_cvc", "Incorrect CVC", 12},
+		{"lost_or_stolen", "Lost or stolen card", 6},
+		{"3ds_failed", "3-D Secure authentication failed", 16},
+	}
+	declineWeightTotal int
+
+	paymentMethods = []string{"card", "paypal", "apple_pay", "klarna"}
+)
+
+func init() {
+	for _, d := range declineReasons {
+		declineWeightTotal += d.weight
+	}
+}
+
+func pickDecline(r *rand.Rand) (string, string) {
+	n := r.Intn(declineWeightTotal)
+	for _, d := range declineReasons {
+		if n -= d.weight; n < 0 {
+			return d.code, d.text
+		}
+	}
+	return declineReasons[0].code, declineReasons[0].text
+}
+
+// orderTotal builds a basket rather than drawing a number, so average
+// order value moves the way a real one does -- driven by what is in the
+// cart, not by a distribution somebody chose.
+func orderTotal(r *rand.Rand) (float64, int, string) {
+	items := 1 + r.Intn(4)
+	total := 0.0
+	first := ""
+	for i := 0; i < items; i++ {
+		s := skus[r.Intn(len(skus))]
+		qty := 1
+		if r.Float64() < 0.18 {
+			qty = 2
+		}
+		total += s.price * float64(qty)
+		if i == 0 {
+			first = s.sku
+		}
+	}
+	return total, items, first
+}
+
+func magentoRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	store := pick(r, storeViews)
+	switch n := r.Intn(100); {
+	case n < 34:
+		// Checkout progress. The funnel narrows towards `placed`, which is
+		// what makes a "where are we losing people" panel say anything.
+		step := checkoutSteps[0]
+		switch f := r.Float64(); {
+		case f < 0.34:
+			step = "cart"
+		case f < 0.58:
+			step = "shipping"
+		case f < 0.76:
+			step = "payment"
+		case f < 0.88:
+			step = "review"
+		default:
+			step = "placed"
+		}
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("checkout step reached: %s quote_id=%d store=%s", step, 400000+r.Intn(99999), store),
+			map[string]string{"checkout_step": step, "store_view": store, "event_kind": "checkout"})
+	case n < 58:
+		total, items, sku := orderTotal(r)
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Order placed: increment_id=%d grand_total=%.2f items=%d store=%s method=%s",
+				2000000000+r.Intn(99999999), total, items, store, pick(r, paymentMethods)),
+			map[string]string{
+				"event_kind": "order", "order_total": fmt.Sprintf("%.2f", total),
+				"order_items": strconv.Itoa(items), "sku": sku, "store_view": store,
+				"currency": "GBP", "payment_method": pick(r, paymentMethods),
+			})
+	case n < 72:
+		s := skus[r.Intn(len(skus))]
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Product viewed: sku=%s name=%q store=%s", s.sku, s.name, store),
+			map[string]string{"event_kind": "product_view", "sku": s.sku, "store_view": store})
+	case n < 82:
+		idx := pick(r, []string{"catalog_product_price", "cataloginventory_stock", "catalogsearch_fulltext", "customer_grid"})
+		dur := 4 + r.Intn(180)
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Index %s has been rebuilt successfully in %02d:%02d:%02d", idx, 0, dur/60, dur%60),
+			map[string]string{"event_kind": "reindex", "indexer": idx, "duration_ms": strconv.Itoa(dur * 1000)})
+	case n < 90:
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Cron group %s finished, %d jobs run", pick(r, []string{"default", "index", "consumers"}), 1+r.Intn(20)),
+			map[string]string{"event_kind": "cron", "store_view": store})
+	case n < 96:
+		s := skus[r.Intn(len(skus))]
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("Not enough items for sale: sku=%s requested=%d on_hand=%d", s.sku, 1+r.Intn(3), r.Intn(2)),
+			map[string]string{"event_kind": "out_of_stock", "sku": s.sku, "store_view": store})
+	default:
+		return newRecord(h, "magento", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("main.CRITICAL: Uncaught TypeError in %s: Argument #1 must be of type Quote, null given",
+				pick(r, []string{"Magento/Quote/Model/QuoteManagement.php", "Magento/Checkout/Model/Session.php", "Magento/Sales/Model/Order.php"})),
+			map[string]string{"event_kind": "exception", "store_view": store})
+	}
+}
+
+func wooRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	switch n := r.Intn(100); {
+	case n < 38:
+		total, items, sku := orderTotal(r)
+		status := pick(r, []string{"processing", "completed", "on-hold"})
+		return newRecord(h, "woocommerce", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Order #%d status changed to %s (total %.2f, %d items)", 30000+r.Intn(9999), status, total, items),
+			map[string]string{
+				"event_kind": "order", "order_status": status, "order_total": fmt.Sprintf("%.2f", total),
+				"order_items": strconv.Itoa(items), "sku": sku, "currency": "GBP",
+				"payment_method": pick(r, paymentMethods),
+			})
+	case n < 58:
+		return newRecord(h, "woocommerce", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("REST API request: GET /wp-json/wc/v3/products?per_page=%d served in %dms", 10+r.Intn(90), 20+r.Intn(600)),
+			map[string]string{"event_kind": "api", "duration_ms": strconv.Itoa(20 + r.Intn(600))})
+	case n < 74:
+		return newRecord(h, "woocommerce", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Scheduled action completed: %s", pick(r, []string{"woocommerce_cleanup_sessions", "wc_admin_unsnooze_admin_notes", "woocommerce_scheduled_sales"})),
+			map[string]string{"event_kind": "cron"})
+	case n < 84:
+		s := skus[r.Intn(len(skus))]
+		return newRecord(h, "woocommerce", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Stock reduced for %s: %d -> %d", s.sku, 5+r.Intn(40), r.Intn(5)),
+			map[string]string{"event_kind": "stock", "sku": s.sku})
+	case n < 93:
+		return newRecord(h, "woocommerce", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("Checkout error: %s", pick(r, []string{
+				"Invalid billing postcode", "Coupon \"WELCOME10\" has expired",
+				"Shipping method not available for this address", "Session expired before payment",
+			})),
+			map[string]string{"event_kind": "checkout_error"})
+	default:
+		return newRecord(h, "woocommerce", t, logsv1.Severity_SEVERITY_ERROR,
+			"PHP Fatal error: Allowed memory size of 268435456 bytes exhausted in class-wc-order.php",
+			map[string]string{"event_kind": "exception"})
+	}
+}
+
+func paymentsRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	gw := pick(r, gateways)
+	total, _, _ := orderTotal(r)
+	took := int(float64(90+r.Intn(900)) * c.latencyMult)
+
+	// Declines rise with the outage window: the same dependency trouble
+	// that fails API requests fails authorisations, which is what makes
+	// the decline-rate rule true at the same time as the 5xx one.
+	declineRate := 0.075
+	if c.apiErrorRate > 0 {
+		declineRate = 0.28
+	}
+	switch {
+	case r.Float64() < declineRate:
+		code, text := pickDecline(r)
+		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("authorization declined gateway=%s amount=%.2f currency=GBP reason=%s (%s) latency=%dms", gw, total, code, text, took),
+			map[string]string{
+				"event_kind": "authorization", "auth_result": "declined", "gateway": gw,
+				"decline_reason": code, "amount": fmt.Sprintf("%.2f", total),
+				"currency": "GBP", "duration_ms": strconv.Itoa(took),
+			})
+	case r.Float64() < 0.05:
+		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("refund issued gateway=%s amount=%.2f currency=GBP reason=%s", gw, total/2, pick(r, []string{"customer_request", "item_returned", "duplicate_charge"})),
+			map[string]string{"event_kind": "refund", "gateway": gw, "amount": fmt.Sprintf("%.2f", total/2), "currency": "GBP"})
+	case r.Float64() < 0.02:
+		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("chargeback received gateway=%s amount=%.2f currency=GBP network_reason=fraud", gw, total),
+			map[string]string{"event_kind": "chargeback", "gateway": gw, "amount": fmt.Sprintf("%.2f", total), "currency": "GBP"})
+	case r.Float64() < 0.10:
+		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("3-D Secure challenge issued gateway=%s amount=%.2f currency=GBP", gw, total),
+			map[string]string{"event_kind": "3ds_challenge", "gateway": gw, "amount": fmt.Sprintf("%.2f", total), "currency": "GBP"})
+	default:
+		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("authorization approved gateway=%s amount=%.2f currency=GBP latency=%dms", gw, total, took),
+			map[string]string{
+				"event_kind": "authorization", "auth_result": "approved", "gateway": gw,
+				"amount": fmt.Sprintf("%.2f", total), "currency": "GBP",
+				"duration_ms": strconv.Itoa(took),
+			})
 	}
 }

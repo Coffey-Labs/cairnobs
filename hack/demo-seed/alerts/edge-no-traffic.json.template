@@ -1,0 +1,11 @@
+{
+  "name": "Edge tier silent",
+  "description": "Neither load balancer has logged a request. Either traffic has stopped reaching the estate or both agents are down",
+  "query": "earliest=-10m service=haproxy",
+  "query_language": "spl",
+  "condition_type": "absence",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Squid blocking outbound requests",
+  "description": "The outbound proxy is denying requests above baseline -- something on the inside is repeatedly reaching for a blocked destination",
+  "query": "service=squid status=403 earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 3,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 12
+}

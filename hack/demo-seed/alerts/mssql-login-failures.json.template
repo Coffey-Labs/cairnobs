@@ -1,0 +1,13 @@
+{
+  "name": "SQL Server login failures",
+  "description": "Repeated failed logins against SQL Server -- credential stuffing against a service account, or an application with a stale password",
+  "query": "service=mssql event_kind=login_failed earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 12
+}

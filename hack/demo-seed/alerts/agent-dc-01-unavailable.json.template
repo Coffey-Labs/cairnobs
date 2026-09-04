@@ -1,0 +1,11 @@
+{
+  "name": "DC-01 not reporting",
+  "description": "No heartbeat from the primary domain controller. Everything that authenticates depends on this host",
+  "query": "earliest=-5m host=\"DC-01\" cairnobs.heartbeat=true",
+  "query_language": "spl",
+  "condition_type": "absence",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true
+}
