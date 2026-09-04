@@ -10,7 +10,9 @@
 <p align="center">
   Open-core, Kubernetes-native log aggregation and observability.<br>
   Built to match Splunk on capability while winning on cost-per-GB,<br>
-  with honest multi-tenant RBAC and a modern language stack.
+  with honest multi-tenant RBAC and a modern language stack.<br>
+  Positioned against Cribl too — see <a href="docs/positioning.md">positioning</a>
+  for why that is a different claim, and what it means we still have to build.
 </p>
 
 <p align="center">

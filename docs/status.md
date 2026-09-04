@@ -20,6 +20,16 @@ verification procedure and its results.
 | 5 | Frontend redesign and design system | Shipped |
 | 6 | License compliance audit and remediation | Shipped |
 | 7 | AI-assisted query authoring | Shipped |
+| 8 | Processing: rule DSL, agent-side and ingest-side | Planned |
+| 9 | Routing: multiple destinations and delivery guarantees | Planned |
+| 10 | Archive and replay, retention and tiering | Planned |
+| 11 | Fleet: central agent configuration | Planned |
+
+Phases 8-11 are a second axis rather than a continuation of the first:
+0-7 built the destination, and those four build the road to it. The
+argument for taking that on, including the part where cheap storage
+removes the usual reason to buy a pipeline at all, is
+[`positioning.md`](positioning.md). Nothing in them is started.
 
 **Known verification gaps**, carried forward rather than buried:
 

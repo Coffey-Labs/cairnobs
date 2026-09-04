@@ -7,6 +7,16 @@ multi-tenant RBAC. Full architecture spec is in `/docs/architecture.md` — read
 it before touching any component. Do not deviate from the storage/query split
 described there without flagging it to me first.
 
+Cairn OBS is positioned against **Cribl** as well, which is a different claim
+rather than the same one twice: Splunk is the destination and Cairn OBS
+replaces it; Cribl is the road, and Cairn OBS is currently a road that exposes
+none of a pipeline's controls. Reconciling the two — including the part where
+cheap storage removes the usual reason to buy Cribl at all, and the part where
+competing with it means helping data leave this platform — is
+[`/docs/positioning.md`](docs/positioning.md), along with the four phases of
+processing, routing, archive/replay and fleet work it implies. Read it before
+proposing anything pipeline-shaped.
+
 ## Non-negotiable constraints
 - Distro-agnostic Linux agent: must run identically on RHEL/Debian/Arch/SUSE
   derivatives via a statically-linked musl binary. No glibc runtime deps.
