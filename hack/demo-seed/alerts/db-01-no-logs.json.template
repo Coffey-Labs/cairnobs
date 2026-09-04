@@ -1,0 +1,11 @@
+{
+  "name": "Primary database silent",
+  "description": "db-01 has logged nothing for ten minutes. Postgres is never quiet on a live system, so silence means the service or the agent has stopped",
+  "query": "earliest=-10m host=\"db-01\" service=postgres",
+  "query_language": "spl",
+  "condition_type": "absence",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true
+}

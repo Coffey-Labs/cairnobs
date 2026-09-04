@@ -1,0 +1,141 @@
+{
+  "name": "Payments",
+  "description": "Authorisations, declines and the gateways behind them -- where money stops moving and why",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Authorisations",
+      "query": "event_kind=authorization | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Declines",
+      "query": "auth_result=declined | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Refunds",
+      "query": "event_kind=refund | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Chargebacks",
+      "query": "event_kind=chargeback | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Approved and declined by gateway",
+      "query": "event_kind=authorization | stats count by gateway, auth_result",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "gateway",
+        "value_column": "count",
+        "series_column": "auth_result",
+        "stacked": "true"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Why cards are declined",
+      "query": "auth_result=declined | stats count by decline_reason | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 3,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "decline_reason",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Declined value",
+      "query": "auth_result=declined | stats sum(amount) as lost by gateway | sort -lost",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "gateway",
+        "value_column": "lost"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Gateway latency",
+      "query": "event_kind=authorization | stats avg(duration_ms) as avg_ms by gateway | sort -avg_ms",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "gateway",
+        "value_column": "avg_ms"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    },
+    {
+      "title": "Decline reasons by gateway",
+      "query": "auth_result=declined | stats count by gateway, decline_reason",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "gateway",
+        "y_column": "decline_reason",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 8
+    },
+    {
+      "title": "Chargebacks and refunds",
+      "query": "service=payments | where event_kind=chargeback | sort -timestamp | head 20 | fields timestamp, gateway, amount, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 18,
+      "width": 12,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 9
+    }
+  ]
+}

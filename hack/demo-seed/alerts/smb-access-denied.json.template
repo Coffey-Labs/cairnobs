@@ -1,0 +1,13 @@
+{
+  "name": "SMB access denials",
+  "description": "Share access is being denied repeatedly -- someone or something is reaching for files it has no rights to",
+  "query": "service=smb event_kind=share_denied earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 12
+}

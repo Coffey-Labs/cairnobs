@@ -1,0 +1,13 @@
+{
+  "name": "RabbitMQ queue backing up",
+  "description": "A queue has passed 2,500 ready messages. Normal depth is a few hundred; this is the shape of consumers dying rather than traffic rising",
+  "query": "service=rabbitmq earliest=-15m | stats max(queue_depth) as max_depth",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 2500
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Elasticsearch GC pauses",
+  "description": "Old-generation collections are running long and often -- the heap is under pressure and search latency will follow",
+  "query": "service=elasticsearch event_kind=gc earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 5,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 20
+}

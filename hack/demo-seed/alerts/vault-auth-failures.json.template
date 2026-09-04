@@ -1,0 +1,13 @@
+{
+  "name": "Vault authentication failures",
+  "description": "Something is failing to authenticate to Vault. Near-zero normally, and the one place where a handful of failures is already a story",
+  "query": "service=vault event_kind=auth_failed earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 3
+}

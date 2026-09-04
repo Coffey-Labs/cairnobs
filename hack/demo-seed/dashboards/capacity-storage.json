@@ -1,0 +1,106 @@
+{
+  "name": "Capacity and storage",
+  "description": "Disk, memory and the jobs that protect them -- what is filling up and what is backing it up",
+  "default_earliest": "-7d",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Peak disk used",
+      "query": "cairnobs.metrics=true | stats max(disk_used_bytes) as used",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Backup jobs",
+      "query": "service=backup event_kind=backup | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Backup failures",
+      "query": "service=backup result=error | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "SQL log backups",
+      "query": "service=mssql event_kind=log_backup | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Disk used by host",
+      "query": "cairnobs.metrics=true | stats max(disk_used_bytes) as used by host | sort -used",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 6,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "used"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Memory headroom",
+      "query": "cairnobs.metrics=true | stats max(mem_used_bytes) as peak, max(mem_total_bytes) as total by host | sort -peak | head 15",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 9,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Backup outcomes by job",
+      "query": "service=backup | stats count by backup_job, result",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 9,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "backup_job",
+        "value_column": "count",
+        "series_column": "result",
+        "stacked": "true"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Recent backup failures",
+      "query": "service=backup result=error | sort -timestamp | head 20 | fields timestamp, host, backup_job, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 14,
+      "width": 12,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}
