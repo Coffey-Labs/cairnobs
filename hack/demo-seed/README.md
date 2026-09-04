@@ -23,6 +23,40 @@ other code.
   the demo, `/hack/demo-simulator`. Installed at `/etc/systemd/system/`
   on the demo box.
 
+## The fleet
+
+Fifty hosts, shaped like an estate rather than a stack: thirty-one Linux,
+eighteen Windows, and one Linux host whose agent is gone so the Agents
+page has something stale to show.
+
+| Tier | Hosts |
+|---|---|
+| Edge and proxy | `lb-01/02` (HAProxy), `edge-01/02` (nginx), `proxy-01` (Squid) |
+| Application | `api-01`–`04`, `worker-01`–`03`, `arm-build-01` (aarch64) |
+| Data | `db-01/02` (Postgres), `mysql-01`, `cache-01/02` (Redis), `mq-01/02` (RabbitMQ), `search-01/02` (Elasticsearch) |
+| Platform | `k8s-node-01`–`03` (kubelet), `ci-01` (Jenkins), `vault-01`, `ldap-01` (OpenLDAP), `dns-01` (BIND), `backup-01`, `mail-01` |
+| Windows | `DC-01/02`, `IIS-01`–`03`, `WIN-SQL-01/02`, `EXCH-01/02`, `FS-01/02`, `RDS-01/02`, `WIN-APP-01/02`, `PRINT-01`, `WSUS-01`, `SCCM-01` |
+
+The Windows share is the point of the proportions. An enterprise looking
+at this should recognise its own estate, which means Windows carrying
+real services -- Active Directory, IIS, SQL Server, Exchange, file
+shares, Remote Desktop, print, WSUS and SCCM -- rather than appearing
+only as a Security channel on one box.
+
+Two hosts carry stories the alert rules fire on and must not be moved:
+`worker-02`'s disk fills at 0.04 of the volume per day, which is what
+`worker-disk-filling` thresholds against, and `legacy-01` checks in once
+and goes quiet, which is what `agent-legacy-01-unavailable` catches.
+`api-02` is the host the outage window hits.
+
+**Volume.** Fifty hosts generate about 316 records/minute at
+`-rate-scale 1`, and the nightly reset runs at `RATE_SCALE=0.5` over a
+168-hour backfill -- roughly **1.9M records per reset**, against about
+0.5M when the fleet was twelve hosts. ClickHouse is untroubled by that;
+what it costs is reset time and disk on the demo box. `RATE_SCALE` is the
+lever if either becomes a problem, and lowering it keeps every host and
+service present rather than dropping any of them.
+
 ## Prefilled login
 
 The demo's login page comes up with the read-only `demo` account already

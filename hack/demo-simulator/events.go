@@ -649,7 +649,411 @@ func primaryRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.Log
 		return smtpRecord(h, t, r, c)
 	case "eventlog":
 		return eventlogRecord(h, t, r, c)
+	case "haproxy":
+		return haproxyRecord(h, t, r, c)
+	case "mysql":
+		return mysqlRecord(h, t, r, c)
+	case "rabbitmq":
+		return rabbitRecord(h, t, r, c)
+	case "elasticsearch":
+		return elasticRecord(h, t, r, c)
+	case "kubelet":
+		return kubeletRecord(h, t, r, c)
+	case "jenkins":
+		return jenkinsRecord(h, t, r, c)
+	case "vault":
+		return vaultRecord(h, t, r, c)
+	case "openldap":
+		return ldapRecord(h, t, r, c)
+	case "bind":
+		return bindRecord(h, t, r, c)
+	case "squid":
+		return squidRecord(h, t, r, c)
+	case "backup":
+		return backupRecord(h, t, r, c)
+	case "iis":
+		return iisRecord(h, t, r, c)
+	case "mssql":
+		return mssqlRecord(h, t, r, c)
+	case "exchange":
+		return exchangeRecord(h, t, r, c)
+	case "smb":
+		return smbRecord(h, t, r, c)
 	default:
 		return newRecord(h, h.service, t, logsv1.Severity_SEVERITY_INFO, "heartbeat", nil)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Enterprise service generators.
+//
+// Added when the demo fleet grew from twelve hosts to fifty. The first
+// six services were the ones a shop runs; these are the ones an
+// enterprise runs, and they exist so a visitor sees their own estate
+// rather than somebody's side project -- a load balancer in front, a
+// directory and DNS underneath, a queue and a search cluster beside the
+// database, CI and secrets off to one side, and a Windows tier that is a
+// real tier rather than one box.
+//
+// Same contract as the six above: the message reads like the line the
+// real daemon writes, and the attributes carry the fields inside it.
+// ---------------------------------------------------------------------
+
+var (
+	haproxyBackends = []string{"api_pool", "web_pool", "static_pool", "grpc_pool"}
+
+	mysqlStatements = []struct {
+		kind, table, sql string
+		msMin, msMax     int
+	}{
+		{"select", "orders", "SELECT id, total, status FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 50", 2, 40},
+		{"select", "inventory", "SELECT sku, on_hand FROM inventory WHERE warehouse_id = ?", 1, 25},
+		{"update", "inventory", "UPDATE inventory SET on_hand = on_hand - ? WHERE sku = ?", 3, 60},
+		{"insert", "audit_log", "INSERT INTO audit_log (actor, action, target) VALUES (?, ?, ?)", 1, 12},
+		{"select", "reports", "SELECT DATE(created_at) d, SUM(total) FROM orders GROUP BY d ORDER BY d DESC", 400, 4200},
+	}
+
+	esIndices = []string{"logs-app-000042", "logs-app-000043", "catalogue-v7", "customers-v3"}
+
+	k8sPods = []string{
+		"checkout-7d9f8b6c4-x2k9p", "catalogue-5c8b7d9f6-m4n2q", "cart-6b9d8c7f5-t8w3r",
+		"payments-8f7c6b5d4-j1h5g", "search-api-9d8c7b6a5-p9l2k",
+	}
+
+	jenkinsJobs = []string{"shop-api/main", "shop-web/main", "platform-terraform/apply", "agent-rust/release", "nightly-integration"}
+
+	ldapBinds = []string{
+		"uid=svc_sync,ou=services,dc=shop,dc=example", "uid=jcoffey,ou=people,dc=shop,dc=example",
+		"uid=backup,ou=services,dc=shop,dc=example", "cn=admin,dc=shop,dc=example",
+	}
+
+	dnsQueries = []struct{ name, qtype string }{
+		{"api.shop.example", "A"}, {"cdn.shop.example", "AAAA"}, {"shop.example", "MX"},
+		{"_ldap._tcp.shop.example", "SRV"}, {"checkout.shop.example", "A"}, {"unknown.shop.example", "A"},
+	}
+
+	vaultPaths = []string{"secret/data/shop/db", "secret/data/shop/stripe", "pki/issue/internal", "auth/kubernetes/login"}
+
+	iisSites = []string{"Default Web Site", "ShopIntranet", "ReportingPortal"}
+
+	mssqlDatabases = []string{"ShopERP", "ShopWarehouse", "ReportingDW", "msdb"}
+
+	shares = []string{"\\\\FS-01\\Finance", "\\\\FS-01\\Engineering", "\\\\FS-02\\Archive", "\\\\FS-02\\Profiles"}
+)
+
+// proxyStatus is the status code a proxy tier returns: the edge and IIS
+// both mirror whatever the API behind them is doing, the same way
+// nginxRecord does, so a 5xx panel agrees across all three tiers rather
+// than showing an outage at one hop and health at the next.
+func proxyStatus(r *rand.Rand, c conditions, slow bool) int {
+	errRate := c.apiErrorRate
+	if errRate == 0 {
+		errRate = 0.008
+	}
+	if slow {
+		errRate *= 1.6
+	}
+	switch {
+	case r.Float64() < errRate:
+		return pick(r, []int{502, 503, 504})
+	case r.Float64() < 0.04:
+		return pick(r, []int{404, 401, 403, 429})
+	case r.Float64() < 0.05:
+		return 301
+	}
+	return 200
+}
+
+func haproxyRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	method, path, route, slow := pickRoute(r)
+	backend := pick(r, haproxyBackends)
+	status := proxyStatus(r, c, slow)
+	// HAProxy's timing quintuple is the thing operators actually read.
+	tq, tw, tc := r.Intn(4), r.Intn(3), r.Intn(6)
+	tr := int(float64(8+r.Intn(180)) * c.latencyMult)
+	tt := tq + tw + tc + tr
+	srvConn, beConn := r.Intn(12), r.Intn(40)
+	sev := logsv1.Severity_SEVERITY_INFO
+	if status >= 500 {
+		sev = logsv1.Severity_SEVERITY_ERROR
+	}
+	src := pick(r, clientIPs)
+	return newRecord(h, "haproxy", t, sev,
+		fmt.Sprintf("%s:%d [%s] https-in~ %s/srv%d %d/%d/%d/%d/%d %d %d - - ---- %d/%d/%d/%d/0 0/0 \"%s %s HTTP/2.0\"",
+			src, 40000+r.Intn(20000), t.Format("02/Jan/2006:15:04:05.000"),
+			backend, 1+r.Intn(4), tq, tw, tc, tr, tt, status, 200+r.Intn(9000),
+			beConn, srvConn, r.Intn(3), r.Intn(2), method, path),
+		map[string]string{
+			"backend": backend, "status": strconv.Itoa(status), "method": method,
+			"route": route, "duration_ms": strconv.Itoa(tt), "remote_addr": src,
+			"be_conn": strconv.Itoa(beConn), "srv_conn": strconv.Itoa(srvConn),
+		})
+}
+
+func mysqlRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	if r.Float64() < 0.15 {
+		return newRecord(h, "mysql", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("[Note] Aborted connection %d to db: 'shop' user: 'shop_app' host: '%s' (Got timeout reading communication packets)",
+				100000+r.Intn(900000), pick(r, clientIPs)),
+			map[string]string{"db": "shop", "query_kind": "connection_error"})
+	}
+	s := pick(r, mysqlStatements)
+	dur := float64(s.msMin+r.Intn(s.msMax-s.msMin)) * c.latencyMult
+	sev := logsv1.Severity_SEVERITY_DEBUG
+	if dur > 1000 {
+		sev = logsv1.Severity_SEVERITY_WARN
+	}
+	return newRecord(h, "mysql", t, sev,
+		fmt.Sprintf("# Query_time: %.6f  Lock_time: %.6f Rows_sent: %d  Rows_examined: %d\n%s",
+			dur/1000, r.Float64()/500, r.Intn(200), r.Intn(20000), s.sql),
+		map[string]string{
+			"db": "shop", "db_user": "shop_app", "query_kind": s.kind, "table": s.table,
+			"duration_ms": fmt.Sprintf("%.1f", dur), "rows": strconv.Itoa(r.Intn(200)),
+		})
+}
+
+func rabbitRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	queue := pick(r, []string{"orders.process", "mail.outbound", "search.index", "invoice.render"})
+	depth := r.Intn(400)
+	// A queue backs up when the workers draining it are failing, which is
+	// what the outage window already models -- rather than inventing a
+	// second condition that says the same thing.
+	if c.jobFailureRate > 0.2 {
+		depth += 2000 + r.Intn(6000)
+	}
+	switch n := r.Intn(10); {
+	case n < 6:
+		return newRecord(h, "rabbitmq", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("accepting AMQP connection <0.%d.0> (%s:%d -> 10.0.4.21:5672)", 1000+r.Intn(9000), pick(r, clientIPs), 40000+r.Intn(20000)),
+			map[string]string{"queue": queue, "queue_depth": strconv.Itoa(depth), "event_kind": "connect"})
+	case n < 9:
+		return newRecord(h, "rabbitmq", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Queue '%s' in vhost '/': %d messages ready, %d unacknowledged", queue, depth, r.Intn(40)),
+			map[string]string{"queue": queue, "queue_depth": strconv.Itoa(depth), "event_kind": "depth"})
+	default:
+		return newRecord(h, "rabbitmq", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("memory resource limit alarm set on node rabbit@%s -- publishers will be blocked", h.name),
+			map[string]string{"queue": queue, "queue_depth": strconv.Itoa(depth), "event_kind": "alarm"})
+	}
+}
+
+func elasticRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	idx := pick(r, esIndices)
+	took := int(float64(4+r.Intn(300)) * c.latencyMult)
+	switch n := r.Intn(10); {
+	case n < 7:
+		return newRecord(h, "elasticsearch", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("[%s] search completed in %dms, hits=%d, shards=[3 total, 3 successful]", idx, took, r.Intn(4000)),
+			map[string]string{"index": idx, "duration_ms": strconv.Itoa(took), "event_kind": "search"})
+	case n < 9:
+		return newRecord(h, "elasticsearch", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("[%s] now throttling indexing: numMergesInFlight=%d, maxNumMerges=%d", idx, 4+r.Intn(4), 5),
+			map[string]string{"index": idx, "event_kind": "throttle"})
+	default:
+		return newRecord(h, "elasticsearch", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("[gc][old][%d][%d] duration [%dms], collections [1]/[%ds]", r.Intn(90000), r.Intn(400), 400+r.Intn(2200), 1+r.Intn(3)),
+			map[string]string{"index": idx, "event_kind": "gc"})
+	}
+}
+
+func kubeletRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	pod := pick(r, k8sPods)
+	ns := "shop"
+	switch n := r.Intn(12); {
+	case n < 6:
+		return newRecord(h, "kubelet", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("SyncLoop (PLEG): %q, event: &pod.LifecycleEvent{ID:%q, Type:\"ContainerStarted\"}", ns+"/"+pod, pod),
+			map[string]string{"pod": pod, "namespace": ns, "event_kind": "sync"})
+	case n < 9:
+		return newRecord(h, "kubelet", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Probe succeeded for pod %q container %q: HTTP 200 in %dms", ns+"/"+pod, strings.Split(pod, "-")[0], 2+r.Intn(40)),
+			map[string]string{"pod": pod, "namespace": ns, "event_kind": "probe"})
+	case n < 11:
+		return newRecord(h, "kubelet", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("Readiness probe failed for pod %q: Get \"http://10.42.0.%d:8080/healthz\": context deadline exceeded", ns+"/"+pod, r.Intn(250)),
+			map[string]string{"pod": pod, "namespace": ns, "event_kind": "probe_failed"})
+	default:
+		return newRecord(h, "kubelet", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("Failed to pull image \"registry.shop.example/%s:v1.4.%d\": rpc error: code = DeadlineExceeded", strings.Split(pod, "-")[0], r.Intn(40)),
+			map[string]string{"pod": pod, "namespace": ns, "event_kind": "image_pull_failed"})
+	}
+}
+
+func jenkinsRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	job := pick(r, jenkinsJobs)
+	build := 400 + r.Intn(900)
+	dur := 40 + r.Intn(900)
+	if r.Float64() < 0.12 {
+		return newRecord(h, "jenkins", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("%s #%d completed: FAILURE after %ds", job, build, dur),
+			map[string]string{"job": job, "build": strconv.Itoa(build), "result": "FAILURE", "duration_s": strconv.Itoa(dur)})
+	}
+	return newRecord(h, "jenkins", t, logsv1.Severity_SEVERITY_INFO,
+		fmt.Sprintf("%s #%d completed: SUCCESS after %ds", job, build, dur),
+		map[string]string{"job": job, "build": strconv.Itoa(build), "result": "SUCCESS", "duration_s": strconv.Itoa(dur)})
+}
+
+func vaultRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	path := pick(r, vaultPaths)
+	if c.bruteForce && r.Float64() < 0.25 {
+		return newRecord(h, "vault", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("authentication failed: path=%s remote_address=%s error=\"permission denied\"", path, pick(r, attackerIPs)),
+			map[string]string{"vault_path": path, "event_kind": "auth_failed", "remote_addr": pick(r, attackerIPs)})
+	}
+	return newRecord(h, "vault", t, logsv1.Severity_SEVERITY_INFO,
+		fmt.Sprintf("request: operation=read path=%s remote_address=10.0.2.%d ttl=%dm", path, r.Intn(250), 30+r.Intn(700)),
+		map[string]string{"vault_path": path, "event_kind": "read"})
+}
+
+func ldapRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	dn := pick(r, ldapBinds)
+	if c.bruteForce && r.Float64() < 0.3 {
+		return newRecord(h, "openldap", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("conn=%d op=1 RESULT tag=97 err=49 text=Invalid credentials dn=%q", 10000+r.Intn(90000), dn),
+			map[string]string{"bind_dn": dn, "ldap_err": "49", "event_kind": "bind_failed", "remote_addr": pick(r, attackerIPs)})
+	}
+	switch r.Intn(3) {
+	case 0:
+		return newRecord(h, "openldap", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("conn=%d op=0 BIND dn=%q method=128 mech=SIMPLE ssf=256", 10000+r.Intn(90000), dn),
+			map[string]string{"bind_dn": dn, "event_kind": "bind"})
+	default:
+		return newRecord(h, "openldap", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("conn=%d op=2 SEARCH RESULT tag=101 err=0 nentries=%d text=", 10000+r.Intn(90000), r.Intn(60)),
+			map[string]string{"bind_dn": dn, "event_kind": "search"})
+	}
+}
+
+func bindRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	q := dnsQueries[r.Intn(len(dnsQueries))]
+	src := pick(r, clientIPs)
+	if q.name == "unknown.shop.example" {
+		return newRecord(h, "bind", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("client @0x%x %s#%d (%s): query: %s IN %s + (10.0.5.2) NXDOMAIN", r.Int63(), src, 30000+r.Intn(30000), q.name, q.name, q.qtype),
+			map[string]string{"dns_name": q.name, "dns_type": q.qtype, "dns_rcode": "NXDOMAIN", "remote_addr": src})
+	}
+	return newRecord(h, "bind", t, logsv1.Severity_SEVERITY_INFO,
+		fmt.Sprintf("client @0x%x %s#%d (%s): query: %s IN %s + (10.0.5.2)", r.Int63(), src, 30000+r.Intn(30000), q.name, q.name, q.qtype),
+		map[string]string{"dns_name": q.name, "dns_type": q.qtype, "dns_rcode": "NOERROR", "remote_addr": src})
+}
+
+func squidRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	sites := []string{"github.com", "registry.npmjs.org", "download.docker.com", "ubuntu.com", "ads.example.net"}
+	site := pick(r, sites)
+	action, status := "TCP_MISS/200", 200
+	sev := logsv1.Severity_SEVERITY_INFO
+	if site == "ads.example.net" {
+		action, status, sev = "TCP_DENIED/403", 403, logsv1.Severity_SEVERITY_WARN
+	}
+	src := "10.0.3." + strconv.Itoa(r.Intn(250))
+	return newRecord(h, "squid", t, sev,
+		fmt.Sprintf("%d.%03d %6d %s %s %d CONNECT %s:443 - HIER_DIRECT/%s -",
+			t.Unix(), r.Intn(1000), r.Intn(4000), src, action, 500+r.Intn(90000), site, site),
+		map[string]string{"proxy_action": action, "status": strconv.Itoa(status), "dest_host": site, "remote_addr": src})
+}
+
+func backupRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	job := pick(r, []string{"nightly-fileserver", "nightly-postgres", "weekly-archive", "hourly-mssql"})
+	gb := 4 + r.Float64()*90
+	if r.Float64() < 0.1 {
+		return newRecord(h, "backup", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("Job %s terminated with errors: cannot open source \"%s\": permission denied", job, pick(r, shares)),
+			map[string]string{"backup_job": job, "result": "error", "event_kind": "backup"})
+	}
+	return newRecord(h, "backup", t, logsv1.Severity_SEVERITY_INFO,
+		fmt.Sprintf("Job %s OK: %.1f GB written in %d min, dedup ratio %.2fx", job, gb, 8+r.Intn(90), 1.8+r.Float64()*3),
+		map[string]string{"backup_job": job, "result": "ok", "bytes_gb": fmt.Sprintf("%.1f", gb), "event_kind": "backup"})
+}
+
+func iisRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	method, path, route, slow := pickRoute(r)
+	site := pick(r, iisSites)
+	status := proxyStatus(r, c, slow)
+	took := int(float64(6+r.Intn(400)) * c.latencyMult)
+	src := pick(r, clientIPs)
+	sev := logsv1.Severity_SEVERITY_INFO
+	if status >= 500 {
+		sev = logsv1.Severity_SEVERITY_ERROR
+	}
+	// W3C extended log format, which is what IIS actually writes.
+	return newRecord(h, "iis", t, sev,
+		fmt.Sprintf("%s %s %s %s - 443 - %s HTTP/2.0 %s - - %s %d 0 0 %d",
+			t.Format("2006-01-02"), t.Format("15:04:05"), h.ipv4, method, src,
+			pick(r, userAgents), path, status, took),
+		map[string]string{
+			"site": site, "status": strconv.Itoa(status), "method": method,
+			"route": route, "duration_ms": strconv.Itoa(took), "remote_addr": src,
+		})
+}
+
+func mssqlRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	db := pick(r, mssqlDatabases)
+	switch n := r.Intn(12); {
+	case n < 5:
+		return newRecord(h, "mssql", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Login succeeded for user 'SHOP\\svc_erp'. Connection made using Windows authentication. [CLIENT: %s]", pick(r, clientIPs)),
+			map[string]string{"db": db, "event_kind": "login"})
+	case n < 8:
+		ms := int(float64(200+r.Intn(9000)) * c.latencyMult)
+		sev := logsv1.Severity_SEVERITY_INFO
+		if ms > 5000 {
+			sev = logsv1.Severity_SEVERITY_WARN
+		}
+		return newRecord(h, "mssql", t, sev,
+			fmt.Sprintf("SQL Server has encountered %d occurrence(s) of I/O requests taking longer than %d seconds to complete on file [F:\\Data\\%s.mdf]", 1+r.Intn(4), 15, db),
+			map[string]string{"db": db, "duration_ms": strconv.Itoa(ms), "event_kind": "io_stall"})
+	case n < 10:
+		return newRecord(h, "mssql", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("Log was backed up. Database: %s, creation date(time): 2026/01/14(03:11:02), first LSN: %d:%d:1", db, 40+r.Intn(60), r.Intn(90000)),
+			map[string]string{"db": db, "event_kind": "log_backup"})
+	case n < 11:
+		return newRecord(h, "mssql", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("Transaction (Process ID %d) was deadlocked on lock resources with another process and has been chosen as the deadlock victim in database %s", 50+r.Intn(200), db),
+			map[string]string{"db": db, "event_kind": "deadlock"})
+	default:
+		return newRecord(h, "mssql", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("Login failed for user 'SHOP\\svc_report'. Reason: Password did not match that for the login provided. [CLIENT: %s]", pick(r, attackerIPs)),
+			map[string]string{"db": db, "event_kind": "login_failed", "remote_addr": pick(r, attackerIPs)})
+	}
+}
+
+func exchangeRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	box := pick(r, []string{"jcoffey@shop.example", "orders@shop.example", "support@shop.example", "hr@shop.example"})
+	switch n := r.Intn(10); {
+	case n < 5:
+		return newRecord(h, "exchange", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("RECEIVE SMTP 250 2.6.0 message queued for delivery to %s, size %d bytes", box, 2000+r.Intn(200000)),
+			map[string]string{"mailbox": box, "event_kind": "receive"})
+	case n < 8:
+		return newRecord(h, "exchange", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("SEND SMTP 250 2.0.0 delivered to remote host for %s in %dms", box, 40+r.Intn(2000)),
+			map[string]string{"mailbox": box, "event_kind": "send"})
+	case n < 9:
+		return newRecord(h, "exchange", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("AGENT SpamFilter rejected message for %s: SCL 7 above threshold", box),
+			map[string]string{"mailbox": box, "event_kind": "spam_reject"})
+	default:
+		return newRecord(h, "exchange", t, logsv1.Severity_SEVERITY_ERROR,
+			fmt.Sprintf("FAIL 550 5.1.1 User unknown: no mailbox by that name at shop.example (recipient %s)", box),
+			map[string]string{"mailbox": box, "event_kind": "bounce"})
+	}
+}
+
+func smbRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogRecord {
+	share := pick(r, shares)
+	user := pick(r, []string{"SHOP\\jcoffey", "SHOP\\svc_backup", "SHOP\\finance_ro", "SHOP\\eng_rw"})
+	switch n := r.Intn(10); {
+	case n < 7:
+		return newRecord(h, "smb", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("A network share object was accessed. Share Name: %s  Account Name: %s  Access: ReadData", share, user),
+			map[string]string{"share": share, "winevt.target_user": user, "event_kind": "share_access"})
+	case n < 9:
+		return newRecord(h, "smb", t, logsv1.Severity_SEVERITY_INFO,
+			fmt.Sprintf("File written on share %s by %s (%d bytes)", share, user, 1000+r.Intn(9000000)),
+			map[string]string{"share": share, "winevt.target_user": user, "event_kind": "share_write"})
+	default:
+		return newRecord(h, "smb", t, logsv1.Severity_SEVERITY_WARN,
+			fmt.Sprintf("A network share object access was denied. Share Name: %s  Account Name: %s", share, user),
+			map[string]string{"share": share, "winevt.target_user": user, "event_kind": "share_denied"})
 	}
 }
