@@ -171,6 +171,55 @@ genuinely different execution model to the one in
 rather than a feature. Recorded here so the omission is visible, not
 because it is next.
 
+## The third axis: AI that runs on your hardware
+
+Cost is the argument against Splunk. Control is the argument against
+Cribl. AI is the third, and it is the one where the difference is not a
+feature comparison but a deployment model.
+
+**Plain-English querying is an option today and stays one.** Phase 7
+shipped it: ask a question in English, get a structured query back with
+an explanation, editable before it runs. It is an alternative to writing
+the query, never a replacement for being able to — every generated query
+compiles through the same Phase 2 IR and executor as a hand-written one,
+with the same tenant scoping, cost guardrails and audit logging. The
+model suggests; it does not get a private path to the data.
+
+**AI-assisted analysis and explanation is the end state, and is not
+built.** Query authoring answers "how do I ask this". The harder and more
+valuable question is "what does this mean" — reading a result set and
+saying what changed, explaining why an alert fired and what preceded it,
+summarising an incident from the records around it, and pointing at what
+to look at next. That is the goal; today only the authoring half exists.
+
+**Local is the non-negotiable part.** The default deployment runs a
+self-hosted model through Ollama — `qwen2.5-coder`, Apache-2.0 weights
+chosen deliberately so Phase 6's licence work survives contact with the
+model. A cloud adapter exists, opt-in and off by default. Nothing leaves
+the network to make any of this work.
+
+That is the whole position, and it is worth stating as such rather than
+as a feature bullet:
+
+| | Where the model runs | What leaves your network |
+|---|---|---|
+| Splunk | vendor's cloud | your queries and results |
+| Cairn OBS | your hardware, by default | nothing |
+
+Logs are the most sensitive unstructured data most organisations hold —
+credentials in stack traces, customer identifiers, internal hostnames and
+topology. An assistant that reads them is either running where the data
+already is, or it is a data-egress decision wearing a helpful interface.
+Anyone who has had to answer that question in a procurement review knows
+which of those is easier to sign off.
+
+This also constrains what can be promised. A 7B model on a customer's own
+hardware will not match a frontier model on raw capability, and the
+honest claim is not that it is as clever — it is that it is good enough
+at a bounded task, and that it runs somewhere you control. Analysis
+features have to be designed to that budget rather than assuming
+somebody's API is one call away.
+
 ## Roadmap consequence
 
 Phases 0–7 built the destination. This is a second axis, not a
@@ -201,3 +250,11 @@ agent's distro-agnostic constraint, and the Splunk positioning. Cairn OBS
 is still a destination first. Everything above is what it takes to also
 be the road — and to be honest with anyone who asks why they would run
 both.
+
+Nor does it change the AI goal, which predates this document and outlasts
+it: plain-English querying stays an option, AI-assisted analysis and
+explanation is where it is going, and both run on a local model by
+default. That is not a phase to be finished and ticked off — it is a
+property the product keeps, and any pipeline feature above that would
+require shipping data to somebody else's model to be useful has answered
+the wrong question.

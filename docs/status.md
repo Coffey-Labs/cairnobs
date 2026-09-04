@@ -24,6 +24,7 @@ verification procedure and its results.
 | 9 | Routing: multiple destinations and delivery guarantees | Planned |
 | 10 | Archive and replay, retention and tiering | Planned |
 | 11 | Fleet: central agent configuration | Planned |
+| — | AI-assisted analysis and explanation, on a local model | End-state goal |
 
 Phases 8-11 are a second axis rather than a continuation of the first:
 0-7 built the destination, and those four build the road to it. The
