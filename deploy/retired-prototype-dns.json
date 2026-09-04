@@ -1,0 +1,64 @@
+{
+  "_comment": [
+    "The proto.cairnobs.org DNS records as they stood before the prototype was",
+    "retired and sentry.ttlhost.com (172.239.44.244) was decommissioned on",
+    "2026-09-04. Kept so the environment can be recreated exactly rather than",
+    "guessed at when development restarts.",
+    "",
+    "All five were grey-cloud (proxied: false) and must stay that way if",
+    "recreated: Cloudflare's proxy cannot carry the gRPC/mTLS log ingest on",
+    "4317, and the web names were served directly. ttl 1 means 'auto' (300s).",
+    "",
+    "Only the IP changes on recreation -- point them at whichever host runs",
+    "the stack.",
+    "",
+    "Do NOT plan on reusing the old mTLS material. The server certificate and",
+    "its CA (O=Sentry Dev CA) lived on the destroyed host, and the six field",
+    "agents were uninstalled on 2026-09-04 along with their client certs.",
+    "The next prototype is a fresh build: it will issue its own CA, and the",
+    "agents get re-enrolled against that. These names are the only thing here",
+    "worth carrying forward.",
+    "",
+    "Recreate with:",
+    "  cf api POST /zones/{zone_id}/dns_records  (one per entry in 'records')"
+  ],
+  "zone": "cairnobs.org",
+  "zone_id": "6fdcc8d9a6acd148e82bf13a31b4262d",
+  "retired_on": "2026-09-04",
+  "was_hosted_on": {
+    "name": "sentry.ttlhost.com",
+    "ipv4": "172.239.44.244",
+    "ipv6": "2600:3c06::2000:1ff:fe1d:39ef"
+  },
+  "records": [
+    { "name": "proto.cairnobs.org",          "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false },
+    { "name": "proto.cairnobs.org",          "type": "AAAA", "content": "2600:3c06::2000:1ff:fe1d:39ef", "ttl": 1, "proxied": false },
+    { "name": "api.proto.cairnobs.org",      "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false },
+    { "name": "alerting.proto.cairnobs.org", "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false },
+    { "name": "ingest.proto.cairnobs.org",   "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false }
+  ],
+
+  "_legacy_comment": [
+    "The sentry.ttlhost.com names below were the environment's original",
+    "addresses, kept as 301 redirects to the matching proto.cairnobs.org",
+    "names after the rename. Web_Host's three agents were still configured",
+    "against ingest.sentry.ttlhost.com when the host was retired.",
+    "",
+    "Deleted 2026-09-04 in the same pass, once the Linode was destroyed:",
+    "five records aimed at a released IP are a subdomain-takeover path, not",
+    "untidiness -- the address can be reallocated to anyone.",
+    "",
+    "Probably NOT worth recreating. If the prototype comes back, point the",
+    "agents at the proto.cairnobs.org names directly and let this second set",
+    "of names stay retired."
+  ],
+  "legacy_zone": "ttlhost.com",
+  "legacy_zone_id": "5cee639876c4024cfe3c9602bf0e393a",
+  "legacy_records": [
+    { "name": "sentry.ttlhost.com",           "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false },
+    { "name": "sentry.ttlhost.com",           "type": "AAAA", "content": "2600:3c06::2000:1ff:fe1d:39ef", "ttl": 1, "proxied": false },
+    { "name": "api.sentry.ttlhost.com",       "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false },
+    { "name": "alerting.sentry.ttlhost.com",  "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false },
+    { "name": "ingest.sentry.ttlhost.com",    "type": "A",    "content": "172.239.44.244",                 "ttl": 1, "proxied": false }
+  ]
+}
