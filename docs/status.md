@@ -16,20 +16,41 @@ verification procedure and its results.
 | 1 | Windows Event Log + journald, SQL and full-text paths | Shipped |
 | 2 | Unified query language across both stores | Shipped |
 | 3 | Dashboards, alert rules, notification delivery | Shipped |
-| 4 | RBAC, tenant isolation, audit logging, per-tenant ClickHouse | **In progress** |
+| 4 | RBAC, tenant isolation, audit logging, per-tenant ClickHouse | Shipped |
 | 5 | Frontend redesign and design system | Shipped |
 | 6 | License compliance audit and remediation | Shipped |
 | 7 | AI-assisted query authoring | Shipped |
 
 **Known verification gaps**, carried forward rather than buried:
 
-- **Phase 4 is not shipped.** Built and unit-tested, but the environment
-  lost Docker/database access partway through; only the audit-logging
-  guarantees were confirmed against a live database.
+- **The prototype environment no longer exists.** `proto.cairnobs.org` and
+  the VPS under it were retired on 2026-09-04; the mTLS CA, the server
+  certificate and six enrolled field agents went with the host. Nothing
+  below is *un*-verified because of that — the verification happened while
+  the environment stood, and the per-phase runbooks are the record of it —
+  but none of it can be re-run today without building a prototype again.
+  The DNS was preserved for exactly that, in
+  [`/deploy/retired-prototype-dns.json`](../deploy/retired-prototype-dns.json);
+  the certificates deliberately were not, and a new prototype issues its own.
+- **The live demo does not cover Phase 4.** `demo.cairnobs.org` runs, and is
+  rebuilt nightly from [`/hack/demo-seed`](../hack/demo-seed), but it runs
+  `COMPOSE_PROFILES=single-tenant` — so it exercises the OSS path and says
+  nothing about RBAC, tenant isolation or per-tenant ClickHouse. Do not read
+  a healthy demo as evidence for Phase 4.
+- **Phase 4's SSO has been tried against one IdP, not two.** OIDC and SAML
+  were both verified end to end against a real Auth0 developer tenant,
+  browser round trips included. A second, independent IdP has never been
+  tried, and no production-grade cluster has run this — the Kubernetes
+  verification was against a local `kind` cluster.
 - **The Windows agent path has never run on real Windows** — no Windows
   toolchain existed in the build environment. See `/agent/README.md`.
-- **Terraform coverage is partial** — see `/terraform/README.md` for the
-  full accounting.
+- **Terraform coverage is partial**, and the cause is an API gap rather than
+  a Terraform one: `alerting` exposes no `PUT /rules/{id}` or
+  `PUT /targets/{id}`, and neither `rulestore.Store` nor `notifystore.Store`
+  has an `Update` method to wire one to. So alert rules and notification
+  targets are create/destroy only, and changing any attribute destroys and
+  recreates — which also resets `alert_state` and delivery-log continuity.
+  See `/terraform/README.md` for the full accounting.
 
 ## What "done" looks like for Phase 0 (MVP)
 
@@ -128,19 +149,30 @@ Non-goals for this phase (same discipline as every phase so far):
 
 ## What "done" looks like for Phase 4
 
-**Status: in progress, not shipped.** RBAC enforcement (`api/authz`), the
+**Status: shipped.** Every control this phase defines has been verified
+against real infrastructure at least once, and the residual gaps are named
+in the list at the top of this file rather than here. What follows is the
+build record; `/docs/phase-4-runbook.md`'s "Verification status" section is
+the authoritative account of what was run and what it found — including the
+eight real bugs that only live infrastructure could have surfaced, six from
+the docker-compose stack and two from the Helm chart's first real install.
+
+Read that runbook rather than re-running it: the environment it describes
+was retired on 2026-09-04.
+
+RBAC enforcement (`api/authz`), the
 `alerting`↔`api` service-identity credential, tenant-scoped dashboards,
 append-only audit logging, and — since the second pass on this phase —
 real per-tenant ClickHouse provisioning and query routing
 (`enterprise/internal/tenantprovision`, `enterprise/internal/chrunner`,
 wired into a new `enterprise/cmd/enterprise-api` binary alongside plain
-`api/cmd/api`) are all built and tested — real integration tests exist
-for the ClickHouse pieces, but this environment lost Docker/database
-access partway through the phase, so only the audit-logging guarantees
-were actually confirmed against a live database; the rest is untested
-beyond "compiles, and skips cleanly when no live database is
-configured" (see `/docs/phase-4-runbook.md`'s verification-status
-section). Human SSO login is now built for both protocols
+`api/cmd/api`) are all built and tested. Docker access was lost partway
+through this phase and later came back, and the ClickHouse pieces were
+then run for real: a docker-compose stack with real ClickHouse and
+Postgres, real `enterprise-auth`/`enterprise-api`/`enterprise-ingest`
+containers and two provisioned tenants (`acme`, `globex`), which closed
+every "written but never run" gap on that side and found six real bugs
+doing it (see `/docs/phase-4-runbook.md`'s verification-status section). Human SSO login is now built for both protocols
 (`enterprise/internal/loginhandler`: `GET /auth/oidc/login` +
 `GET /auth/oidc/callback`, and `GET /auth/saml/login` +
 `POST /auth/saml/acs` via `enterprise/internal/saml`'s `crewjam/saml`
