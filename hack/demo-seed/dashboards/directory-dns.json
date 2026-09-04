@@ -49,19 +49,20 @@
       "sort_order": 3
     },
     {
-      "title": "DNS query volume by type",
-      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['dns_type'] AS dns_type, count(*) AS count FROM logs WHERE service = 'bind' GROUP BY bucket, dns_type ORDER BY bucket",
-      "viz_type": "line",
+      "title": "DNS queries by type and result",
+      "query": "service=bind | stats count by dns_type, dns_rcode | sort -count",
+      "viz_type": "bar",
       "position_x": 0,
       "position_y": 3,
       "width": 12,
       "height": 5,
       "viz_config": {
-        "x_column": "bucket",
+        "x_column": "dns_type",
         "value_column": "count",
-        "series_column": "dns_type"
+        "series_column": "dns_rcode",
+        "stacked": "true"
       },
-      "query_language": "sql",
+      "query_language": "spl",
       "sort_order": 4
     },
     {

@@ -77,6 +77,24 @@ SVCTOKEN=$(echo "$EVALUATOR_PASSWORD" | ./bin/cairnobsctl users login alerting-e
 printf 'COMPOSE_PROFILES=single-tenant\nALERTING_SERVICE_TOKEN=%s\n' "$SVCTOKEN" > .env && chmod 600 .env
 docker compose up -d alerting
 
+# Wait for it to answer before posting to it. Writing the .env above
+# changes alerting's environment, so `up -d` *recreates* the container
+# rather than leaving it running -- and the next line used to curl it
+# immediately. On a busy box that lost the race: curl returned nothing,
+# `json.load` got an empty string, and the reset died after `down -v` had
+# already wiped everything, leaving the public demo up, empty, and with
+# the simulator still stopped because the unit only restarts at the very
+# end. Cheap to wait; expensive not to.
+echo "waiting for alerting to answer..."
+for i in $(seq 1 60); do
+  if curl -sf -o /dev/null http://localhost:8081/healthz; then break; fi
+  if [ "$i" -eq 60 ]; then
+    echo "!! alerting did not become ready within 60s -- stopping before the seed" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
 # Three notification targets so the Alerts page shows rules routed to
 # different destinations, the way a real deployment splits ops/security/
 # platform. The URLs are deliberately inert placeholders on a domain
