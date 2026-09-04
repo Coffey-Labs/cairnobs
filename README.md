@@ -122,17 +122,24 @@ Full per-phase detail is in [`docs/status.md`](docs/status.md).
 | 1 | Windows Event Log + journald, SQL and full-text paths | Shipped |
 | 2 | Unified query language across both stores | Shipped |
 | 3 | Dashboards, alert rules, notification delivery | Shipped |
-| 4 | RBAC, tenant isolation, audit logging, per-tenant ClickHouse | **In progress** |
+| 4 | RBAC, tenant isolation, audit logging, per-tenant ClickHouse | Shipped |
 | 5 | Frontend redesign and design system | Shipped |
 | 6 | License compliance audit and remediation | Shipped |
 | 7 | AI-assisted query authoring | Shipped |
 
-**Phase 4 is not shipped.** The code is built and tested, but the environment
-lost Docker and database access partway through, so only the audit-logging
-guarantees were confirmed against a live database. The rest compiles and skips
-cleanly when no live database is configured, but is otherwise unverified — see
-the verification-status section of
+**Phase 4 is shipped, and the environment that proved it is gone.** Every
+control the phase defines was verified against real infrastructure at least
+once — a docker-compose stack with real ClickHouse and Postgres, a local `kind`
+cluster, and both SSO protocols against a real Auth0 tenant — finding eight
+bugs that no amount of Docker-free testing could have caught. The prototype
+VPS was retired on 2026-09-04, so that verification is a record rather than
+something you can re-run: see
 [`docs/phase-4-runbook.md`](docs/phase-4-runbook.md).
+
+Two limits worth stating plainly. SSO has been tried against one IdP, not two,
+and no production-grade cluster has run this. And `demo.cairnobs.org` is **not**
+evidence for any of it — the demo runs the single-tenant profile, so it
+exercises the OSS path and says nothing about RBAC or tenant isolation.
 
 The Windows agent code (`EvtSubscribe`, ETW, service registration) has never
 run on real Windows — no Windows toolchain existed in the build environment.
