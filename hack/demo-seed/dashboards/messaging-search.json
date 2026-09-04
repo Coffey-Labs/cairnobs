@@ -49,19 +49,19 @@
       "sort_order": 3
     },
     {
-      "title": "Queue depth over time",
-      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['queue'] AS queue, max(toFloat64OrZero(attributes['queue_depth'])) AS depth FROM logs WHERE service = 'rabbitmq' GROUP BY bucket, queue ORDER BY bucket",
-      "viz_type": "line",
+      "title": "Queue depth by queue and host",
+      "query": "service=rabbitmq | stats max(queue_depth) as max_depth by queue, host | sort -max_depth",
+      "viz_type": "bar",
       "position_x": 0,
       "position_y": 3,
       "width": 12,
       "height": 5,
       "viz_config": {
-        "x_column": "bucket",
-        "value_column": "depth",
-        "series_column": "queue"
+        "x_column": "queue",
+        "value_column": "max_depth",
+        "series_column": "host"
       },
-      "query_language": "sql",
+      "query_language": "spl",
       "sort_order": 4
     },
     {

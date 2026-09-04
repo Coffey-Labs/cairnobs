@@ -49,19 +49,20 @@
       "sort_order": 3
     },
     {
-      "title": "IIS traffic by site",
-      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['site'] AS site, count(*) AS count FROM logs WHERE service = 'iis' GROUP BY bucket, site ORDER BY bucket",
-      "viz_type": "line",
+      "title": "IIS requests by site and host",
+      "query": "service=iis | stats count by site, host | sort -count",
+      "viz_type": "bar",
       "position_x": 0,
       "position_y": 3,
       "width": 12,
       "height": 5,
       "viz_config": {
-        "x_column": "bucket",
+        "x_column": "site",
         "value_column": "count",
-        "series_column": "site"
+        "series_column": "host",
+        "stacked": "true"
       },
-      "query_language": "sql",
+      "query_language": "spl",
       "sort_order": 4
     },
     {
