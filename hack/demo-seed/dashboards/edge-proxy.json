@@ -49,19 +49,20 @@
       "sort_order": 3
     },
     {
-      "title": "Requests per backend over time",
-      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['backend'] AS backend, count(*) AS count FROM logs WHERE service = 'haproxy' GROUP BY bucket, backend ORDER BY bucket",
-      "viz_type": "line",
+      "title": "Requests per backend, by balancer",
+      "query": "service=haproxy | stats count by backend, host | sort -count",
+      "viz_type": "bar",
       "position_x": 0,
       "position_y": 3,
       "width": 12,
       "height": 5,
       "viz_config": {
-        "x_column": "bucket",
+        "x_column": "backend",
         "value_column": "count",
-        "series_column": "backend"
+        "series_column": "host",
+        "stacked": "true"
       },
-      "query_language": "sql",
+      "query_language": "spl",
       "sort_order": 4
     },
     {
