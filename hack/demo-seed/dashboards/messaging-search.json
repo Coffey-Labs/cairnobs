@@ -1,0 +1,109 @@
+{
+  "name": "Messaging and search",
+  "description": "Queue depth, consumer health and the search cluster beside them",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Queue events",
+      "query": "service=rabbitmq | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Memory alarms",
+      "query": "service=rabbitmq event_kind=alarm | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Searches",
+      "query": "service=elasticsearch event_kind=search | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Long GC pauses",
+      "query": "service=elasticsearch event_kind=gc | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Queue depth over time",
+      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['queue'] AS queue, max(toFloat64OrZero(attributes['queue_depth'])) AS depth FROM logs WHERE service = 'rabbitmq' GROUP BY bucket, queue ORDER BY bucket",
+      "viz_type": "line",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "bucket",
+        "value_column": "depth",
+        "series_column": "queue"
+      },
+      "query_language": "sql",
+      "sort_order": 4
+    },
+    {
+      "title": "Deepest queues",
+      "query": "service=rabbitmq | stats max(queue_depth) as max_depth by queue | sort -max_depth",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "queue",
+        "value_column": "max_depth"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Search latency by index",
+      "query": "service=elasticsearch event_kind=search | stats avg(duration_ms) as avg_ms by index | sort -avg_ms",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "index",
+        "value_column": "avg_ms"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Indexing throttles and GC",
+      "query": "service=elasticsearch event_kind!=search | sort -timestamp | head 25 | fields timestamp, host, index, event_kind, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

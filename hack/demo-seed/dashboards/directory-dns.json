@@ -1,0 +1,109 @@
+{
+  "name": "Directory and DNS",
+  "description": "LDAP binds, DNS resolution and the domain controllers underneath both",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "DNS queries",
+      "query": "service=bind | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "NXDOMAIN",
+      "query": "service=bind dns_rcode=NXDOMAIN | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "LDAP binds",
+      "query": "service=openldap event_kind=bind | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Failed binds",
+      "query": "service=openldap event_kind=bind_failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "DNS query volume by type",
+      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['dns_type'] AS dns_type, count(*) AS count FROM logs WHERE service = 'bind' GROUP BY bucket, dns_type ORDER BY bucket",
+      "viz_type": "line",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "bucket",
+        "value_column": "count",
+        "series_column": "dns_type"
+      },
+      "query_language": "sql",
+      "sort_order": 4
+    },
+    {
+      "title": "Most queried names",
+      "query": "service=bind | stats count by dns_name | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "dns_name",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Bind DNs by activity",
+      "query": "service=openldap | stats count by bind_dn | sort -count",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "bind_dn",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Failed LDAP binds",
+      "query": "service=openldap event_kind=bind_failed | sort -timestamp | head 25 | fields timestamp, host, bind_dn, remote_addr, message",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}
