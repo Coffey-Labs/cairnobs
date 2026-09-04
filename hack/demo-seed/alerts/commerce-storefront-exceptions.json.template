@@ -1,0 +1,13 @@
+{
+  "name": "Storefront exceptions",
+  "description": "Uncaught exceptions in the storefront code. Every one of these is a customer looking at an error page mid-purchase",
+  "query": "event_kind=exception earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 3,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 14
+}

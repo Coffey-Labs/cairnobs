@@ -1,0 +1,11 @@
+{
+  "name": "Orders have stopped",
+  "description": "No order has been placed on either storefront for fifteen minutes. At this estate's volume that is not a quiet spell, it is an outage somebody has not noticed yet",
+  "query": "event_kind=order earliest=-15m",
+  "query_language": "spl",
+  "condition_type": "absence",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true
+}

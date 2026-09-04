@@ -1,0 +1,13 @@
+{
+  "name": "LDAP bind failures",
+  "description": "Failed LDAP binds are essentially zero in normal operation, so any run of them is worth waking up for",
+  "query": "service=openldap event_kind=bind_failed earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_SECURITY__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 5
+}

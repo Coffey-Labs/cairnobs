@@ -1,0 +1,139 @@
+{
+  "name": "Fleet health",
+  "description": "Fifty hosts at a glance: who is loud, who is quiet, and who is running hot",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Log events",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Errors",
+      "query": "severity=ERROR | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Warnings",
+      "query": "severity=WARN | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Fatal",
+      "query": "severity=FATAL | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Log volume by host",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count by host | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 6,
+      "viz_config": {
+        "x_column": "host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 4
+    },
+    {
+      "title": "Busiest CPU",
+      "query": "cairnobs.metrics=true | stats avg(cpu_percent) as avg_cpu by host | sort -avg_cpu | head 12",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 9,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "host",
+        "value_column": "avg_cpu"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Fullest disks",
+      "query": "cairnobs.metrics=true | stats max(disk_used_bytes) as used by host | sort -used | head 12",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 9,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "host",
+        "value_column": "used"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Severity mix by service",
+      "query": "cairnobs.metrics!=true | stats count by service, severity",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 14,
+      "width": 12,
+      "height": 6,
+      "viz_config": {
+        "x_column": "service",
+        "y_column": "severity",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    },
+    {
+      "title": "Agents by version",
+      "query": "cairnobs.heartbeat=true | stats count by agent_version | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 20,
+      "width": 6,
+      "height": 4,
+      "viz_config": {
+        "x_column": "agent_version",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 8
+    },
+    {
+      "title": "Quietest hosts",
+      "query": "cairnobs.metrics!=true cairnobs.heartbeat!=true | stats count by host | sort count | head 10",
+      "viz_type": "table",
+      "position_x": 6,
+      "position_y": 20,
+      "width": 6,
+      "height": 4,
+      "query_language": "spl",
+      "sort_order": 9
+    }
+  ]
+}

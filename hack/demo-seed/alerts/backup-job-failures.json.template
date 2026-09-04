@@ -1,0 +1,13 @@
+{
+  "name": "Backup job failures",
+  "description": "Backup jobs are erroring. Any run of these is worth attention: the failure is silent until the restore",
+  "query": "service=backup result=error earliest=-1h | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 4
+}

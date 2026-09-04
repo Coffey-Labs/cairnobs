@@ -1,0 +1,13 @@
+{
+  "name": "Exchange bounce rate",
+  "description": "Mail is bouncing above the usual rate: a directory out of step with reality, or a distribution list pointing at deleted mailboxes",
+  "query": "service=exchange event_kind=bounce earliest=-15m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 20
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Products out of stock",
+  "description": "Repeated attempts to buy items with nothing on hand: the catalogue and the warehouse disagree, and customers are finding out first",
+  "query": "service=magento event_kind=out_of_stock earliest=-30m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 300,
+  "for_minutes": 0,
+  "notification_target_id": "__TARGET_OPS__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 40
+}

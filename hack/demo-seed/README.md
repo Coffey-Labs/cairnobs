@@ -25,9 +25,9 @@ other code.
 
 ## The fleet
 
-Fifty hosts, shaped like an estate rather than a stack: thirty-one Linux,
-eighteen Windows, and one Linux host whose agent is gone so the Agents
-page has something stale to show.
+Fifty-four hosts, shaped like an estate rather than a stack: thirty-five
+Linux, eighteen Windows, and one Linux host whose agent is gone so the
+Agents page has something stale to show.
 
 | Tier | Hosts |
 |---|---|
@@ -35,6 +35,7 @@ page has something stale to show.
 | Application | `api-01`–`04`, `worker-01`–`03`, `arm-build-01` (aarch64) |
 | Data | `db-01/02` (Postgres), `mysql-01`, `cache-01/02` (Redis), `mq-01/02` (RabbitMQ), `search-01/02` (Elasticsearch) |
 | Platform | `k8s-node-01`–`03` (kubelet), `ci-01` (Jenkins), `vault-01`, `ldap-01` (OpenLDAP), `dns-01` (BIND), `backup-01`, `mail-01` |
+| Commerce | `shop-mag-01/02` (Magento), `shop-woo-01` (WooCommerce), `pay-01` (payment gateway) |
 | Windows | `DC-01/02`, `IIS-01`–`03`, `WIN-SQL-01/02`, `EXCH-01/02`, `FS-01/02`, `RDS-01/02`, `WIN-APP-01/02`, `PRINT-01`, `WSUS-01`, `SCCM-01` |
 
 The Windows share is the point of the proportions. An enterprise looking
@@ -49,9 +50,19 @@ Two hosts carry stories the alert rules fire on and must not be moved:
 and goes quiet, which is what `agent-legacy-01-unavailable` catches.
 `api-02` is the host the outage window hits.
 
-**Volume.** Fifty hosts generate about 316 records/minute at
+**Two storefronts, on purpose.** Magento and WooCommerce write about the
+same events differently, so a commerce panel that groups by service rather
+than assuming one shape is the honest way to build one. Both feed `pay-01`,
+whose authorisations carry amount, gateway and decline reason -- which is
+what lets the Commerce and Payments dashboards answer revenue, average
+order value, funnel drop-off and why a card was refused out of the same log
+lines the operators are already reading. Declines rise during the seeded
+outage window alongside the 5xx rate, because the dependency trouble that
+fails requests fails authorisations too.
+
+**Volume.** Fifty-four hosts generate about 346 records/minute at
 `-rate-scale 1`, and the nightly reset runs at `RATE_SCALE=0.5` over a
-168-hour backfill -- roughly **1.9M records per reset**, against about
+168-hour backfill -- roughly **2.2M records per reset**, against about
 0.5M when the fleet was twelve hosts. ClickHouse is untroubled by that;
 what it costs is reset time and disk on the demo box. `RATE_SCALE` is the
 lever if either becomes a problem, and lowering it keeps every host and

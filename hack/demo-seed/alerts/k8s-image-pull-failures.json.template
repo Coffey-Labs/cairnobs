@@ -1,0 +1,13 @@
+{
+  "name": "Kubernetes image pulls failing",
+  "description": "Nodes cannot pull images: a registry outage, an expired pull secret, or a tag that was deleted out from under a deployment",
+  "query": "service=kubelet event_kind=image_pull_failed earliest=-10m | stats count",
+  "query_language": "spl",
+  "condition_type": "threshold",
+  "eval_interval_seconds": 60,
+  "for_minutes": 5,
+  "notification_target_id": "__TARGET_PLATFORM__",
+  "enabled": true,
+  "comparator": "gt",
+  "threshold_value": 30
+}
