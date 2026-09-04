@@ -15,6 +15,13 @@ Open-core, Kubernetes-native centralized logging platform. Compete with
 Splunk on features; win on cost-per-GB, a modern language stack, and
 multi-tenant RBAC that's actually honest about its guarantees.
 
+Positioned against Cribl as well as Splunk — the destination and the road
+are separate claims with separate consequences, worked through in
+[positioning.md](positioning.md). The pipeline controls that implies
+(processing, routing to third-party destinations, archive and replay, fleet
+configuration) are not built, and the data path today has exactly one
+destination.
+
 ## Component map
 
 ```
@@ -264,8 +271,11 @@ defense against application-layer bugs, not an operational control.
 
 ## Open questions for you to resolve
 
-- Retention/TTL policy for the ClickHouse `logs` table — not specified yet,
-  deferred until storage sizing is a real concern.
+- Retention/TTL policy for the ClickHouse `logs` table — not specified yet.
+  This was deferred until storage sizing became a real concern; Phase 10's
+  archive/replay work is where it stops being deferrable, since tiering to
+  object storage and reading back from it is the same question asked from
+  the other side. See [positioning.md](positioning.md).
 - Exact OTel log schema field mapping (which OTel resource/log attributes
   map to which ClickHouse columns) — Phase 0 uses a minimal subset
   (timestamp, host, service, severity, message, attributes map); full

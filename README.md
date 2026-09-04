@@ -10,7 +10,9 @@
 <p align="center">
   Open-core, Kubernetes-native log aggregation and observability.<br>
   Built to match Splunk on capability while winning on cost-per-GB,<br>
-  with honest multi-tenant RBAC and a modern language stack.
+  with honest multi-tenant RBAC and a modern language stack.<br>
+  Positioned against Cribl too — see <a href="docs/positioning.md">positioning</a>
+  for why that is a different claim, and what it means we still have to build.
 </p>
 
 <p align="center">
@@ -113,8 +115,25 @@ Kubernetes deployment via the Helm chart in [`deploy/`](deploy/README.md).
 
 ## Status
 
-Built in phases; each has a runbook in `docs/` recording how it was verified.
-Full per-phase detail is in [`docs/status.md`](docs/status.md).
+**Read this before the table.** Cairn OBS is pre-1.0 and has not run a
+production workload. What it has done is get built in phases, with each phase
+verified against real infrastructure and a runbook in `docs/` recording
+exactly how — including what the verification found, and what it could not
+reach.
+
+That last part is why the caveats below this table are unusually long. They
+are disclosed, not discovered: nothing here is called *shipped* on the
+strength of passing tests alone, and anything that has only been proven in one
+environment, against one vendor, or not at all says so by name. A shorter
+Status section would not mean a more finished product, only a less careful
+one. If you are evaluating this, the honest summary is that the capability is
+real and the operational mileage is not there yet — every phase has run
+somewhere, none of it has run anywhere for a year under load.
+
+Full per-phase detail, including the verification record for each, is in
+[`docs/status.md`](docs/status.md). Where the project is going, and why it is
+positioned against both Splunk and Cribl, is in
+[`docs/positioning.md`](docs/positioning.md).
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -151,6 +170,27 @@ full CRUD, while alert rules and notification targets are create/destroy only,
 because `alerting` exposes no `PUT /rules/{id}` or `PUT /targets/{id}` to
 update against. Tenant and RBAC resources are disclosed future work —
 [`terraform/README.md`](terraform/README.md) accounts for exactly what exists.
+
+### What would close the gap to production-ready
+
+Named here so the list above reads as a plan rather than an apology, and so
+anyone evaluating this knows what they would be waiting for:
+
+1. **A second identity provider.** SSO works against Auth0 for both OIDC and
+   SAML; one vendor is an implementation, two is a standard.
+2. **A real cluster.** The Helm chart has been installed against a local
+   `kind` cluster, which proves the manifests and nothing about scheduling,
+   storage classes or node failure.
+3. **The Windows agent on Windows.** The code is written and reviewed; no
+   Windows toolchain has ever compiled it, let alone run it.
+4. **Sustained load.** Every phase was verified functionally. Nothing here has
+   been run at volume for long enough to find the failures that only show up
+   after a week.
+5. **Somebody else's data.** Every deployment so far has been ours.
+
+None of that is research; it is time on real infrastructure. It is also
+exactly the list a pilot deployment would work through, which is the honest
+next step for this project rather than a 1.0 tag.
 
 ## Contributing
 
