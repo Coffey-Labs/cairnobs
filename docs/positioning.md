@@ -243,6 +243,53 @@ everything and helps nobody. Archive depends on both. Fleet is last
 because it manages configuration the earlier phases define — building it
 first would mean managing settings that do not exist yet.
 
+## The names already argue the case
+
+Worth writing down because it is useful, not only because it is neat: the
+three names describe three different relationships to not knowing where
+you are.
+
+**Splunk** is from *spelunking* — the founders have always said so. Caving.
+You go down into the dark with a lamp and feel your way along, and what
+you find depends on how good you are at feeling around. That is an
+honest description of search-driven investigation: powerful in expert
+hands, and unforgiving if you do not already know roughly what you are
+looking for. Every organisation that has watched its Splunk expertise
+walk out of the door with one person knows the shape of that.
+
+**Cribl** is from *cribble* — to sift, from Latin *cribrum*, a sieve. The
+same root gives engraving its *manière criblée*, the dotted ground
+punched into a plate to make a texture. Both senses land in the same
+place: the data is a medium to be worked, sifted, thinned and textured on
+its way through. Which is exactly what the product is, and it is a name
+about the *material*, not about where anyone is going.
+
+**A cairn** is a stack of stones on open ground. It exists where the path
+is not obvious — above the treeline, across moorland, over bare rock —
+and it does one job: tell you that someone came this way before, and that
+this is the way. No cave, no lamp, no sifting. Daylight, an open trail,
+and a marker.
+
+Three properties of a cairn matter here, and each corresponds to
+something this project actually does rather than something it merely
+claims:
+
+- **It is left by whoever went first, for whoever comes next.** That is
+  the runbook culture: every phase carries a document recording what was
+  actually run and what it found, including the parts that failed. The
+  value is not the stone, it is that somebody bothered.
+- **Anyone passing can add to it.** A cairn grows by contribution and
+  belongs to nobody. AGPLv3 throughout, no commercial-license wall, and
+  an egress path that helps your data leave if you want it to.
+- **You can see it from a distance, in daylight.** Nothing about it is a
+  dark hole you feel your way along. The query language is legible, the
+  AI explains rather than divines, and the plan — including what has not
+  been proven — is written down where anyone can read it.
+
+The contrast is not a slogan and should not be turned into one. It is a
+reason the positioning holds together: an open trail with markers on it is
+a genuinely different proposition to a cave, and to a sieve.
+
 ## What this does not change
 
 The storage/query split in `/docs/architecture.md`, the licence, the
