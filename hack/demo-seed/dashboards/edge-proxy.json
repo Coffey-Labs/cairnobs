@@ -1,0 +1,114 @@
+{
+  "name": "Edge and proxy",
+  "description": "Load balancers, reverse proxies and the outbound web proxy -- what reaches the estate and what leaves it",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Balanced requests",
+      "query": "service=haproxy | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Backend 5xx",
+      "query": "service=haproxy | where status>=500 | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Proxy denials",
+      "query": "service=squid proxy_action=\"TCP_DENIED/403\" | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Slowest backend (avg ms)",
+      "query": "service=haproxy | stats avg(duration_ms) as avg_ms by backend | sort -avg_ms | head 1",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Requests per backend over time",
+      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['backend'] AS backend, count(*) AS count FROM logs WHERE service = 'haproxy' GROUP BY bucket, backend ORDER BY bucket",
+      "viz_type": "line",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "bucket",
+        "value_column": "count",
+        "series_column": "backend"
+      },
+      "query_language": "sql",
+      "sort_order": 4
+    },
+    {
+      "title": "Backend latency",
+      "query": "service=haproxy | stats avg(duration_ms) as avg_ms by backend | sort -avg_ms",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "backend",
+        "value_column": "avg_ms"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Outbound destinations",
+      "query": "service=squid | stats count by dest_host | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "dest_host",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Status by backend",
+      "query": "service=haproxy | stats count by backend, status",
+      "viz_type": "heatmap",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "backend",
+        "y_column": "status",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    }
+  ]
+}

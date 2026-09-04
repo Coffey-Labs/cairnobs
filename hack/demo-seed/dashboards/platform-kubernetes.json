@@ -1,0 +1,137 @@
+{
+  "name": "Platform: Kubernetes, CI and secrets",
+  "description": "The tier everything else runs on -- node health, pod churn, build outcomes and secret access",
+  "default_earliest": "-24h",
+  "default_latest": "now",
+  "panels": [
+    {
+      "title": "Pod events",
+      "query": "service=kubelet | stats count",
+      "viz_type": "single_stat",
+      "position_x": 0,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 0
+    },
+    {
+      "title": "Probe failures",
+      "query": "service=kubelet event_kind=probe_failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 3,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 1
+    },
+    {
+      "title": "Image pull failures",
+      "query": "service=kubelet event_kind=image_pull_failed | stats count",
+      "viz_type": "single_stat",
+      "position_x": 6,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 2
+    },
+    {
+      "title": "Failed builds",
+      "query": "service=jenkins result=FAILURE | stats count",
+      "viz_type": "single_stat",
+      "position_x": 9,
+      "position_y": 0,
+      "width": 3,
+      "height": 3,
+      "query_language": "spl",
+      "sort_order": 3
+    },
+    {
+      "title": "Kubelet events over time",
+      "query": "SELECT toStartOfInterval(timestamp, INTERVAL 30 MINUTE) AS bucket, attributes['event_kind'] AS event_kind, count(*) AS count FROM logs WHERE service = 'kubelet' GROUP BY bucket, event_kind ORDER BY bucket",
+      "viz_type": "line",
+      "position_x": 0,
+      "position_y": 3,
+      "width": 12,
+      "height": 5,
+      "viz_config": {
+        "x_column": "bucket",
+        "value_column": "count",
+        "series_column": "event_kind"
+      },
+      "query_language": "sql",
+      "sort_order": 4
+    },
+    {
+      "title": "Busiest pods",
+      "query": "service=kubelet | stats count by pod | sort -count | head 10",
+      "viz_type": "top_n",
+      "position_x": 0,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "label_column": "pod",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 5
+    },
+    {
+      "title": "Build outcomes by job",
+      "query": "service=jenkins | stats count by job, result",
+      "viz_type": "bar",
+      "position_x": 6,
+      "position_y": 8,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "job",
+        "value_column": "count",
+        "series_column": "result",
+        "stacked": "true"
+      },
+      "query_language": "spl",
+      "sort_order": 6
+    },
+    {
+      "title": "Secret reads by path",
+      "query": "service=vault event_kind=read | stats count by vault_path | sort -count",
+      "viz_type": "bar",
+      "position_x": 0,
+      "position_y": 13,
+      "width": 6,
+      "height": 5,
+      "viz_config": {
+        "x_column": "vault_path",
+        "value_column": "count"
+      },
+      "query_language": "spl",
+      "sort_order": 7
+    },
+    {
+      "title": "Vault authentication failures",
+      "query": "service=vault event_kind=auth_failed | sort -timestamp | head 25 | fields timestamp, host, vault_path, remote_addr, message",
+      "viz_type": "table",
+      "position_x": 6,
+      "position_y": 13,
+      "width": 6,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 8
+    },
+    {
+      "title": "Recent build failures",
+      "query": "service=jenkins result=FAILURE | sort -timestamp | head 25 | fields timestamp, host, job, build, duration_s",
+      "viz_type": "table",
+      "position_x": 0,
+      "position_y": 18,
+      "width": 12,
+      "height": 5,
+      "query_language": "spl",
+      "sort_order": 9
+    }
+  ]
+}
