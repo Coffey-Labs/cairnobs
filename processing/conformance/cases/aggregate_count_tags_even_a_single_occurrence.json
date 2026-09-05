@@ -1,0 +1,40 @@
+{
+  "name": "aggregate_count_tags_even_a_single_occurrence",
+  "description": "A window that saw one record is still tagged with count 1. Emitting a bare record here would make cairnobs.count present only sometimes, which silently breaks summing it on quiet windows.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "aggregate_count",
+          "window_ms": 5000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "lonely",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "lonely",
+      "attributes": {
+        "cairnobs.aggregated": "true",
+        "cairnobs.count": "1",
+        "cairnobs.window_start_unix_nano": "0",
+        "cairnobs.window_last_unix_nano": "0"
+      }
+    }
+  ]
+}

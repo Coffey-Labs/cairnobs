@@ -1,0 +1,69 @@
+{
+  "name": "aggregate_count_closes_a_window_on_a_later_record",
+  "description": "A record at or past window_start + window_ms flushes the pending aggregate first, then opens the next window. The second window is flushed at end of stream.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "aggregate_count",
+          "window_ms": 5000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 1000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 6000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {
+        "cairnobs.aggregated": "true",
+        "cairnobs.count": "2",
+        "cairnobs.window_start_unix_nano": "0",
+        "cairnobs.window_last_unix_nano": "1000000000"
+      }
+    },
+    {
+      "timestamp_unix_nano": 6000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {
+        "cairnobs.aggregated": "true",
+        "cairnobs.count": "1",
+        "cairnobs.window_start_unix_nano": "6000000000",
+        "cairnobs.window_last_unix_nano": "6000000000"
+      }
+    }
+  ]
+}

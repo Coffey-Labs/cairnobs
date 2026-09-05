@@ -1,0 +1,70 @@
+{
+  "name": "aggregate_count_leaves_non_matching_records_alone",
+  "description": "Records the rule did not match pass through untouched and in order, interleaved with the aggregate the matched ones produced.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "service",
+          "op": "eq",
+          "value": "noisy"
+        }
+      ],
+      "actions": [
+        {
+          "action": "aggregate_count",
+          "window_ms": 5000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 100000000,
+      "host": "h1",
+      "service": "quiet",
+      "severity": "SEVERITY_INFO",
+      "message": "keep me",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 200000000,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 100000000,
+      "host": "h1",
+      "service": "quiet",
+      "severity": "SEVERITY_INFO",
+      "message": "keep me",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "n",
+      "attributes": {
+        "cairnobs.aggregated": "true",
+        "cairnobs.count": "2",
+        "cairnobs.window_start_unix_nano": "0",
+        "cairnobs.window_last_unix_nano": "200000000"
+      }
+    }
+  ]
+}

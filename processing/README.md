@@ -113,6 +113,7 @@ no later action or rule runs.
 | `parse_regex` | `field`, `pattern` (named captures become attributes) |
 | `sample` | `keep_one_in` |
 | `suppress_duplicates` | `window_ms`, optional `key_fields` |
+| `aggregate_count` | `window_ms`, optional `key_fields` |
 
 Rules are evaluated in the order given. Every matching rule's actions
 apply, to the record as left by the rule before it.
@@ -150,14 +151,40 @@ close enough at volume.
 the same output regardless of how fast the test runs. This also means the
 behaviour is correct under backfill, which wall-clock windows are not.
 
-### `aggregate_count` has no cases, deliberately
+### `aggregate_count` emits a record that never existed
 
-The design lists it as an action but does not answer what it emits, or
-what a query that is not expecting a synthetic record sees. Writing cases
-now would invent that answer by accident and freeze it. It stays
-unspecified until that question is decided —
-[`phase-8-processing-design.md`](../docs/phase-8-processing-design.md)
-open question 5.
+The only action whose output is not the input with edits, so its shape is
+worth stating here too. It emits the window's **first record, unchanged**,
+plus four attributes:
+
+| attribute | value |
+|---|---|
+| `cairnobs.aggregated` | `"true"` |
+| `cairnobs.count` | records collapsed, as a string |
+| `cairnobs.window_start_unix_nano` | first record's timestamp |
+| `cairnobs.window_last_unix_nano` | last contributing record's timestamp |
+
+This follows the convention the agent already uses for heartbeat and
+host-metrics records: an ordinary record distinguished by a
+`cairnobs.*` attribute, rather than a second synthetic-record mechanism.
+
+Three behaviours the cases pin, each of which is easy to get wrong:
+
+- **It tags even when the count is one.** Otherwise `cairnobs.count` is
+  present only sometimes, and summing it silently breaks on quiet
+  windows.
+- **`window_last` is observed, never `window_start + window_ms`.** A
+  window flushed early must not claim an end that never happened.
+- **A pending window flushes at end of stream.** Record-time windows can
+  only be closed by a later record, so without this a burst that stops
+  leaves its aggregate unemitted indefinitely. In production the batch
+  flush provides the same trigger, which makes `window_ms` a maximum
+  rather than a guarantee.
+
+**`stats count` undercounts aggregated data.** The correct idiom is
+summing `cairnobs.count`. Whether the query layer should do that
+automatically is a Phase 2 question, recorded in
+[`phase-8-processing-design.md`](../docs/phase-8-processing-design.md).
 
 ## Adding a case
 

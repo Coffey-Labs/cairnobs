@@ -311,6 +311,95 @@ only thing standing between a bad rule and every host at once. That
 makes open question 1 below considerably less optional than it looked
 when it was written.
 
+## Decision 5: what `aggregate_count` emits
+
+Deferred twice because it is the only action whose output is not simply
+the input with edits. It emits a record that never existed.
+
+**Shape: the window's first record, tagged.** The codebase already has a
+convention for synthetic records and this follows it rather than
+inventing a second one — heartbeat and host-metrics records are ordinary
+`LogRecord`s distinguished by a `cairnobs.heartbeat` /
+`cairnobs.metrics` attribute, with `service` left as the agent's real
+service. So an aggregate is the first record of its window, unchanged,
+plus:
+
+| attribute | value |
+|---|---|
+| `cairnobs.aggregated` | `"true"` |
+| `cairnobs.count` | number of records collapsed, as a string |
+| `cairnobs.window_start_unix_nano` | timestamp of the first record |
+| `cairnobs.window_last_unix_nano` | timestamp of the last contributing record |
+
+Keeping the first record intact means a human reading the line sees a
+real example of what was collapsed, not a summary someone invented.
+
+**It tags even when the count is one.** Emitting a bare record for a
+window that happened to see one event would be tidier and is wrong: it
+makes `cairnobs.count` present only sometimes, so the correct way to
+count aggregated data silently breaks on quiet windows. Uniformity beats
+tidiness here.
+
+**Window bounds are observed, not nominal.** `window_last` is the last
+record that actually contributed, never `window_start + window_ms`. A
+window flushed early must not claim an end that never happened.
+
+### When it emits, and the problem that hides here
+
+Windows are measured on record time (see `/processing/README.md`), which
+means a window can only be *closed* by a later record arriving. That is
+fine for `suppress_duplicates`, which emits the first record immediately
+and drops the rest — nothing is ever pending.
+
+`aggregate_count` holds state. If the matching stream goes quiet, the
+pending aggregate has nothing to close it and sits unemitted, possibly
+for hours. That is data loss dressed as latency, and it is the real
+reason this action was harder to specify than the other nine.
+
+So emission has two triggers:
+
+1. **A later matching record** with a timestamp at or past
+   `window_start + window_ms`. The pending aggregate is emitted first,
+   then that record opens the next window.
+2. **End of stream** — agent shutdown, and in production the batch flush
+   interval. Anything pending is emitted.
+
+**The cost, stated plainly:** trigger 2 is wall-clock in production,
+which means `window_ms` is a *maximum*, not a guarantee, and one logical
+burst can produce more than one aggregate record if a flush lands in the
+middle. Consumers must treat aggregates as additive — which they already
+must, since a burst can span windows anyway.
+
+The conformance corpus defines trigger 2 as an implicit flush after the
+last input, which keeps the cases deterministic while describing real
+behaviour.
+
+### The consequence nobody should discover in production
+
+**`stats count` undercounts aggregated data**, silently. A hundred
+events become one record, so every existing dashboard panel and alert
+rule that counts rows changes meaning the moment a rule starts
+aggregating the data behind it.
+
+Nothing in this design fixes that, and pretending otherwise would be
+worse than saying it. Three things follow:
+
+- The correct idiom over aggregated data is summing `cairnobs.count`,
+  not counting rows. That belongs in the query language reference before
+  this action ships.
+- Teaching the query layer to do it automatically — making `count`
+  mean "sum `cairnobs.count` where present" — is a Phase 2 change to the
+  IR and executor, not a Phase 8 change, and it is the right long-term
+  answer. **Open**, and it should be decided before aggregation is
+  recommended for any data an alert already watches.
+- It is another argument for aggregation staying opt-in per rule, which
+  it is.
+
+**Choosing between the two dedup actions:** `suppress_duplicates` is
+cheaper and loses the count; `aggregate_count` preserves it and creates
+a synthetic record with all of the above attached. Use suppress when the
+repetition is noise, aggregate when the rate is the signal.
+
 ## Where each rule runs
 
 Agent-side is the default and the cheaper place: data reduced before the
@@ -360,7 +449,10 @@ release cannot do that, it is not finished.
 3. ~~Canary rollout?~~ **Decided 2026-09-05:** no gate, ship without it;
    a canary is follow-up work.
 4. Explicit per-rule placement, or platform-decided?
-5. Does `aggregate_count` emit a synthetic record, and if so what does it
-   look like to a query that is not expecting one? This design does not
-   answer that and should before anyone builds it. The conformance
-   validator refuses any case using it until it is answered.
+5. ~~What does `aggregate_count` emit?~~ **Decided 2026-09-05:** the
+   window's first record tagged with `cairnobs.aggregated`,
+   `cairnobs.count` and observed window bounds — see Decision 5. It
+   raises one new question in its place: whether `stats count` should
+   learn to sum `cairnobs.count` automatically, which is a Phase 2
+   change to the IR rather than a Phase 8 one, and should be settled
+   before aggregation is pointed at data an alert already watches.

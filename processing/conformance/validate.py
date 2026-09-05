@@ -45,12 +45,15 @@ ACTIONS = {
     "parse_regex":         ({"field", "pattern"}, set()),
     "sample":              ({"keep_one_in"}, set()),
     "suppress_duplicates": ({"window_ms"}, {"key_fields"}),
+    "aggregate_count":     ({"window_ms"}, {"key_fields"}),
 }
 
-# Deliberately absent from ACTIONS. The design does not say what it emits
-# or what a query that is not expecting a synthetic record sees, so a
-# case using it would invent that answer and freeze it by accident.
-UNSPECIFIED_ACTIONS = {"aggregate_count"}
+# Actions the design names but does not yet specify the output of. A case
+# using one would invent that answer and freeze it by accident, so the
+# validator refuses them until the design says what they emit.
+# aggregate_count was here until 2026-09-05; see Decision 5 in
+# /docs/phase-8-processing-design.md.
+UNSPECIFIED_ACTIONS = set()
 
 
 def valid_field(name):
@@ -120,7 +123,7 @@ def check_action(a, where, err):
         n = a.get("keep_one_in")
         if not isinstance(n, int) or n < 1:
             err(f"{where}: keep_one_in must be an integer >= 1")
-    if name == "suppress_duplicates":
+    if name in ("suppress_duplicates", "aggregate_count"):
         w = a.get("window_ms")
         if not isinstance(w, int) or w < 1:
             err(f"{where}: window_ms must be an integer >= 1")
