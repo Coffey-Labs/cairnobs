@@ -1183,7 +1183,7 @@ func magentoRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.Log
 			map[string]string{
 				"event_kind": "order", "order_total": fmt.Sprintf("%.2f", total),
 				"order_items": strconv.Itoa(items), "sku": sku, "store_view": store,
-				"currency": "GBP", "payment_method": pick(r, paymentMethods),
+				"currency": "USD", "payment_method": pick(r, paymentMethods),
 			})
 	case n < 72:
 		s := skus[r.Intn(len(skus))]
@@ -1222,7 +1222,7 @@ func wooRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.LogReco
 			fmt.Sprintf("Order #%d status changed to %s (total %.2f, %d items)", 30000+r.Intn(9999), status, total, items),
 			map[string]string{
 				"event_kind": "order", "order_status": status, "order_total": fmt.Sprintf("%.2f", total),
-				"order_items": strconv.Itoa(items), "sku": sku, "currency": "GBP",
+				"order_items": strconv.Itoa(items), "sku": sku, "currency": "USD",
 				"payment_method": pick(r, paymentMethods),
 			})
 	case n < 58:
@@ -1268,30 +1268,30 @@ func paymentsRecord(h *host, t time.Time, r *rand.Rand, c conditions) *logsv1.Lo
 	case r.Float64() < declineRate:
 		code, text := pickDecline(r)
 		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_WARN,
-			fmt.Sprintf("authorization declined gateway=%s amount=%.2f currency=GBP reason=%s (%s) latency=%dms", gw, total, code, text, took),
+			fmt.Sprintf("authorization declined gateway=%s amount=%.2f currency=USD reason=%s (%s) latency=%dms", gw, total, code, text, took),
 			map[string]string{
 				"event_kind": "authorization", "auth_result": "declined", "gateway": gw,
 				"decline_reason": code, "amount": fmt.Sprintf("%.2f", total),
-				"currency": "GBP", "duration_ms": strconv.Itoa(took),
+				"currency": "USD", "duration_ms": strconv.Itoa(took),
 			})
 	case r.Float64() < 0.05:
 		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_INFO,
-			fmt.Sprintf("refund issued gateway=%s amount=%.2f currency=GBP reason=%s", gw, total/2, pick(r, []string{"customer_request", "item_returned", "duplicate_charge"})),
-			map[string]string{"event_kind": "refund", "gateway": gw, "amount": fmt.Sprintf("%.2f", total/2), "currency": "GBP"})
+			fmt.Sprintf("refund issued gateway=%s amount=%.2f currency=USD reason=%s", gw, total/2, pick(r, []string{"customer_request", "item_returned", "duplicate_charge"})),
+			map[string]string{"event_kind": "refund", "gateway": gw, "amount": fmt.Sprintf("%.2f", total/2), "currency": "USD"})
 	case r.Float64() < 0.02:
 		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_ERROR,
-			fmt.Sprintf("chargeback received gateway=%s amount=%.2f currency=GBP network_reason=fraud", gw, total),
-			map[string]string{"event_kind": "chargeback", "gateway": gw, "amount": fmt.Sprintf("%.2f", total), "currency": "GBP"})
+			fmt.Sprintf("chargeback received gateway=%s amount=%.2f currency=USD network_reason=fraud", gw, total),
+			map[string]string{"event_kind": "chargeback", "gateway": gw, "amount": fmt.Sprintf("%.2f", total), "currency": "USD"})
 	case r.Float64() < 0.10:
 		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_INFO,
-			fmt.Sprintf("3-D Secure challenge issued gateway=%s amount=%.2f currency=GBP", gw, total),
-			map[string]string{"event_kind": "3ds_challenge", "gateway": gw, "amount": fmt.Sprintf("%.2f", total), "currency": "GBP"})
+			fmt.Sprintf("3-D Secure challenge issued gateway=%s amount=%.2f currency=USD", gw, total),
+			map[string]string{"event_kind": "3ds_challenge", "gateway": gw, "amount": fmt.Sprintf("%.2f", total), "currency": "USD"})
 	default:
 		return newRecord(h, "payments", t, logsv1.Severity_SEVERITY_INFO,
-			fmt.Sprintf("authorization approved gateway=%s amount=%.2f currency=GBP latency=%dms", gw, total, took),
+			fmt.Sprintf("authorization approved gateway=%s amount=%.2f currency=USD latency=%dms", gw, total, took),
 			map[string]string{
 				"event_kind": "authorization", "auth_result": "approved", "gateway": gw,
-				"amount": fmt.Sprintf("%.2f", total), "currency": "GBP",
+				"amount": fmt.Sprintf("%.2f", total), "currency": "USD",
 				"duration_ms": strconv.Itoa(took),
 			})
 	}
