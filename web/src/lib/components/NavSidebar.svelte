@@ -42,9 +42,27 @@
 	});
 
 	let localSession: LocalSession | null = $state(null);
+	// Whether the server actually serves local auth, which is not the
+	// same question as whether this bundle was built with it enabled.
+	// api registers /auth/* only when LOCAL_AUTH_ENABLED is set AND
+	// ENTERPRISE_AUTH_URL is not (see cmd/api/main.go's authorizer
+	// switch), so getLocalSession's 'disabled' -- a 404 from
+	// /auth/session -- is the only trustworthy signal of which mode is
+	// live. Deciding from enterpriseAuthBase alone got this wrong:
+	// compose sets VITE_ENTERPRISE_AUTH_BASE_URL unconditionally so the
+	// tenant picker can exist, so that check was true even on a
+	// single-tenant deployment whose actual authenticator was local
+	// login, and the local block below could never render.
+	//
+	// null means "not yet known" -- neither block renders until the
+	// probe lands, rather than flashing the wrong one.
+	let localAuthAvailable: boolean | null = $state(localAuthEnabled ? null : false);
 	$effect(() => {
 		if (!localAuthEnabled) return;
-		getLocalSession().then((s) => (localSession = s === 'disabled' ? null : s));
+		getLocalSession().then((s) => {
+			localAuthAvailable = s !== 'disabled';
+			localSession = s === 'disabled' ? null : s;
+		});
 	});
 
 	// The Users nav item only ever makes sense for local-auth mode's
@@ -90,7 +108,23 @@
 		<button type="button" class="close-mobile" onclick={onCloseMobile} aria-label="Close menu">✕</button>
 	</div>
 
-	{#if enterpriseAuthBase}
+	{#if localAuthAvailable}
+		<div class="tenant">
+			{#if localSession}
+				<div class="tenant-pill">
+					<span class="dot" aria-hidden="true"></span>
+					<span class="tenant-name">{localSession.username}</span>
+					<span class="role">{localSession.role}</span>
+				</div>
+				<a class="switch" href="/account">Change password</a>
+				<button type="button" class="switch logout-btn" onclick={handleLogout} disabled={loggingOut}>
+					{loggingOut ? 'Signing out…' : 'Log out'}
+				</button>
+			{:else}
+				<a class="switch signin" href="/login">Sign in</a>
+			{/if}
+		</div>
+	{:else if localAuthAvailable === false && enterpriseAuthBase}
 		<div class="tenant">
 			{#if session}
 				<div class="tenant-pill">
@@ -102,18 +136,6 @@
 			{:else}
 				<a class="switch signin" href="{enterpriseAuthBase}/auth/oidc/login">Sign in</a>
 			{/if}
-		</div>
-	{:else if localAuthEnabled && localSession}
-		<div class="tenant">
-			<div class="tenant-pill">
-				<span class="dot" aria-hidden="true"></span>
-				<span class="tenant-name">{localSession.username}</span>
-				<span class="role">{localSession.role}</span>
-			</div>
-			<a class="switch" href="/account">Change password</a>
-			<button type="button" class="switch logout-btn" onclick={handleLogout} disabled={loggingOut}>
-				{loggingOut ? 'Signing out…' : 'Log out'}
-			</button>
 		</div>
 	{/if}
 
