@@ -1,0 +1,48 @@
+# Turns on local username/password login, which docker-compose.yml
+# deliberately leaves off: a plain `docker compose up` has no
+# authentication at all, and the Phase 0-3 runbooks' bare curls against
+# /query depend on that staying true.
+#
+# Usage -- both commands need both -f flags:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local-auth.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.local-auth.yml run --rm api -seed-admin
+#
+# The second prints a generated password once. See /docs/local-login.md.
+#
+# The four settings below have to agree with each other, and three of
+# the four are not obviously about login at all:
+#
+#   LOCAL_AUTH_ENABLED        registers /auth/* on api, and makes both
+#                             api and alerting swap WithCORS for
+#                             WithCredentialedCORS
+#   CORS_ALLOWED_ORIGIN       must be a literal origin. The default is
+#                             "*", and a browser categorically refuses
+#                             to combine a credentialed fetch with a
+#                             wildcard origin -- so leaving the default
+#                             in place fails every request the moment
+#                             the cookie starts being sent
+#   LOCAL_AUTH_COOKIE_SECURE  the session cookie is Secure by default
+#                             and would not be stored over
+#                             http://localhost. Set it back to true for
+#                             anything served over HTTPS
+#   VITE_LOCAL_AUTH_ENABLED   a BUILD arg, so this needs --build, not a
+#                             restart. Without it the bundle never
+#                             sends credentials: 'include' and no
+#                             request ever carries the session
+services:
+  api:
+    environment:
+      LOCAL_AUTH_ENABLED: "true"
+      LOCAL_AUTH_COOKIE_SECURE: "false"
+      CORS_ALLOWED_ORIGIN: "http://localhost:3000"
+
+  alerting:
+    environment:
+      LOCAL_AUTH_ENABLED: "true"
+      CORS_ALLOWED_ORIGIN: "http://localhost:3000"
+
+  web:
+    build:
+      args:
+        VITE_LOCAL_AUTH_ENABLED: "true"
