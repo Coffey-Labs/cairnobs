@@ -117,6 +117,23 @@ no later action or rule runs.
 Rules are evaluated in the order given. Every matching rule's actions
 apply, to the record as left by the rule before it.
 
+### Regex: only what both engines support
+
+The agent uses `regex-lite` and ingest uses the full `regex` crate — a
+size decision, since the agent ships as a small static musl binary and
+the full crate is a megabyte-plus (see
+[`phase-8-processing-design.md`](../docs/phase-8-processing-design.md)).
+
+**Cases may only use syntax `regex-lite` accepts.** A case the agent
+cannot run is not a conformance case. In practice that means quantifiers,
+character classes, alternation and named captures are fine, while
+Unicode-aware classes and the richer Perl classes are not.
+
+Both engines are linear-time automata with no catastrophic backtracking,
+and both resolve alternation leftmost-first. The second is pinned by a
+case rather than trusted, because it is exactly the kind of semantic two
+independent implementations can differ on silently.
+
 ### Two determinism decisions the suite forces
 
 Conformance testing cannot assert on nondeterminism, so two things that

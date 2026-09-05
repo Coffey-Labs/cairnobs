@@ -135,16 +135,31 @@ against. This is a real piece of luck: the usual reason regex is unsafe
 in a pushed rule set does not apply here, in either language,
 without doing anything clever.
 
-**Open, and it has a cost:** the agent currently has **no regex
-dependency at all**. Adding the full `regex` crate is on the order of a
-megabyte-plus of binary, against a project whose agent pitch is a small
-static musl binary. `regex-lite` is far smaller and still linear-time,
-at the cost of some syntax and speed. Alternatively `parse_regex` and
-`mask` could be ingest-side only in v1, which sacrifices the "redact PII
-before it leaves the host" claim in `positioning.md` — the one thing
-that most needs to run on the agent. My recommendation is `regex-lite`
-on the agent and full `regex` at ingest, with the conformance suite
-(below) restricted to the syntax both accept.
+**Decided 2026-09-05: `regex-lite` on the agent, full `regex` at
+ingest, conformance corpus restricted to the syntax both accept.**
+
+The agent had no regex dependency at all, and the full `regex` crate is
+a megabyte-plus against an agent whose pitch is a small static musl
+binary. The rejected alternative was regex ingest-side only, which would
+have sacrificed the "redact PII before it leaves the host" claim in
+`positioning.md` — the one capability that most needs to be on the
+agent, and the reason on-host processing exists.
+
+Checked before committing to it rather than assumed: every pattern the
+corpus uses compiles and behaves under `regex-lite` — `{n}` quantifiers,
+alternation, named captures (`(?P<name>…)` yields the expected capture
+names), and `replace_all` replacing *every* occurrence, which is what
+`mask` requires and what a redaction that stopped at the first hit would
+get wrong.
+
+Both engines resolve alternation leftmost-first, so the two
+implementations agree on which branch wins. The corpus pins this rather
+than trusting it to stay true.
+
+The constraint this creates: **the corpus may only use syntax
+`regex-lite` supports.** Unicode-aware character classes and the richer
+Perl classes are out, in both implementations, because a case the agent
+cannot run is not a conformance case.
 
 ## Decision 3: one spec, two implementations, one conformance suite
 
@@ -188,13 +203,40 @@ right now". The existing `version` stamp and `applied_override_version`
 echo give rollout observability for free — you can already see which
 hosts have taken a rule set and which have not.
 
-**Open:** there is no staged rollout today. An edit goes to every agent
-matching it on their next check-in. For batch sizes that is fine; for
-executable rules it is the difference between breaking one host and
-breaking all of them. A canary mechanism — apply to N hosts, require
-them to report good, then widen — is not in the fleet design and would
-be new work. My view is that this is the single most important thing to
-add alongside rules, and it may deserve to gate the feature.
+**Decided 2026-09-05: no canary gate. Ship without staged rollout.**
+
+An edit reaches every matching agent on its next check-in. For
+executable rules that is the difference between breaking one host and
+breaking all of them, and this design recommended a canary might have to
+gate the feature. It does not.
+
+The risk is accepted rather than dismissed, and it is worth being exact
+about what carries it:
+
+- **Total evaluation** is meant to make a fatal rule set impossible to
+  express in the first place. That is the actual mitigation; everything
+  below is what happens when it fails.
+- **A fatal rule set crash-loops rather than strands**, because
+  overrides are never persisted. Every agent it reached keeps checking
+  in and can be corrected in one edit.
+- **Apply-then-verify** makes that self-healing rather than
+  operator-driven: an agent that crash-loops falls back to running
+  without rules on its own.
+- **`applied_override_version` already shows the blast radius.** An
+  operator can see how many hosts have taken a rule set, which is a
+  canary's observability without a canary's machinery.
+
+What is genuinely given up is the chance to *stop* a bad rollout partway
+through. Everything above shortens the outage; none of it prevents the
+rule reaching every host first. A canary remains the right thing to
+build later, and is now a candidate for a follow-up rather than a
+blocker.
+
+This also raises the stakes on the first item. Without a canary, total
+evaluation is not a nice property of a well-designed DSL — it is the
+only thing standing between a bad rule and every host at once. That
+makes open question 1 below considerably less optional than it looked
+when it was written.
 
 ## Where each rule runs
 
@@ -237,11 +279,14 @@ release cannot do that, it is not finished.
 ## Open questions, collected
 
 1. Is apply-then-verify in v1, or is total evaluation alone enough?
-2. `regex-lite` on the agent, full `regex` at ingest, and a conformance
-   suite limited to their common syntax — or regex ingest-side only,
-   giving up on-host redaction for v1?
-3. Does a canary rollout gate the feature, or ship after it?
+   **Harder to cut than it looked** — with no canary (decided below),
+   total evaluation is the only thing between a bad rule and every host.
+2. ~~Regex on the agent?~~ **Decided 2026-09-05:** `regex-lite` on the
+   agent, full `regex` at ingest, corpus limited to their common syntax.
+3. ~~Canary rollout?~~ **Decided 2026-09-05:** no gate, ship without it;
+   a canary is follow-up work.
 4. Explicit per-rule placement, or platform-decided?
 5. Does `aggregate_count` emit a synthetic record, and if so what does it
    look like to a query that is not expecting one? This design does not
-   answer that and should before anyone builds it.
+   answer that and should before anyone builds it. The conformance
+   validator refuses any case using it until it is answered.
