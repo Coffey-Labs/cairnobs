@@ -543,16 +543,49 @@ func TestCannotDeleteTheLastOwner(t *testing.T) {
 
 func TestCanDeleteAnOwnerWhenAnotherRemains(t *testing.T) {
 	fs := newFakeStore()
-	owner1 := mustCreateUser(t, fs, "admin1", "adminpass1", authz.RoleOwner)
+	mustCreateUser(t, fs, "admin1", "adminpass1", authz.RoleOwner)
+	// The caller deletes the *other* owner, not itself. This test used
+	// to sign in as admin1 and delete admin1, which passed only because
+	// self-deletion was unguarded -- it asserted the lockout as if it
+	// were the intended behaviour. What it means to test is that the
+	// last-owner guard doesn't fire while a second owner remains, and
+	// that holds without deleting the caller.
+	owner2 := mustCreateUser(t, fs, "admin2", "adminpass2", authz.RoleOwner)
+	_, mux := newTestHandler(t, fs)
+
+	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin1","password":"adminpass1"}`, nil)
+	cookie := sessionCookieFrom(login)
+
+	rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+owner2.ID, "", cookie)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("deleting one of two owners: status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// The lockout this guards against: an owner creates a second owner,
+// deletes their own account, and is signed out by the resulting
+// local_sessions cascade with no supported way back in unless they
+// already know the other account's password.
+func TestCannotDeleteYourOwnAccount(t *testing.T) {
+	fs := newFakeStore()
+	owner := mustCreateUser(t, fs, "admin1", "adminpass1", authz.RoleOwner)
+	// A second owner exists, so the last-owner guard is satisfied and
+	// cannot be what refuses this.
 	mustCreateUser(t, fs, "admin2", "adminpass2", authz.RoleOwner)
 	_, mux := newTestHandler(t, fs)
 
 	login := doRequest(t, mux, http.MethodPost, "/auth/login", `{"username":"admin1","password":"adminpass1"}`, nil)
 	cookie := sessionCookieFrom(login)
 
-	rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+owner1.ID, "", cookie)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("deleting one of two owners: status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	rec := doRequest(t, mux, http.MethodDelete, "/auth/users/"+owner.ID, "", cookie)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("deleting your own account: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Still signed in, and the account still exists.
+	sess := doRequest(t, mux, http.MethodGet, "/auth/session", "", cookie)
+	if sess.Code != http.StatusOK {
+		t.Fatalf("session after a refused self-delete: status = %d, want 200, body=%s", sess.Code, sess.Body.String())
 	}
 }
 

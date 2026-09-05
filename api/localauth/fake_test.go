@@ -129,10 +129,6 @@ func (f *fakeStore) SetDisplayTimezone(_ context.Context, userID, tz string) err
 	return nil
 }
 
-func (f *fakeStore) CountLocalUsers(_ context.Context) (int, error) {
-	return len(f.users), nil
-}
-
 func (f *fakeStore) CountUsersWithRole(_ context.Context, role authz.Role) (int, error) {
 	n := 0
 	for _, u := range f.users {
