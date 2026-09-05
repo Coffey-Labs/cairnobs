@@ -14,7 +14,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", 
 tonic = "0.12"
 prost = "0.13"
 
-tantivy = "0.22"
+tantivy = "0.26"
 rskafka = "0.6"
 
 serde = { version = "1", features = ["derive"] }

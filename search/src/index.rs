@@ -99,8 +99,13 @@ impl SearchIndex {
         let parsed_query = query_parser
             .parse_query(query)
             .context("parsing search query")?;
+        // tantivy 0.26 made the ordering explicit: TopDocs on its own no
+        // longer implements Collector, so a sort has to be chosen rather
+        // than defaulted into. order_by_score() is what 0.22's bare
+        // TopDocs did, so this preserves "most-relevant first" exactly
+        // rather than quietly changing result order.
         let top_docs = searcher
-            .search(&parsed_query, &TopDocs::with_limit(limit))
+            .search(&parsed_query, &TopDocs::with_limit(limit).order_by_score())
             .context("executing search")?;
 
         let mut ids = Vec::with_capacity(top_docs.len());
