@@ -1,0 +1,51 @@
+{
+  "name": "suppress_duplicates_emits_again_after_the_window",
+  "description": "A duplicate outside the window is a new first occurrence.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "suppress_duplicates",
+          "window_ms": 5000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "same",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 5000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "same",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "same",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 5000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "same",
+      "attributes": {}
+    }
+  ]
+}

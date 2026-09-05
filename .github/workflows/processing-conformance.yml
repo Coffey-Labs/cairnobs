@@ -1,0 +1,29 @@
+name: Processing conformance corpus
+
+# /processing/conformance/cases IS the Phase 8 rule language spec: two
+# implementations (Rust in the agent, Go at ingest) will each be held to
+# it, and two hand-written implementations of one language diverge
+# unless something shared pins them.
+#
+# Neither implementation exists yet, so nothing here executes rules.
+# What this checks is that the corpus stays well-formed in the meantime
+# -- known actions, addressable fields, compilable patterns, no case
+# quietly depending on record_id. Cheap insurance against the spec
+# rotting during the gap between writing it and building against it.
+#
+# Its own workflow, following web-routes.yml's reasoning: license-
+# compliance.yml already carries one unrelated check for historical
+# reasons, and that is not worth compounding.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  conformance-corpus:
+    name: processing conformance corpus check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 processing/conformance/validate.py

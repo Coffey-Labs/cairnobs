@@ -1,0 +1,39 @@
+{
+  "name": "parse_regex_named_captures_become_attributes",
+  "description": "Only named groups are lifted; unnamed groups are ignored.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "parse_regex",
+          "field": "message",
+          "pattern": "user=(?P<user>[a-z]+) code=(?P<code>[0-9]+)"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "user=alice code=403 extra",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "user=alice code=403 extra",
+      "attributes": {
+        "user": "alice",
+        "code": "403"
+      }
+    }
+  ]
+}

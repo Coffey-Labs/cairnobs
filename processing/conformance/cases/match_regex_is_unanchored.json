@@ -1,0 +1,56 @@
+{
+  "name": "match_regex_is_unanchored",
+  "description": "regex matches anywhere in the value unless the pattern anchors itself.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "regex",
+          "value": "conn(ect|ected)"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "client connected ok",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "disconnected",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "unrelated",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 3000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "unrelated",
+      "attributes": {}
+    }
+  ]
+}

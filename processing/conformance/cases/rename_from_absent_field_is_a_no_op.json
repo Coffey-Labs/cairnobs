@@ -1,0 +1,40 @@
+{
+  "name": "rename_from_absent_field_is_a_no_op",
+  "description": "Renaming something absent does not create an empty destination.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "rename",
+          "from": "attributes.old",
+          "to": "attributes.new"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "other": "v"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "other": "v"
+      }
+    }
+  ]
+}

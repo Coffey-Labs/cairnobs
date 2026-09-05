@@ -1,0 +1,99 @@
+{
+  "name": "sample_keeps_the_first_then_every_nth",
+  "description": "sample is counter-based, not random: keep_one_in 3 keeps records 1, 4, 7. Random sampling is untestable; a counter is testable and close enough at volume.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "sample",
+          "keep_one_in": 3
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m1",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m2",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m3",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 4000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m4",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 5000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m5",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 6000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m6",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 7000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m7",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m1",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 4000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m4",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 7000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "m7",
+      "attributes": {}
+    }
+  ]
+}

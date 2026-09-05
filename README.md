@@ -79,6 +79,7 @@ metadata/   PostgreSQL schema and migrations
 web/        SvelteKit frontend
 cli/        cairnobsctl
 proto/      gRPC service definitions
+processing/ Phase 8 rule language spec and conformance corpus (no implementation yet)
 terraform/  Terraform provider
 enterprise/ SSO, multi-tenancy, per-tenant provisioning (off the roadmap)
 deploy/     Helm charts and Kubernetes operator

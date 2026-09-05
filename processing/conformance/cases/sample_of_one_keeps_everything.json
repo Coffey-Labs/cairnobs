@@ -1,0 +1,51 @@
+{
+  "name": "sample_of_one_keeps_everything",
+  "description": "keep_one_in 1 is a no-op, not an off switch.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "sample",
+          "keep_one_in": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "b",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "b",
+      "attributes": {}
+    }
+  ]
+}

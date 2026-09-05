@@ -1,0 +1,37 @@
+{
+  "name": "mask_leaves_non_matching_records_untouched",
+  "description": "A mask whose pattern does not hit changes nothing at all.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "mask",
+          "field": "message",
+          "pattern": "[0-9]{16}",
+          "replacement": "[REDACTED]"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "nothing sensitive here",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "nothing sensitive here",
+      "attributes": {}
+    }
+  ]
+}

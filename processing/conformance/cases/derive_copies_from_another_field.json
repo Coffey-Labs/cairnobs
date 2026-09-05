@@ -1,0 +1,38 @@
+{
+  "name": "derive_copies_from_another_field",
+  "description": "derive with from_field copies, leaving the source in place.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.origin_host",
+          "from_field": "host"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "web-01",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "web-01",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "origin_host": "web-01"
+      }
+    }
+  ]
+}

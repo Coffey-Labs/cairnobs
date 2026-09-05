@@ -1,0 +1,48 @@
+{
+  "name": "match_on_severity_by_enum_name",
+  "description": "severity is matched by its enum name string, not its number.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "severity",
+          "op": "eq",
+          "value": "SEVERITY_DEBUG"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_DEBUG",
+      "message": "debug",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "info",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "info",
+      "attributes": {}
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "drop_fields_removes_only_named_attributes",
+  "description": "drop_fields removes the named attributes and leaves the rest alone.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "drop_fields",
+          "fields": [
+            "attributes.secret",
+            "attributes.gone"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "secret": "s",
+        "gone": "g",
+        "keep": "k"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ]
+}

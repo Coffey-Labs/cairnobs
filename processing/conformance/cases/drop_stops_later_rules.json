@@ -1,0 +1,60 @@
+{
+  "name": "drop_stops_later_rules",
+  "description": "A drop in rule 1 means rule 2 never sees the record.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "eq",
+          "value": "gone"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    },
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.seen",
+          "value": "yes"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "gone",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "stays",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "stays",
+      "attributes": {
+        "seen": "yes"
+      }
+    }
+  ]
+}

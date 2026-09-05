@@ -1,0 +1,50 @@
+{
+  "name": "match_absent_attribute_is_not_empty_string",
+  "description": "A missing attribute must not compare equal to \"\" -- absence and emptiness are different.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "attributes.tier",
+          "op": "eq",
+          "value": ""
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "missing",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "empty",
+      "attributes": {
+        "tier": ""
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "missing",
+      "attributes": {}
+    }
+  ]
+}

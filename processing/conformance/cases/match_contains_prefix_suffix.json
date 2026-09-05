@@ -1,0 +1,112 @@
+{
+  "name": "match_contains_prefix_suffix",
+  "description": "The three substring operators, each matching exactly one of three records.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "prefix",
+          "value": "start"
+        }
+      ],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.hit",
+          "value": "prefix"
+        }
+      ]
+    },
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "suffix",
+          "value": "end"
+        }
+      ],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.hit",
+          "value": "suffix"
+        }
+      ]
+    },
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "contains",
+          "value": "middle"
+        }
+      ],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.hit",
+          "value": "contains"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "start of line",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "line to end",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a middle b",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "start of line",
+      "attributes": {
+        "hit": "prefix"
+      }
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "line to end",
+      "attributes": {
+        "hit": "suffix"
+      }
+    },
+    {
+      "timestamp_unix_nano": 3000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a middle b",
+      "attributes": {
+        "hit": "contains"
+      }
+    }
+  ]
+}

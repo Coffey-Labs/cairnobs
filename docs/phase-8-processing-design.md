@@ -153,14 +153,23 @@ the same thing in both places" is the whole promise, and two
 hand-written implementations will diverge — not maybe, eventually.
 
 The deliverable that prevents it is a **language-neutral conformance
-suite**: a directory of cases, each an input record, a rule set, and the
-expected output record, in JSON. Both implementations run it in their own
-CI. A case is added for every bug found in either.
+suite**: a directory of cases, each a rule set, a sequence of input
+records, and the records expected out, in JSON. Both implementations run
+it in their own CI. A case is added for every bug found in either.
 
 This is the same discipline `/hack`'s fixtures already apply to ingest
 shapes, applied to semantics instead. It should be built **first**, not
 last — the suite is the specification, and the prose above is a summary
 of it.
+
+**Built:** [`/processing`](../processing/README.md), 38 cases. Nothing
+executes them yet, since neither implementation exists; a structural
+validator runs in CI so the corpus cannot rot in the meantime. Writing
+the cases first has already paid for itself — it forced two determinism
+decisions that prose had left vague (see that README's "Two determinism
+decisions the suite forces"), and it made the absence of an
+`aggregate_count` answer concrete enough that the validator rejects any
+case using it.
 
 ## Decision 4: distribution reuses the channel that exists
 

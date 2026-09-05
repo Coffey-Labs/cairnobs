@@ -1,0 +1,30 @@
+{
+  "name": "drop_stops_later_actions_in_the_same_rule",
+  "description": "Nothing after a drop runs; the record is gone, so a subsequent derive cannot resurrect it.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "drop"
+        },
+        {
+          "action": "derive",
+          "field": "attributes.late",
+          "value": "x"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    }
+  ],
+  "expect": []
+}

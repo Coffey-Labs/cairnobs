@@ -1,0 +1,43 @@
+{
+  "name": "keep_fields_is_an_attribute_allowlist",
+  "description": "keep_fields drops every attribute not named, and never touches top-level fields.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "keep_fields",
+          "fields": [
+            "attributes.keep"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h9",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "message survives",
+      "attributes": {
+        "keep": "k",
+        "a": "1",
+        "b": "2"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h9",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "message survives",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ]
+}
