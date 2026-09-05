@@ -111,6 +111,25 @@ cluster. Override per invocation:
 COMPOSE_PROFILES=enterprise docker compose up
 ```
 
+### Signing in
+
+A plain `docker compose up` has **no authentication** — every runbook in
+`docs/` verifies the pipeline with bare `curl` against `/query`, and those
+steps depend on that. For a login screen without an identity provider behind
+it, add the local-login overlay:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.local-auth.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.local-auth.yml run --rm api -seed-admin
+```
+
+The second command prints a generated password once. Full detail, including
+what each setting does and how each one fails on its own, is in
+[`docs/local-login.md`](docs/local-login.md).
+
+SSO (OIDC/SAML) is the other option and takes precedence over local login
+where both are configured — see [`docs/phase-4-runbook.md`](docs/phase-4-runbook.md).
+
 Kubernetes deployment via the Helm chart in [`deploy/`](deploy/README.md).
 
 ## Status
