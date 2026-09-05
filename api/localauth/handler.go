@@ -329,6 +329,18 @@ func (h *Handler) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 // owner-only -- and anyone at all deleting the last remaining owner.
 func (h *Handler) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Deleting yourself is refused before anything else, including the
+	// last-owner check below -- local_sessions.user_id is ON DELETE
+	// CASCADE, so a successful self-delete destroys the caller's own
+	// live session as a side effect, logging them out mid-request with
+	// no warning. With a second owner present the last-owner guard
+	// passes cleanly, so nothing else here would have stopped it, and
+	// the way back in is whatever other account happens to exist. Same
+	// posture as handleResetPassword's self-target refusal above.
+	if identity, ok := authz.IdentityFromContext(r.Context()); ok && id == identity.UserID {
+		writeError(w, http.StatusConflict, "cannot delete the account you are signed in as")
+		return
+	}
 	target, err := h.store.GetUserByID(r.Context(), id)
 	if err != nil {
 		h.writeStoreErr(w, err, "deleting user")

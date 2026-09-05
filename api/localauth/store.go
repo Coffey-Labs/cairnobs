@@ -314,13 +314,18 @@ func (s *Store) GetPasswordHashByID(ctx context.Context, id string) (string, err
 	return hash, nil
 }
 
-// CountLocalUsers backs -seed-admin's idempotency check (see
-// cmd/api/main.go's runSeedAdmin): a deployment that already has at
-// least one local user never gets a second auto-created admin account.
-func (s *Store) CountLocalUsers(ctx context.Context) (int, error) {
-	var n int
-	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE username IS NOT NULL`).Scan(&n)
-	return n, err
+// UsernameExists backs -seed-admin's idempotency check (see
+// cmd/api/main.go's runSeedAdmin). It asks whether the account that
+// command would create is already provisioned -- deliberately not
+// whether the deployment has any local user at all, which is the
+// question it used to ask: an operator who deleted the seeded admin
+// account was then refused by the very command documented as the way
+// to create one, because some *other* account still existed.
+func (s *Store) UsernameExists(ctx context.Context, username string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)`, username).Scan(&exists)
+	return exists, err
 }
 
 // CreateSession mints a fresh opaque token for an already-authenticated

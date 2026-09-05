@@ -79,7 +79,7 @@ func main() {
 	// startup path -- mirrors enterprise-api's -provision-tenant shape
 	// (declare, flag.Parse(), short-circuit before the rest of main's
 	// dependencies matter to it). See runSeedAdmin's doc comment.
-	seedAdmin := flag.Bool("seed-admin", false, "create the default local-auth admin user with a random password if none exists, print it once, and exit")
+	seedAdmin := flag.Bool("seed-admin", false, "create the default local-auth admin user with a random password if that account does not exist, print it once, and exit")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -259,21 +259,40 @@ func main() {
 	}
 }
 
+// seedAdminUsername is the account -seed-admin creates, and the one it
+// checks for before deciding it has nothing to do.
+const seedAdminUsername = "admin"
+
+// seedStore is the slice of *localauth.Store that runSeedAdmin uses,
+// named here so the bootstrap path can be tested without a Postgres
+// pool behind it.
+type seedStore interface {
+	UsernameExists(ctx context.Context, username string) (bool, error)
+	CreateUser(ctx context.Context, username, passwordHash string, role authz.Role) (*localauth.User, error)
+}
+
 // runSeedAdmin is the operator action that bootstraps local login on a
-// fresh deployment: idempotent (a no-op if any local user already
+// fresh deployment: idempotent (a no-op if the admin account already
 // exists, safe to run on every deploy per the runbook), so there's no
 // separate "has this already run" flag to track. The generated
 // password is printed to stdout exactly once and never stored in
 // plaintext anywhere -- losing it means resetting it
 // (POST /auth/users/{id}/reset-password), not recovering it.
-func runSeedAdmin(ctx context.Context, logger *slog.Logger, stdout io.Writer, store *localauth.Store) int {
-	n, err := store.CountLocalUsers(ctx)
+//
+// The check is specifically for the admin account rather than for any
+// local user, which is what it used to be. That older test made this
+// command useless in the situation it is most needed: an operator who
+// no longer has a working administrator account, but whose deployment
+// still contains other users, was told "already provisioned" and left
+// with nothing to do.
+func runSeedAdmin(ctx context.Context, logger *slog.Logger, stdout io.Writer, store seedStore) int {
+	exists, err := store.UsernameExists(ctx, seedAdminUsername)
 	if err != nil {
-		logger.Error("counting local users", "error", err)
+		logger.Error("checking for an existing admin user", "error", err)
 		return 1
 	}
-	if n > 0 {
-		fmt.Fprintln(stdout, "admin already provisioned, skipping")
+	if exists {
+		fmt.Fprintf(stdout, "%q user already exists, skipping\n", seedAdminUsername)
 		return 0
 	}
 
@@ -289,13 +308,13 @@ func runSeedAdmin(ctx context.Context, logger *slog.Logger, stdout io.Writer, st
 		logger.Error("hashing password", "error", err)
 		return 1
 	}
-	if _, err := store.CreateUser(ctx, "admin", hash, authz.RoleOwner); err != nil {
+	if _, err := store.CreateUser(ctx, seedAdminUsername, hash, authz.RoleOwner); err != nil {
 		logger.Error("creating admin user", "error", err)
 		return 1
 	}
 
 	fmt.Fprintln(stdout, "created default admin user:")
-	fmt.Fprintln(stdout, "  username: admin")
+	fmt.Fprintf(stdout, "  username: %s\n", seedAdminUsername)
 	fmt.Fprintf(stdout, "  password: %s\n", password)
 	fmt.Fprintln(stdout, "this password will not be shown again -- save it now.")
 	return 0
