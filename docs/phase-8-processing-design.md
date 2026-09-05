@@ -1,10 +1,14 @@
 # Phase 8 processing design: rules, where they run, and how they arrive
 
-> **Status:** Design, drafted 2026-09-05. **Not approved and not
-> implemented.** Nothing in Phase 8 is started. This is a proposal to
-> argue with — the sections marked **Open** are genuine decisions, not
-> rhetorical ones. If implementation shows this is wrong somewhere, fix
-> this doc in the same change rather than letting them drift.
+> **Status:** Design, drafted 2026-09-05, **not implemented** — nothing
+> in Phase 8 is built. Four decisions are settled and dated: the rule
+> shape, total evaluation with apply-then-verify, `regex-lite` on the
+> agent, and shipping without a canary. Two remain genuinely open — rule
+> placement, and what `aggregate_count` emits. The specification itself
+> is the conformance corpus in [`/processing`](../processing/README.md);
+> this document is a summary of it and loses any argument between them.
+> If implementation shows this is wrong somewhere, fix this doc in the
+> same change rather than letting them drift.
 
 ## Why this design, in one paragraph
 
@@ -90,10 +94,79 @@ itself** — a few bytes, and a host that cannot write even that simply
 loses the backstop and keeps total evaluation. The agent must degrade to
 "no rules" on a write failure, never to "apply anyway".
 
-**Open:** whether the backstop is worth its complexity in the first
-release, given total evaluation should make it unreachable. My view is
-yes — "should be unreachable" is what every crash-loop was before it
-happened — but it is a defensible cut for a v1.
+**Decided 2026-09-05: apply-then-verify ships in v1.**
+
+It was a defensible cut while a canary might have backstopped a bad
+rollout. With no canary (Decision 4), it is the only thing that recovers
+a host without an operator noticing, and "total evaluation should make
+it unreachable" is what every crash-loop was before it happened.
+
+### What persists, exactly
+
+A single small file next to the agent's config, holding two fields:
+
+```
+override_version   the version stamp the agent is currently attempting
+state              "trying" | "good" | "quarantined"
+```
+
+The rule set itself is **never** written. That is what keeps the
+crash-loop-not-strand property intact: an agent that loses this file, or
+never had it, still boots clean and re-syncs.
+
+The sequence on receiving a rule set with a new version:
+
+1. Write `{version, "trying"}` and fsync **before** applying anything.
+2. Apply the rules.
+3. On the next successful check-in, rewrite as `{version, "good"}`.
+
+On boot, the agent reads the file:
+
+- absent, or `good` — normal start, apply whatever the next check-in
+  returns.
+- `trying` — the previous process died while carrying that version.
+  Rewrite as `{version, "quarantined"}`, start with **no rules**, and
+  report the quarantined version on the next check-in so it is visible
+  rather than merely survived.
+- `quarantined` — keep refusing that exact version. Any *different*
+  version clears the quarantine and is tried normally, because the
+  operator pushing a new rule set is the correction.
+
+### Failure modes, decided rather than discovered
+
+**The agent cannot write the file** (read-only image, full disk). It
+logs once, runs with total evaluation alone, and applies rules normally.
+Degrading to "no rules" would punish every read-only deployment for a
+failure that has not happened; degrading to "apply anyway" is what the
+mechanism already does minus the recovery. The backstop is best-effort
+by construction, and the doc should not pretend otherwise.
+
+**The agent dies for an unrelated reason** while carrying a good rule
+set — OOM from something else, a host reboot, a `kill -9`. It
+quarantines a blameless rule set. This is a false positive by design:
+the alternative is distinguishing "died because of the rules" from "died
+while the rules happened to be loaded", which the agent cannot do
+honestly. One unnecessary quarantine, visible on the Agents page and
+cleared by re-pushing, is a much better error than one missed real one.
+
+**A rule set is fatal only on some hosts** — a pattern that behaves
+badly against data only one host sees. Each agent quarantines
+independently, which is the correct behaviour and also the closest thing
+to a canary this design has: the first host to hit it quarantines and
+reports while the others carry on.
+
+### The conformance corpus cannot test this
+
+Worth stating so nobody tries. The corpus is records in, records out —
+it pins rule *semantics*. Apply-then-verify is agent lifecycle
+behaviour: process death, file state across restarts, and what gets
+reported on the next check-in. None of that is expressible as an input
+record and an expected output record.
+
+It needs its own tests, on the agent side, driving a real process
+through crash and restart — closer in shape to how
+`agent-management-design.md`'s restart command was verified live than to
+anything in `/processing`.
 
 ## Decision 2: the rule shape
 
@@ -278,9 +351,10 @@ release cannot do that, it is not finished.
 
 ## Open questions, collected
 
-1. Is apply-then-verify in v1, or is total evaluation alone enough?
-   **Harder to cut than it looked** — with no canary (decided below),
-   total evaluation is the only thing between a bad rule and every host.
+1. ~~Apply-then-verify in v1?~~ **Decided 2026-09-05:** yes. With no
+   canary, it is the only thing that recovers a host unattended. The
+   persisted state, its failure modes, and why the conformance corpus
+   cannot cover it are specified in Decision 1.
 2. ~~Regex on the agent?~~ **Decided 2026-09-05:** `regex-lite` on the
    agent, full `regex` at ingest, corpus limited to their common syntax.
 3. ~~Canary rollout?~~ **Decided 2026-09-05:** no gate, ship without it;
