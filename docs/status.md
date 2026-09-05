@@ -20,18 +20,36 @@ verification procedure and its results.
 | 5 | Frontend redesign and design system | Shipped |
 | 6 | License compliance audit and remediation | Shipped |
 | 7 | AI-assisted query authoring | Shipped |
-| 8 | Processing: rule DSL, agent-side and ingest-side | Planned |
+| 8 | Processing: rule DSL, agent-side and ingest-side, and its distribution | Planned |
 | 9 | Routing: multiple destinations and delivery guarantees | Planned |
-| 10 | Archive and replay, retention and tiering | Planned |
-| 11 | Fleet: central agent configuration | Planned |
+| 10 | Archive and replay, tiering, automatic TTL | Planned |
+| — | Fleet: central agent configuration | Mostly shipped, see below |
 | — | AI-assisted analysis and explanation, on a local model | End-state goal |
 
-Phases 8-11 are a second axis rather than a continuation of the first:
-0-7 built the destination, and those four build the road to it. The
+Phases 8-10 are a second axis rather than a continuation of the first:
+0-7 built the destination, and those three build the road to it. The
 argument for taking that on, including the part where cheap storage
 removes the usual reason to buy a pipeline at all, is
 [`positioning.md`](positioning.md). Nothing in them is started. None of
 them depends on Phase 4.
+
+**There is no Phase 11.** It was going to be fleet management, and fleet
+management already exists: central config authoring, versioning, pull-based
+rollout, observation, and a working restart command, all recorded and
+verified live in
+[`agent-management-design.md`](agent-management-design.md). The roadmap
+was describing it as future work long after it stopped being any. Its real
+remainder is small and already disclosed there -- `stop`/`uninstall`
+lifecycle commands, true per-host multi-row alerting, and a rule-per-host
+generator -- and the one piece that is genuinely new, distributing
+processing rules, belongs to Phase 8, because a rule language nobody can
+push to a fleet is not worth having.
+
+Retention is half-built too, which changes what Phase 10 owns.
+`api/logretention` ships operator-driven preview and delete with an
+owner-only per-agent floor. What does not exist is an *automatic* TTL
+policy, which is why Phase 10 is now "tiering, automatic TTL" rather than
+"retention" from nothing.
 
 **Decision, 2026-09-05: tenancy is for other people's data; installations
 are for environments.** Phase 4 stays shipped and stays in the tree, and
