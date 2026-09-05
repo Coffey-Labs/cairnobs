@@ -30,7 +30,20 @@ Phases 8-11 are a second axis rather than a continuation of the first:
 0-7 built the destination, and those four build the road to it. The
 argument for taking that on, including the part where cheap storage
 removes the usual reason to buy a pipeline at all, is
-[`positioning.md`](positioning.md). Nothing in them is started.
+[`positioning.md`](positioning.md). Nothing in them is started. None of
+them depends on Phase 4.
+
+**Decision, 2026-09-05: tenancy is for other people's data; installations
+are for environments.** Phase 4 stays shipped and stays in the tree, and
+comes off the roadmap. Separating two environments means running two
+installations, not two tenants in one, for three reasons this repository
+demonstrates rather than assumes: `chwriter.WriteBatch` is all-or-nothing
+across tenants, so one tenant's failure stalls offset progress for all of
+them; `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT` puts every tenant's data
+behind one superuser credential; and one binary with one set of
+migrations moves every tenant together. A whole installation idles at
+about 1.3 GB, so the sharing buys nothing worth those three. See the
+README's "Multi-tenancy is not the plan".
 
 **Known verification gaps**, carried forward rather than buried:
 
@@ -48,7 +61,8 @@ removes the usual reason to buy a pipeline at all, is
   `COMPOSE_PROFILES=single-tenant` — so it exercises the OSS path and says
   nothing about RBAC, tenant isolation or per-tenant ClickHouse. Do not read
   a healthy demo as evidence for Phase 4.
-- **Phase 4's SSO has been tried against one IdP, not two.** OIDC and SAML
+- **Phase 4's SSO has been tried against one IdP, not two.** Recorded as
+  fact rather than as pending work — see the decision above. OIDC and SAML
   were both verified end to end against a real Auth0 developer tenant,
   browser round trips included. A second, independent IdP has never been
   tried, and no production-grade cluster has run this — the Kubernetes

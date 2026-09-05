@@ -8,9 +8,9 @@
 </p>
 
 <p align="center">
-  Open-core, Kubernetes-native log aggregation and observability.<br>
+  Self-hosted, Kubernetes-native log aggregation and observability.<br>
   Built to match Splunk on capability while winning on cost-per-GB,<br>
-  with honest multi-tenant RBAC and a modern language stack.<br>
+  on a modern language stack.<br>
   Positioned against Cribl too — see <a href="docs/positioning.md">positioning</a>
   for why that is a different claim, and what it means we still have to build.
 </p>
@@ -80,7 +80,7 @@ web/        SvelteKit frontend
 cli/        cairnobsctl
 proto/      gRPC service definitions
 terraform/  Terraform provider
-enterprise/ SSO, multi-tenancy, per-tenant provisioning
+enterprise/ SSO, multi-tenancy, per-tenant provisioning (off the roadmap)
 deploy/     Helm charts and Kubernetes operator
 docs/       Architecture, design docs, per-phase runbooks
 hack/       Development scripts
@@ -102,14 +102,11 @@ alerting is on `:8081` and enterprise auth on `:8082`. The agent connects to
 ingest over mTLS gRPC on `:4317`. `search` is reachable only on the compose
 network — it publishes no host port.
 
-`COMPOSE_PROFILES` in `.env` selects the query-serving binary — `single-tenant`
-(default) or `enterprise` for the multi-tenant path. They're mutually
-exclusive, the same choice Helm's `enterprise.enabled` flag makes for a real
-cluster. Override per invocation:
-
-```sh
-COMPOSE_PROFILES=enterprise docker compose up
-```
+`COMPOSE_PROFILES` in `.env` selects the query-serving binary. Leave it at
+`single-tenant`: that is the supported shape, and the one every runbook,
+the demo and the docs assume. `enterprise` swaps in the multi-tenant
+binaries and still works, but it is no longer a direction this project is
+taking — see [Multi-tenancy is not the plan](#multi-tenancy-is-not-the-plan).
 
 ### Signing in
 
@@ -187,25 +184,59 @@ privileges. Details in [`agent/README.md`](agent/README.md).
 Terraform provider coverage is partial by necessity: dashboards and panels have
 full CRUD, while alert rules and notification targets are create/destroy only,
 because `alerting` exposes no `PUT /rules/{id}` or `PUT /targets/{id}` to
-update against. Tenant and RBAC resources are disclosed future work —
-[`terraform/README.md`](terraform/README.md) accounts for exactly what exists.
+update against. Tenant and RBAC resources are not planned at all, for the
+reason below — [`terraform/README.md`](terraform/README.md) accounts for
+exactly what exists.
+
+### Multi-tenancy is not the plan
+
+Phase 4 works, and it is not the direction. Cairn OBS is a self-hosted
+system, and the way to separate two environments is to run two
+installations, not two tenants inside one.
+
+Tenancy turned out to be the wrong boundary for that job on three counts,
+each of which is visible in this repository rather than hypothetical:
+
+- **Shared fate on ingest.** `chwriter.WriteBatch` is all-or-nothing across
+  tenants by design — one tenant's failed write refuses the whole batch and
+  stops offset progress for every other tenant. A mistake in one environment
+  stalls ingestion in the rest.
+- **A shared superuser.** `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT` makes the
+  admin credential a ClickHouse superuser over every tenant's data, as
+  `docker-compose.yml`'s own comment spells out. Two environments behind one
+  credential are not separated in any sense that matters.
+- **One upgrade cadence.** A single binary and a single set of migrations
+  move every tenant together, which is the opposite of what separate
+  environments are for.
+
+A full installation idles at roughly 1.3 GB — ClickHouse and Redpanda are
+almost all of it, and every Go service is 11–21 MB — so running one per
+environment is cheap enough that sharing a control plane buys nothing. That
+is the same argument `positioning.md` already makes about storage, applied
+to compute.
+
+So `enterprise/` stays in the tree, AGPLv3 and working, and is not on the
+roadmap. It remains the answer for serving other people's data — a question
+this project is not asking. Nothing in Phases 8-11 depends on it.
 
 ### What would close the gap to production-ready
 
 Named here so the list above reads as a plan rather than an apology, and so
 anyone evaluating this knows what they would be waiting for:
 
-1. **A second identity provider.** SSO works against Auth0 for both OIDC and
-   SAML; one vendor is an implementation, two is a standard.
-2. **A real cluster.** The Helm chart has been installed against a local
+1. **A real cluster.** The Helm chart has been installed against a local
    `kind` cluster, which proves the manifests and nothing about scheduling,
    storage classes or node failure.
-3. **The Windows agent on Windows.** The code is written and reviewed; no
+2. **The Windows agent on Windows.** The code is written and reviewed; no
    Windows toolchain has ever compiled it, let alone run it.
-4. **Sustained load.** Every phase was verified functionally. Nothing here has
+3. **Sustained load.** Every phase was verified functionally. Nothing here has
    been run at volume for long enough to find the failures that only show up
    after a week.
-5. **Somebody else's data.** Every deployment so far has been ours.
+4. **Somebody else's data.** Every deployment so far has been ours.
+
+A second identity provider used to head this list. It has come off it: SSO
+belongs to `enterprise/`, and with multi-tenancy off the roadmap a second
+IdP is no longer something a self-hosted deployment is waiting on.
 
 None of that is research; it is time on real infrastructure. It is also
 exactly the list a pilot deployment would work through, which is the honest

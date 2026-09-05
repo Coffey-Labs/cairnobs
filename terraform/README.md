@@ -188,7 +188,10 @@ Terraform state; see "`cairnobs_notification_target`'s `secret`
 attribute" above.
 
 **Also not built, all real and disclosed, not attempted here:**
-- Tenant/RBAC resources (`enterprise-auth`'s tenant/membership/grant
+- Tenant/RBAC resources -- **not planned**, since multi-tenancy came off
+  the roadmap (see the README's "Multi-tenancy is not the plan"). The
+  original accounting stands for anyone who picks it up anyway:
+  (`enterprise-auth`'s tenant/membership/grant
   surface) -- meaningfully different auth model (offline operator flags
   today, not a stable REST API a provider could safely drive
   idempotently -- see `/enterprise/README.md`'s "Bootstrapping a tenant"

@@ -1,6 +1,6 @@
 # Contributing to Cairn OBS
 
-Thanks for your interest in contributing to **Cairn OBS** — open-core, Kubernetes-native log aggregation and observability. Contributions of all kinds are welcome: bug reports, feature requests, code, documentation, and testing.
+Thanks for your interest in contributing to **Cairn OBS** — self-hosted, Kubernetes-native log aggregation and observability. Contributions of all kinds are welcome: bug reports, feature requests, code, documentation, and testing.
 
 ## Code of Conduct
 
@@ -77,7 +77,7 @@ Three workflows run on a pull request:
    docker compose up
    ```
    The web UI is on <http://localhost:3000> and the API on `:8080`; alerting is on `:8081` and enterprise auth on `:8082`. The agent connects to ingest over mTLS gRPC on `:4317`. `search` publishes no host port — it's reachable only on the compose network.
-3. `COMPOSE_PROFILES` in `.env` selects the query-serving binary: `single-tenant` (default) or `enterprise` for the multi-tenant path. They're mutually exclusive, the same choice Helm's `enterprise.enabled` flag makes for a real cluster. Override per invocation with `COMPOSE_PROFILES=enterprise docker compose up`.
+3. `COMPOSE_PROFILES` in `.env` selects the query-serving binary. Report against `single-tenant` unless the bug is in `enterprise/` itself, which is off the roadmap (see the README): `single-tenant` (default) or `enterprise` for the multi-tenant path. They're mutually exclusive, the same choice Helm's `enterprise.enabled` flag makes for a real cluster. Override per invocation with `COMPOSE_PROFILES=enterprise docker compose up`.
 4. Exercise the path you changed end to end — for ingest or query work that means getting a real log line in and querying it back, not just a passing unit test.
 
 ## Review Process
