@@ -64,10 +64,15 @@ line (steps 4–6 there — mTLS certs, build, run, `logger`). Then, instead
 of just checking `/query`, check both:
 
 ```sh
+# The SQL path (ClickHouse).
 curl -X POST http://localhost:8080/query -H 'Content-Type: application/json' \
-  -d '{"sql": "SELECT record_id, message FROM logs ORDER BY timestamp DESC LIMIT 1"}'
+  -d '{"query": "SELECT record_id, message FROM logs ORDER BY timestamp DESC LIMIT 1"}'
 
-curl -X POST http://localhost:8080/search -H 'Content-Type: application/json' \
+# The full-text path (Tantivy). A bare word is a free-text search -- see
+# /docs/query-language-reference.md. Both go to /query: Phase 2 unified
+# the two languages behind one endpoint, and the separate POST /search
+# this step used to call no longer exists.
+curl -X POST http://localhost:8080/query -H 'Content-Type: application/json' \
   -d '{"query": "<a distinctive word from your test log line>"}'
 ```
 
