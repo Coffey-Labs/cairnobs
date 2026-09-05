@@ -1,0 +1,48 @@
+{
+  "name": "aggregate_count_window_bounds_are_observed_not_nominal",
+  "description": "window_last is the last record that actually contributed, never window_start + window_ms. A window flushed early must not claim an end that never happened.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "aggregate_count",
+          "window_ms": 60000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 100000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "y",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 250000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "y",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 100000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "y",
+      "attributes": {
+        "cairnobs.aggregated": "true",
+        "cairnobs.count": "2",
+        "cairnobs.window_start_unix_nano": "100000000",
+        "cairnobs.window_last_unix_nano": "250000000"
+      }
+    }
+  ]
+}
