@@ -217,7 +217,7 @@ to compute.
 
 So `enterprise/` stays in the tree, AGPLv3 and working, and is not on the
 roadmap. It remains the answer for serving other people's data — a question
-this project is not asking. Nothing in Phases 8-11 depends on it.
+this project is not asking. Nothing in Phases 8-10 depends on it.
 
 ### What would close the gap to production-ready
 

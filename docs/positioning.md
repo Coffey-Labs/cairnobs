@@ -131,6 +131,39 @@ Central processing at the ingest tier is the complement: rules that need
 context the agent lacks, and a place to change behaviour without a fleet
 rollout.
 
+**Treat that recommendation as settled, because the fleet design already
+settled it.** `DesiredOverride` — the only channel that can deliver
+anything to an agent — is deliberately a closed, typed shape that cannot
+carry arbitrary code, and permanently excludes any field capable of
+stranding an agent. Two documents reached the same conclusion from
+opposite directions, one reasoning about expressiveness and one about
+blast radius. There is no version of this where rules arrive as
+JavaScript, because there is no channel that would carry it.
+
+**And one requirement that falls out of the same design, which nothing
+has written down until now.** Agent management rests on an invariant it
+states explicitly: every editable field "degrades the agent's behavior
+without ever cutting off its ability to receive the next correction." A
+bad batch size is survivable precisely because the agent still checks in
+and can be corrected.
+
+Processing rules break that invariant. A rule that panics, loops
+forever, or exhausts memory strands the agent exactly the way a corrupted
+`ingest.endpoint` would — the one channel capable of fixing the mistake
+is the thing the mistake killed, across however many hosts the rule
+reached before anyone noticed. So Phase 8 owes one of two things, chosen
+deliberately rather than discovered during a rollout:
+
+1. **Total evaluation** — a rule set that provably cannot panic, cannot
+   loop unboundedly, and cannot allocate without limit. A typed
+   declarative DSL can offer this; it is a third argument for one.
+2. **Apply-then-verify** — the agent treats a new rule set as
+   provisional, and reverts to the last known-good set if it crash-loops
+   before the next successful check-in.
+
+The first is better if it can be had, because the second is a recovery
+mechanism and the first is an absence of the failure.
+
 ### 2. Routing and multiple destinations
 
 Conditional routing — this source, matching this rule, to these
@@ -144,17 +177,36 @@ Elastic bulk, OTLP, Kafka, plain HTTP.
 An archive format on object storage, and the ability to read it back into
 the pipeline or into a destination later. This is the feature that makes
 aggressive reduction safe: you can drop something from the hot path
-precisely because you can get it back. It also folds in the retention/TTL
-question `/docs/architecture.md` currently lists as unresolved and
-deferred — that question stops being deferrable here.
+precisely because you can get it back.
 
-### 4. Fleet management
+Retention is half of a question rather than all of one. `api/logretention`
+already ships operator-driven preview and delete, with an owner-only
+per-agent floor. What does not exist is an *automatic* TTL policy, which
+is the half `/docs/architecture.md` still lists as unresolved, and the
+half that stops being deferrable here — tiering to object storage and
+reading back from it is the same question asked from the other side.
 
-Central agent configuration: author, version, roll out, and observe. Much
-of the substrate exists — agents check in, report their own version and
-source config, and there is an Agents page that already knows when one
-goes stale. What is missing is the direction of travel: config currently
-flows *to* the agent from the host, not from the platform.
+### 4. Fleet management — already built
+
+This section used to say that config flowed to the agent from the host
+rather than from the platform, and that the direction of travel was what
+was missing. That has not been true for some time.
+[`agent-management-design.md`](agent-management-design.md) records the
+whole thing as complete and verified live: config authored centrally
+(`PUT /agents/{host}/config`), versioned
+(`desired_override_version`/`applied_override_version`), rolled out on the
+agent's next check-in, observed on the Agents page, and a restart command
+that a real agent picks up and acts on.
+
+What remains is named there and is small: `stop`/`uninstall` lifecycle
+commands, true per-host multi-row alerting, and a rule-per-host generator.
+
+The consequence for the roadmap is bigger than the correction. Fleet was
+going to be the last phase, on the argument that it manages configuration
+the earlier phases define. The mechanism arrived first instead, so the
+question is no longer "how do we distribute config" but "what new thing
+does Phase 8 need it to carry" — which makes distribution part of Phase 8
+rather than a phase of its own.
 
 ### 5. Schema normalisation as a feature, not a detail
 
@@ -227,21 +279,33 @@ continuation of the first, and it is worth numbering separately rather
 than appending forever to a list that was about analytics.
 
 - **Phase 8 — Processing.** The rule DSL, agent-side execution,
-  ingest-side execution, and the tests that prove a rule does the same
-  thing in both places.
+  ingest-side execution, the tests that prove a rule does the same thing
+  in both places, and distribution: carrying rule sets through
+  `DesiredOverride` without breaking the strand-safety invariant above.
 - **Phase 9 — Routing and sinks.** Multiple destinations, conditional
   routing, per-destination delivery guarantees, and the first three
   sinks: object storage, OTLP, Splunk HEC.
-- **Phase 10 — Archive and replay.** The archive format, retention and
-  tiering, and replay back into the pipeline or out to a destination.
-- **Phase 11 — Fleet.** Config authored centrally, versioned, rolled out
-  and observed.
+- **Phase 10 — Archive and replay.** The archive format, tiering,
+  automatic TTL, and replay back into the pipeline or out to a
+  destination.
+
+**There is no Phase 11.** It was going to be fleet management, and fleet
+management is built — see section 4 above. What is left of it either
+belongs to Phase 8 (distributing rules) or is a small named remainder
+already tracked in
+[`agent-management-design.md`](agent-management-design.md).
 
 Ordering is deliberate. Processing without routing still pays for itself
 by shrinking what is stored; routing without processing forwards
-everything and helps nobody. Archive depends on both. Fleet is last
-because it manages configuration the earlier phases define — building it
-first would mean managing settings that do not exist yet.
+everything and helps nobody. Archive depends on both.
+
+The original ordering put fleet last, reasoning that it manages
+configuration the earlier phases define. That reasoning was sound and the
+world went the other way: the mechanism was built first, and Phase 8 now
+inherits a distribution channel rather than needing one built for it
+afterwards. Worth recording, because the instinct to schedule the
+management layer after the thing it manages is a good one that happened
+not to apply here.
 
 ## The names already argue the case
 

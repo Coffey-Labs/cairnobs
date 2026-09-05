@@ -271,11 +271,14 @@ defense against application-layer bugs, not an operational control.
 
 ## Open questions for you to resolve
 
-- Retention/TTL policy for the ClickHouse `logs` table — not specified yet.
-  This was deferred until storage sizing became a real concern; Phase 10's
-  archive/replay work is where it stops being deferrable, since tiering to
-  object storage and reading back from it is the same question asked from
-  the other side. See [positioning.md](positioning.md).
+- **Automatic** retention/TTL policy for the ClickHouse `logs` table — not
+  specified yet. The operator-driven half exists: `api/logretention` serves
+  preview and delete, with an owner-only per-agent floor. What is missing is
+  a policy that expires data without somebody asking it to. Deferred until
+  storage sizing became a real concern; Phase 10's archive/replay work is
+  where it stops being deferrable, since tiering to object storage and
+  reading back from it is the same question asked from the other side. See
+  [positioning.md](positioning.md).
 - Exact OTel log schema field mapping (which OTel resource/log attributes
   map to which ClickHouse columns) — Phase 0 uses a minimal subset
   (timestamp, host, service, severity, message, attributes map); full
