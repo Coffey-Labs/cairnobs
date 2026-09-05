@@ -75,8 +75,11 @@ curl http://localhost:8080/healthz
 
 curl -X POST http://localhost:8080/query \
   -H 'Content-Type: application/json' \
-  -d '{"sql": "SELECT 1"}'
-# -> {"columns":["1"],"rows":[[1]]} (exact column name may vary by ClickHouse version)
+  -d '{"query": "SELECT 1"}'
+# -> {"columns":["1"],"rows":[[1]],"warnings":[...]}
+#    (exact column name may vary by ClickHouse version; `warnings` carries
+#    costguard's assessment and is present on every response that has
+#    something to say about the query's cost)
 ```
 
 This confirms `api` can reach `clickhouse` before you go looking for bugs
@@ -157,7 +160,7 @@ ORDER BY timestamp DESC LIMIT 100`), and look for a row with
 ```sh
 curl -X POST http://localhost:8080/query \
   -H 'Content-Type: application/json' \
-  -d '{"sql": "SELECT * FROM logs ORDER BY timestamp DESC LIMIT 10"}'
+  -d '{"query": "SELECT * FROM logs ORDER BY timestamp DESC LIMIT 10"}'
 ```
 
 **Or via cairnobsctl, just to confirm api is up (doesn't check the data

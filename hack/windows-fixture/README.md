@@ -41,9 +41,9 @@ Then confirm both query paths see it:
 
 ```sh
 curl -s -X POST http://localhost:8080/query -H 'Content-Type: application/json' \
-  -d '{"sql": "SELECT host, severity, message, attributes['"'"'winevt.event_id'"'"'] AS event_id FROM logs WHERE host = '"'"'WIN-FIXTURE-01'"'"' ORDER BY timestamp DESC"}'
+  -d '{"query": "SELECT host, severity, message, attributes['"'"'winevt.event_id'"'"'] AS event_id FROM logs WHERE host = '"'"'WIN-FIXTURE-01'"'"' ORDER BY timestamp DESC"}'
 
-curl -s -X POST http://localhost:8080/search -H 'Content-Type: application/json' \
+curl -s -X POST http://localhost:8080/query -H 'Content-Type: application/json' \
   -d '{"query": "notepad"}'
 ```
 
