@@ -1,9 +1,9 @@
 # Project: Cairn OBS — Distributed Log Aggregation & Observability Platform
 
 ## Mission
-Build an open-core, Kubernetes-native centralized logging platform that rivals
-Splunk on features but wins on cost-per-GB, modern language stack, and honest
-multi-tenant RBAC. Full architecture spec is in `/docs/architecture.md` — read
+Build a self-hosted, Kubernetes-native centralized logging platform that
+rivals Splunk on features but wins on cost-per-GB and a modern language
+stack. Full architecture spec is in `/docs/architecture.md` — read
 it before touching any component. Do not deviate from the storage/query split
 described there without flagging it to me first.
 
