@@ -148,21 +148,25 @@ bad batch size is survivable precisely because the agent still checks in
 and can be corrected.
 
 Processing rules break that invariant. A rule that panics, loops
-forever, or exhausts memory strands the agent exactly the way a corrupted
-`ingest.endpoint` would — the one channel capable of fixing the mistake
-is the thing the mistake killed, across however many hosts the rule
-reached before anyone noticed. So Phase 8 owes one of two things, chosen
-deliberately rather than discovered during a rollout:
+forever, or exhausts memory is not a degraded setting; it is a broken
+agent, across however many hosts the rule reached before anyone noticed.
 
-1. **Total evaluation** — a rule set that provably cannot panic, cannot
-   loop unboundedly, and cannot allocate without limit. A typed
-   declarative DSL can offer this; it is a third argument for one.
-2. **Apply-then-verify** — the agent treats a new rule set as
-   provisional, and reverts to the last known-good set if it crash-loops
-   before the next successful check-in.
+How badly it breaks turns out to depend on something decided for
+unrelated reasons: overrides live only in the running process's memory
+and are never written to disk, so a restarted agent boots clean and
+re-syncs. A fatal rule set therefore produces a crash-loop rather than a
+strand, and the agent still checks in on every iteration, so it remains
+correctable. That is a much better failure than the stranding an
+unfixable `ingest.endpoint` would cause — and it is load-bearing safety
+acquired by accident, which means persisting overrides to disk later
+would silently convert every crash-loop into a strand.
 
-The first is better if it can be had, because the second is a recovery
-mechanism and the first is an absence of the failure.
+Phase 8 still owes a deliberate answer here rather than a discovered
+one. [`phase-8-processing-design.md`](phase-8-processing-design.md)
+proposes total evaluation as the primary guarantee — a rule set that
+provably cannot panic, loop unboundedly or allocate without limit, which
+a typed declarative DSL can offer and which is a third argument for one
+— with apply-then-verify as a backstop.
 
 ### 2. Routing and multiple destinations
 
@@ -282,6 +286,8 @@ than appending forever to a list that was about analytics.
   ingest-side execution, the tests that prove a rule does the same thing
   in both places, and distribution: carrying rule sets through
   `DesiredOverride` without breaking the strand-safety invariant above.
+  Drafted in
+  [`phase-8-processing-design.md`](phase-8-processing-design.md).
 - **Phase 9 — Routing and sinks.** Multiple destinations, conditional
   routing, per-destination delivery guarantees, and the first three
   sinks: object storage, OTLP, Splunk HEC.

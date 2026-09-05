@@ -20,7 +20,7 @@ verification procedure and its results.
 | 5 | Frontend redesign and design system | Shipped |
 | 6 | License compliance audit and remediation | Shipped |
 | 7 | AI-assisted query authoring | Shipped |
-| 8 | Processing: rule DSL, agent-side and ingest-side, and its distribution | Planned |
+| 8 | Processing: rule DSL, agent-side and ingest-side, and its distribution | Planned, [design drafted](phase-8-processing-design.md) |
 | 9 | Routing: multiple destinations and delivery guarantees | Planned |
 | 10 | Archive and replay, tiering, automatic TTL | Planned |
 | — | Fleet: central agent configuration | Mostly shipped, see below |
