@@ -1,0 +1,35 @@
+{
+  "name": "parse_json_on_invalid_json_is_a_no_op",
+  "description": "A record that is not JSON passes through unchanged rather than being dropped or erroring -- same schema-on-read fallback the agent parser already uses.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "parse_json",
+          "field": "message"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "this is not json {",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "this is not json {",
+      "attributes": {}
+    }
+  ]
+}

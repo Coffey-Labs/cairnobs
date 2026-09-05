@@ -1,0 +1,47 @@
+{
+  "name": "non_matching_rule_leaves_the_record_untouched",
+  "description": "A rule that does not match is not a rule that empties things.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "host",
+          "op": "eq",
+          "value": "other"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop_fields",
+          "fields": [
+            "attributes.keep"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ]
+}

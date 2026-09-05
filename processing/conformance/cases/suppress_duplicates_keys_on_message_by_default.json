@@ -1,0 +1,59 @@
+{
+  "name": "suppress_duplicates_keys_on_message_by_default",
+  "description": "Two different messages never suppress each other.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "suppress_duplicates",
+          "window_ms": 5000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "b",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "b",
+      "attributes": {}
+    }
+  ]
+}

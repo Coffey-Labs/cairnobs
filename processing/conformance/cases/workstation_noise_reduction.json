@@ -1,0 +1,103 @@
+{
+  "name": "workstation_noise_reduction",
+  "description": "The v1 acceptance shape, from real measured data: Discord repeating a byte-identical version string and a polling daemon repeating a fixed message, against one kernel message worth keeping. See /docs/phase-8-processing-design.md.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "eq",
+          "value": "Discord 1.0.155"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    },
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "eq",
+          "value": "Checking active tasks"
+        }
+      ],
+      "actions": [
+        {
+          "action": "suppress_duplicates",
+          "window_ms": 60000
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 0,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "Discord 1.0.155",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 1000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "Checking active tasks",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "Discord 1.0.155",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "Checking active tasks",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 4000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_WARN",
+      "message": "[UFW BLOCK] IN=wlan0 SRC=172.16.16.1",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 5000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "Discord 1.0.155",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "Checking active tasks",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 4000000000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_WARN",
+      "message": "[UFW BLOCK] IN=wlan0 SRC=172.16.16.1",
+      "attributes": {}
+    }
+  ]
+}

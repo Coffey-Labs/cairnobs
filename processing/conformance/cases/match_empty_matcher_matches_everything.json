@@ -1,0 +1,33 @@
+{
+  "name": "match_empty_matcher_matches_everything",
+  "description": "An empty match list is 'always', not 'never'.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "anything",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "anything else",
+      "attributes": {}
+    }
+  ],
+  "expect": []
+}

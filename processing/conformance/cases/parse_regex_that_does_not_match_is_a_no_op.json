@@ -1,0 +1,36 @@
+{
+  "name": "parse_regex_that_does_not_match_is_a_no_op",
+  "description": "A non-matching pattern adds nothing and does not drop the record.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "parse_regex",
+          "field": "message",
+          "pattern": "user=(?P<user>[a-z]+)"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "no user here",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "no user here",
+      "attributes": {}
+    }
+  ]
+}

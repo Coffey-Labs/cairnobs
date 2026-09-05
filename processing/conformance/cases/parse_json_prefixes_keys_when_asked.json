@@ -1,0 +1,41 @@
+{
+  "name": "parse_json_prefixes_keys_when_asked",
+  "description": "prefix namespaces the lifted keys so they cannot collide with existing attributes.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "parse_json",
+          "field": "message",
+          "prefix": "json."
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "{\"code\":\"503\"}",
+      "attributes": {
+        "code": "keep-me"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "{\"code\":\"503\"}",
+      "attributes": {
+        "code": "keep-me",
+        "json.code": "503"
+      }
+    }
+  ]
+}

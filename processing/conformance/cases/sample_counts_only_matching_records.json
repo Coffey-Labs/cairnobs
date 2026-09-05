@@ -1,0 +1,81 @@
+{
+  "name": "sample_counts_only_matching_records",
+  "description": "The counter advances on records the rule matched, so an unrelated record between two matches does not consume a slot.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "service",
+          "op": "eq",
+          "value": "noisy"
+        }
+      ],
+      "actions": [
+        {
+          "action": "sample",
+          "keep_one_in": 2
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n1",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "quiet",
+      "severity": "SEVERITY_INFO",
+      "message": "other",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000000,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n2",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 4000000,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n3",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000000,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n1",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000000,
+      "host": "h1",
+      "service": "quiet",
+      "severity": "SEVERITY_INFO",
+      "message": "other",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 4000000,
+      "host": "h1",
+      "service": "noisy",
+      "severity": "SEVERITY_INFO",
+      "message": "n3",
+      "attributes": {}
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "name": "derive_sets_a_literal_value",
+  "description": "derive with value writes a constant.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.env",
+          "value": "dev"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "env": "dev"
+      }
+    }
+  ]
+}

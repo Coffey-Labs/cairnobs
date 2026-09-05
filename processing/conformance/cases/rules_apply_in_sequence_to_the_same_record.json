@@ -1,0 +1,55 @@
+{
+  "name": "rules_apply_in_sequence_to_the_same_record",
+  "description": "Every matching rule runs, each seeing the record as the previous rule left it.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.a",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "match": [
+        {
+          "field": "attributes.a",
+          "op": "eq",
+          "value": "1"
+        }
+      ],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.b",
+          "value": "2"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "x",
+      "attributes": {
+        "a": "1",
+        "b": "2"
+      }
+    }
+  ]
+}

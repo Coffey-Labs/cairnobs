@@ -1,0 +1,48 @@
+{
+  "name": "match_eq_is_exact_not_substring",
+  "description": "eq compares the whole value; a superstring does not match.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "message",
+          "op": "eq",
+          "value": "noise"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "noise",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "noise and more",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "noise and more",
+      "attributes": {}
+    }
+  ]
+}

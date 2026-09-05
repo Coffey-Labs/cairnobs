@@ -1,0 +1,43 @@
+{
+  "name": "actions_apply_in_order",
+  "description": "The second action sees what the first produced: parse then drop one of the parsed fields.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "parse_json",
+          "field": "message"
+        },
+        {
+          "action": "drop_fields",
+          "fields": [
+            "attributes.secret"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "{\"keep\":\"k\",\"secret\":\"s\"}",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "{\"keep\":\"k\",\"secret\":\"s\"}",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ]
+}

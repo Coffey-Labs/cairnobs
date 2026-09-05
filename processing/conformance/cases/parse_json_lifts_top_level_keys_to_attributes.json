@@ -1,0 +1,38 @@
+{
+  "name": "parse_json_lifts_top_level_keys_to_attributes",
+  "description": "parse_json on message adds string attributes and leaves message intact.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "parse_json",
+          "field": "message"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "{\"level\":\"warn\",\"code\":\"503\"}",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "{\"level\":\"warn\",\"code\":\"503\"}",
+      "attributes": {
+        "level": "warn",
+        "code": "503"
+      }
+    }
+  ]
+}

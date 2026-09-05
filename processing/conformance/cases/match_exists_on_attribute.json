@@ -1,0 +1,62 @@
+{
+  "name": "match_exists_on_attribute",
+  "description": "exists/not_exists test presence and take no value.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "attributes.trace_id",
+          "op": "exists"
+        }
+      ],
+      "actions": [
+        {
+          "action": "derive",
+          "field": "attributes.traced",
+          "value": "yes"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "trace_id": "abc"
+      }
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "b",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "trace_id": "abc",
+        "traced": "yes"
+      }
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "b",
+      "attributes": {}
+    }
+  ]
+}

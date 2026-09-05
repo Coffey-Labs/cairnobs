@@ -1,0 +1,41 @@
+{
+  "name": "drop_fields_on_absent_attribute_is_not_an_error",
+  "description": "Removing something that is not there succeeds and changes nothing.",
+  "rules": [
+    {
+      "match": [],
+      "actions": [
+        {
+          "action": "drop_fields",
+          "fields": [
+            "attributes.nope"
+          ]
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "a",
+      "attributes": {
+        "keep": "k"
+      }
+    }
+  ]
+}

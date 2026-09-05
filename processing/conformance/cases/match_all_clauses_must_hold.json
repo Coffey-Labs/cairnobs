@@ -1,0 +1,69 @@
+{
+  "name": "match_all_clauses_must_hold",
+  "description": "Multiple clauses are AND, never OR.",
+  "rules": [
+    {
+      "match": [
+        {
+          "field": "host",
+          "op": "eq",
+          "value": "h1"
+        },
+        {
+          "field": "severity",
+          "op": "eq",
+          "value": "SEVERITY_ERROR"
+        }
+      ],
+      "actions": [
+        {
+          "action": "drop"
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "timestamp_unix_nano": 1000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_ERROR",
+      "message": "both",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "host only",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000,
+      "host": "h2",
+      "service": "s1",
+      "severity": "SEVERITY_ERROR",
+      "message": "sev only",
+      "attributes": {}
+    }
+  ],
+  "expect": [
+    {
+      "timestamp_unix_nano": 2000,
+      "host": "h1",
+      "service": "s1",
+      "severity": "SEVERITY_INFO",
+      "message": "host only",
+      "attributes": {}
+    },
+    {
+      "timestamp_unix_nano": 3000,
+      "host": "h2",
+      "service": "s1",
+      "severity": "SEVERITY_ERROR",
+      "message": "sev only",
+      "attributes": {}
+    }
+  ]
+}
