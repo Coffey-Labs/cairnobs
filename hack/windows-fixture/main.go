@@ -22,6 +22,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 
 	logsv1 "github.com/cairnobs/cairnobs/proto/sentry/logs/v1"
 )
@@ -32,6 +33,15 @@ func main() {
 	certFile := flag.String("cert", "../dev-certs/out/client.pem", "client cert path")
 	keyFile := flag.String("key", "../dev-certs/out/client-key.pem", "client key path")
 	count := flag.Int("count", 5, "number of synthetic events to send")
+	// Only meaningful against an ingest with ENTERPRISE_AUTH_URL set,
+	// which is what makes it resolve a tenant per PushBatch call and tag
+	// every record with a tenant_id (see ingest/internal/grpcserver's
+	// TenantResolver). Mint one with
+	// `enterprise-auth -create-ingest-credential-tenant=<id>`. Left
+	// empty -- the default -- this sends no Authorization metadata at
+	// all, which is exactly what a single-tenant deployment expects, so
+	// the Phase 0-3 behaviour of this fixture is unchanged.
+	token := flag.String("token", "", "ingest bearer token for a tenant; omit for a single-tenant deployment")
 	flag.Parse()
 
 	tlsConf, err := loadTLSConfig(*caFile, *certFile, *keyFile)
@@ -52,6 +62,9 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if *token != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+*token)
+	}
 
 	resp, err := client.PushBatch(ctx, &logsv1.PushBatchRequest{
 		BatchId: "windows-fixture",
@@ -62,7 +75,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("sent %d synthetic Windows-shaped records, ingest accepted %d\n", len(records), resp.GetAccepted())
+	if *token != "" {
+		fmt.Printf("sent %d synthetic Windows-shaped records as a tenant-authenticated agent, ingest accepted %d\n", len(records), resp.GetAccepted())
+	} else {
+		fmt.Printf("sent %d synthetic Windows-shaped records, ingest accepted %d\n", len(records), resp.GetAccepted())
+	}
 	for _, rec := range records {
 		fmt.Printf("  [%s] %s (event_id=%s provider=%s)\n",
 			rec.GetSeverity(), rec.GetMessage(), rec.GetAttributes()["winevt.event_id"], rec.GetAttributes()["winevt.provider"])

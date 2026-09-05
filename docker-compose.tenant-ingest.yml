@@ -1,0 +1,35 @@
+# Makes ingest resolve a tenant per PushBatch call, so records carry a
+# tenant_id and enterprise-ingest can route each one into its own
+# tenant's database. Pair with COMPOSE_PROFILES=enterprise.
+#
+#   COMPOSE_PROFILES=enterprise docker compose \
+#     -f docker-compose.yml -f docker-compose.tenant-ingest.yml up -d
+#
+# docker-compose.yml deliberately leaves ENTERPRISE_AUTH_URL unset on
+# ingest, because setting it makes every agent present a valid
+# `Authorization: Bearer <token>` or be refused outright, and nothing in
+# that file provisions one. So this overlay is only usable once you have
+# minted credentials:
+#
+#   docker compose run --rm enterprise-auth \
+#     -create-ingest-credential-tenant=<tenant id>
+#
+# and the tenant has actually been provisioned:
+#
+#   docker compose run --rm enterprise-api -provision-tenant=<tenant id>
+#
+# Note that -provision-tenant creates the database, user and grants but
+# NOT the schema. Until the storage migrations have been applied to the
+# tenant's own database, every write into it fails, and because
+# chwriter.WriteBatch is all-or-nothing that stalls the consumer's
+# offsets for every other tenant too:
+#
+#   docker run --rm --network cairnobs_default \
+#     -e CLICKHOUSE_HTTP=http://clickhouse:8123 \
+#     -e CLICKHOUSE_PASSWORD=<password> \
+#     -e CLICKHOUSE_DATABASE=<tenant id> \
+#     cairnobs-clickhouse-migrate:latest
+services:
+  ingest:
+    environment:
+      ENTERPRISE_AUTH_URL: "http://enterprise-auth:8082"

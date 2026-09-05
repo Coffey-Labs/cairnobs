@@ -47,6 +47,30 @@ curl -s -X POST http://localhost:8080/query -H 'Content-Type: application/json' 
   -d '{"query": "notepad"}'
 ```
 
-Flags: `--addr` (default `localhost:4317`), `--ca`/`--cert`/`--key`
+## Multi-tenant deployments
+
+Against an `ingest` with `ENTERPRISE_AUTH_URL` set, every agent must
+present a tenant bearer token or be refused outright
+(`Unauthenticated: missing bearer credential`). Mint one and pass it:
+
+```sh
+docker compose run --rm enterprise-auth -create-ingest-credential-tenant=acme
+go run . --count 3 --token '<the token>'
+```
+
+The records are then tagged with that tenant's id, and
+`enterprise-ingest` routes them into that tenant's own ClickHouse
+database rather than the shared `logs` table.
+
+Omit `--token` and nothing is sent, which is what a single-tenant
+deployment expects -- the Phase 0-3 behaviour of this fixture is
+unchanged.
+
+**The tenant needs a schema first.** `enterprise-api -provision-tenant`
+creates the database, user and grants but not the tables, so apply the
+storage migrations to the tenant's own database before sending anything
+to it -- see `docker-compose.tenant-ingest.yml`.
+
+Flags: `--addr` (default `localhost:4317`), `--token`, `--ca`/`--cert`/`--key`
 (default to `../dev-certs/out/{ca,client,client-key}.pem`), `--count`
 (default 5, cycles through the fixed event list if higher).
