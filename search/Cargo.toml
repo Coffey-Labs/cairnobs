@@ -33,7 +33,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-build = "0.14"
 
 [dev-dependencies]
 # Already in the dependency graph transitively (tantivy/tonic-build both
