@@ -11,8 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", "signal", "time"] }
-tonic = "0.12"
-prost = "0.13"
+tonic = "0.14"
+tonic-prost = "0.14"
+prost = "0.14"
 
 tantivy = "0.26"
 rskafka = "0.6"
@@ -33,7 +34,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-prost-build = "0.14"
 
 [dev-dependencies]
 # Already in the dependency graph transitively (tantivy/tonic-build both
