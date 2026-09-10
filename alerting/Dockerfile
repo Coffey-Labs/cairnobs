@@ -2,7 +2,7 @@
 # so unlike api/ingest/search this build context is just alerting/ itself,
 # same shape as cli/Dockerfile:
 #   docker build -f alerting/Dockerfile -t cairnobs-alerting alerting/
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/alerting ./cmd/alerting

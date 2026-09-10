@@ -3,7 +3,7 @@
 # Go bindings via the `replace` directive in api/go.mod):
 #   docker build -f api/Dockerfile -t cairnobs-api .
 
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY proto ./proto
 COPY api ./api
