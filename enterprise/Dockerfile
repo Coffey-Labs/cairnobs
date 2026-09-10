@@ -14,7 +14,7 @@
 # enterprise-api's and enterprise-ingest's Dockerfiles already use for
 # the identical reason.
 #   docker build -f enterprise/Dockerfile -t cairnobs-enterprise-auth .
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY . .
 WORKDIR /src/enterprise

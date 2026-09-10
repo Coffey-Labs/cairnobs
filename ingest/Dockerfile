@@ -2,7 +2,7 @@
 # needs both ingest/ and proto/:
 #   docker build -f ingest/Dockerfile -t cairnobs-ingest .
 
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY proto ./proto
 COPY ingest ./ingest

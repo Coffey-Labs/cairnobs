@@ -2,7 +2,7 @@
 # (alerting/Dockerfile, enterprise/Dockerfile) -- context is
 # deploy/operator/ itself, no /proto dependency.
 #   docker build -f deploy/operator/Dockerfile -t cairnobs-tenant-operator deploy/operator/
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/tenant-operator ./cmd/tenant-operator

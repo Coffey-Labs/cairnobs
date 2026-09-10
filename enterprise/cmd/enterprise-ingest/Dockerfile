@@ -3,7 +3,7 @@
 # like enterprise-api/Dockerfile does for api/ + proto/ + enterprise/),
 # not enterprise/ alone.
 #   docker build -f enterprise/cmd/enterprise-ingest/Dockerfile -t cairnobs-enterprise-ingest .
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY . .
 WORKDIR /src/enterprise
