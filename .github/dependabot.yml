@@ -49,6 +49,15 @@ updates:
       day: tuesday
       time: "09:00"
       timezone: Etc/UTC
+    ignore:
+      # TypeScript 7 cannot be installed here at all: no @sveltejs/kit
+      # release accepts it. 2.70.3 (latest) peers `^5.3.3 || ^6.0.0` and
+      # even 3.0.0-next.27 peers `^6.0.0`; svelte-check caps at 6 as well.
+      # `npm ci` fails ERESOLVE before anything is built, so the PR cannot
+      # be made green from this side. Drop this entry once a SvelteKit
+      # release peers ^7 -- minor and patch updates still come through.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-and-patch:
         update-types:
