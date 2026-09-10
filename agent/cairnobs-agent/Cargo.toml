@@ -46,7 +46,7 @@ windows = { version = "0.58", features = [
     "Win32_System_Diagnostics_Etw",
     "Win32_Security",
 ] }
-windows-service = "0.7"
+windows-service = "0.8"
 quick-xml = "0.41"
 
 [build-dependencies]
