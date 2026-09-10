@@ -27,7 +27,7 @@ jobs:
       matrix:
         crate_dir: [agent, search]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: ${{ matrix.crate_dir }}/Cargo.toml
@@ -53,8 +53,8 @@ jobs:
           - hack/benchmark-fixture
           - hack/windows-fixture
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ${{ matrix.module_dir }}/go.mod
       - run: go install github.com/google/go-licenses@latest
@@ -70,8 +70,8 @@ jobs:
     name: npm license check (license-checker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - working-directory: web
@@ -87,5 +87,5 @@ jobs:
     name: Architectural boundary check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash hack/check-tenant-boundary.sh
