@@ -50,4 +50,4 @@ windows-service = "0.8"
 quick-xml = "0.42"
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-build = "0.14"
