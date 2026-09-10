@@ -167,7 +167,12 @@
 	function setupGrid() {
 		if (!gridEl || !dashboard?.panels) return;
 		grid?.destroy(false);
-		grid = GridStack.init({ float: true, cellHeight: 60, column: 12 }, gridEl);
+		// gridstack 13 returns null when it cannot bind to the element, where
+		// 11 always handed back a grid. `gridEl` is guarded above so this
+		// should not happen -- but the type says it can, and a missed drag is
+		// better than a thrown error inside an effect.
+		grid = GridStack.init({ float: true, cellHeight: 60, column: 12 }, gridEl) ?? undefined;
+		if (!grid) return;
 		grid.on('change', (_event: Event, items: GridStackNode[]) => {
 			for (const item of items) {
 				const panel = dashboard?.panels?.find((p) => p.id === item.id);
