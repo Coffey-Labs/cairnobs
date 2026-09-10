@@ -39,7 +39,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Windows-only: not in the dependency graph at all on other targets, so
 # they don't affect Linux build times or the musl release binary.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
+windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_EventLog",
     "Win32_System_Threading",
