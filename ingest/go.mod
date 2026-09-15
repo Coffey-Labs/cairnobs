@@ -8,7 +8,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/cairnobs/cairnobs/proto v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/segmentio/kafka-go v0.4.51
 	golang.org/x/sync v0.23.0
 	google.golang.org/grpc v1.83.2
