@@ -1,0 +1,142 @@
+# CI on the self-hosted GitLab, ported from the four workflows in
+# .github/workflows when the GitHub account was suspended on 2026-09-20. The
+# Actions files stay in the tree: they are the reference this was written from
+# and they work unchanged if the appeal succeeds.
+#
+# Images are pinned by digest, with the tag in the trailing comment. That is
+# the replacement for the SHA-pinned `uses:` in the workflows, since GitLab has
+# no action allowlist -- and it matters more here than elsewhere, because these
+# jobs exist to make a statement about what is in the tree.
+#
+# Two actions have no GitLab equivalent and are replaced by the tools they
+# wrap: EmbarkStudios/cargo-deny-action becomes cargo-deny installed in the
+# job, and the matrices become parallel:matrix. The command lines are the ones
+# the workflows were running, including the ignore and allow lists -- those are
+# licence policy, not configuration, and must not drift silently.
+
+stages: [licenses, security, checks]
+
+default:
+  interruptible: true
+
+.rules: &rules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.rust: &rust
+  image: rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e # 1-bookworm
+  cache:
+    key: cargo-deny
+    paths: [.cargo/]
+  variables:
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  before_script:
+    - cargo install cargo-deny --locked --quiet || cargo install cargo-deny --locked
+
+.go: &go
+  image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+  cache:
+    key: go-tools
+    paths: [.gocache/]
+  variables:
+    GOPATH: "$CI_PROJECT_DIR/.gocache"
+  before_script:
+    - export PATH="$GOPATH/bin:$PATH"
+
+.node: &node
+  image: node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 # 22-bookworm-slim
+  variables:
+    NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  cache:
+    key:
+      files: [web/package-lock.json]
+    paths: [.npm/]
+
+# ------------------------------------------------------- licence compliance --
+rust-licenses:
+  <<: [*rust, *rules]
+  stage: licenses
+  parallel:
+    matrix:
+      - CRATE_DIR: [agent, search]
+  script:
+    - cargo deny --manifest-path "$CRATE_DIR/Cargo.toml" check licenses
+
+go-licenses:
+  <<: [*go, *rules]
+  stage: licenses
+  parallel:
+    matrix:
+      - MODULE_DIR: [api, ingest, alerting, enterprise, deploy/operator, terraform, proto, hack/benchmark-fixture, hack/windows-fixture]
+  script:
+    - go install github.com/google/go-licenses@latest
+    - cd "$MODULE_DIR"
+    - |
+      go-licenses check ./... \
+        --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0,0BSD,Unlicense \
+        --ignore github.com/cairnobs/cairnobs \
+        --ignore github.com/segmentio/asm
+
+npm-licenses:
+  <<: [*node, *rules]
+  stage: licenses
+  script:
+    - cd web
+    - npm ci
+    - |
+      npx --yes license-checker \
+        --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;MPL-2.0" \
+        --excludePackages "web@0.0.1"
+
+# ------------------------------------------------------------- security scan --
+rust-advisories:
+  <<: [*rust, *rules]
+  stage: security
+  parallel:
+    matrix:
+      - CRATE_DIR: [agent, search]
+  script:
+    - cargo deny --manifest-path "$CRATE_DIR/Cargo.toml" check advisories
+
+go-vulncheck:
+  <<: [*go, *rules]
+  stage: security
+  parallel:
+    matrix:
+      - MODULE_DIR: [api, ingest, alerting, enterprise, deploy/operator, terraform, proto, hack/benchmark-fixture, hack/windows-fixture]
+  script:
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+    - cd "$MODULE_DIR"
+    - govulncheck ./...
+
+npm-audit:
+  <<: [*node, *rules]
+  stage: security
+  script:
+    - cd web
+    - npm ci
+    - npm audit --omit=dev
+
+# -------------------------------------------------------------- other checks --
+# Both of these shell out to `go`, so they need the Go image rather than a
+# bare debian: on Actions the runner happened to have a toolchain on PATH and
+# the workflow never had to say so.
+tenant-boundary:
+  <<: [*go, *rules]
+  stage: checks
+  script:
+    - bash hack/check-tenant-boundary.sh
+
+web-routes:
+  <<: [*go, *rules]
+  stage: checks
+  script:
+    - bash hack/check-web-routes.sh
+
+conformance-corpus:
+  <<: *rules
+  stage: checks
+  image: python:3.13-slim@sha256:8d9d0b8bcf6506481eae4907c18f5e3e7902e629f5f6d684f9e7c32e85e3ddf0 # 3.13-slim
+  script:
+    - python3 processing/conformance/validate.py
