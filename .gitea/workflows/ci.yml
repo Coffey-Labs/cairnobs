@@ -1,0 +1,153 @@
+# CI on the self-hosted Gitea, ported from .gitlab-ci.yml during the move off
+# GitLab (2026-09-22). Gitea reads .gitea/workflows and ignores .github/ once
+# this directory exists; .github/workflows stays as it was for GitHub.
+#
+# Every job runs in an image pinned by digest (tag in the trailing comment),
+# and the only action used is coffey-labs/actions/checkout pinned by SHA. The
+# instance resolves short `uses:` against itself, never GitHub, so nothing
+# unreviewed can be pulled in.
+#
+# It matters more here than elsewhere, because these jobs exist to make a
+# statement about what is in the tree. cargo-deny is installed in the job
+# rather than through EmbarkStudios/cargo-deny-action, and the command lines,
+# including the ignore and allow lists, are the ones the GitLab pipeline ran --
+# those are license policy, not configuration, and must not drift silently.
+#
+# GitLab ran three stages in order (licenses, security, checks), with a failed
+# stage stopping the later ones. `needs:` reproduces that ordering. There is no
+# cache server on this runner, so each job installs its tools from scratch.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------- license compliance --
+  rust-licenses:
+    runs-on: docker
+    container:
+      image: rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e # 1-bookworm
+    strategy:
+      matrix:
+        CRATE_DIR: [agent, search]
+    env:
+      CRATE_DIR: ${{ matrix.CRATE_DIR }}
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: cargo install cargo-deny --locked --quiet || cargo install cargo-deny --locked
+      - run: cargo deny --manifest-path "$CRATE_DIR/Cargo.toml" check licenses
+
+  go-licenses:
+    runs-on: docker
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    strategy:
+      matrix:
+        MODULE_DIR: [api, ingest, alerting, enterprise, deploy/operator, terraform, proto, hack/benchmark-fixture, hack/windows-fixture]
+    env:
+      MODULE_DIR: ${{ matrix.MODULE_DIR }}
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: go install github.com/google/go-licenses@latest
+      - run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          cd "$MODULE_DIR"
+          go-licenses check ./... \
+            --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0,0BSD,Unlicense \
+            --ignore github.com/cairnobs/cairnobs \
+            --ignore github.com/segmentio/asm
+
+  npm-licenses:
+    runs-on: docker
+    container:
+      image: node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 # 22-bookworm-slim
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: |
+          cd web
+          npm ci
+          npx --yes license-checker \
+            --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;MPL-2.0" \
+            --excludePackages "web@0.0.1"
+
+  # ---------------------------------------------------------- security scan --
+  rust-advisories:
+    needs: [rust-licenses, go-licenses, npm-licenses]
+    runs-on: docker
+    container:
+      image: rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e # 1-bookworm
+    strategy:
+      matrix:
+        CRATE_DIR: [agent, search]
+    env:
+      CRATE_DIR: ${{ matrix.CRATE_DIR }}
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: cargo install cargo-deny --locked --quiet || cargo install cargo-deny --locked
+      - run: cargo deny --manifest-path "$CRATE_DIR/Cargo.toml" check advisories
+
+  go-vulncheck:
+    needs: [rust-licenses, go-licenses, npm-licenses]
+    runs-on: docker
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    strategy:
+      matrix:
+        MODULE_DIR: [api, ingest, alerting, enterprise, deploy/operator, terraform, proto, hack/benchmark-fixture, hack/windows-fixture]
+    env:
+      MODULE_DIR: ${{ matrix.MODULE_DIR }}
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          cd "$MODULE_DIR"
+          govulncheck ./...
+
+  npm-audit:
+    needs: [rust-licenses, go-licenses, npm-licenses]
+    runs-on: docker
+    container:
+      image: node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 # 22-bookworm-slim
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: |
+          cd web
+          npm ci
+          npm audit --omit=dev
+
+  # ----------------------------------------------------------- other checks --
+  # Both of these shell out to `go`, so they need the Go image rather than a
+  # bare debian.
+  tenant-boundary:
+    needs: [rust-advisories, go-vulncheck, npm-audit]
+    runs-on: docker
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: bash hack/check-tenant-boundary.sh
+
+  web-routes:
+    needs: [rust-advisories, go-vulncheck, npm-audit]
+    runs-on: docker
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: bash hack/check-web-routes.sh
+
+  conformance-corpus:
+    needs: [rust-advisories, go-vulncheck, npm-audit]
+    runs-on: docker
+    container:
+      image: python:3.13-slim@sha256:8d9d0b8bcf6506481eae4907c18f5e3e7902e629f5f6d684f9e7c32e85e3ddf0 # 3.13-slim
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: python3 processing/conformance/validate.py
