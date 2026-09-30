@@ -20,6 +20,10 @@
   <code>enterprise/</code>. See <a href="#licensing">Licensing</a>.
 </p>
 
+> [!NOTE]
+> Development happens on [git.coffeylabs.org/coffey-labs/cairnobs](https://git.coffeylabs.org/coffey-labs/cairnobs); the copy on GitHub is a read-only mirror.
+> Report issues at **[git.coffeylabs.org/coffey-labs/cairnobs/issues](https://git.coffeylabs.org/coffey-labs/cairnobs/issues)**, and join discussions at **[community.coffeylabs.org](https://community.coffeylabs.org)**.
+
 ## What it does
 
 Logs flow from a statically-linked Rust edge agent through Redpanda into a Go
