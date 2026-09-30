@@ -1,0 +1,202 @@
+# The license, security and conformance checks on GitHub Actions, for the
+# GitHub replica of this repository. Gitea (git.coffeylabs.org) is the source
+# of truth: it pushes every commit here through a push mirror, and this
+# workflow checks what arrives. Pull requests live on Gitea, so there is no
+# pull_request trigger -- a PR's branch reaches this copy as an ordinary push.
+#
+# The switch is the org variable BUILD_ON, set on both forges. With
+# BUILD_ON=github every job here runs, the jobs in .gitea/workflows/ci.yml
+# skip, and Gitea's own run waits for the result this workflow reports back.
+# With it unset, every job here skips and Gitea runs the checks as before --
+# which is also the way back if GitHub is ever unavailable: unset it on Gitea.
+#
+# The jobs are .gitea/workflows/ci.yml's, job for job, in the same images
+# pinned by digest: these checks make a statement about what is in the tree,
+# and the command lines -- including the ignore and allow lists -- are license
+# policy, not configuration. Change them in both files or neither. cargo-deny
+# is installed in the job, not through a third-party action.
+#
+# The only action used is actions/checkout, pinned to a full commit SHA with
+# the release in a trailing comment.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITEA_URL: ${{ vars.GITEA_URL }}
+
+jobs:
+  # Tells Gitea a result is on its way, so the commit does not look unchecked
+  # while the checks run.
+  pending:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          CONTEXT: github/ci (${{ github.ref_type }})
+        run: |
+          jq -n --arg c "$CONTEXT" --arg u "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{state:"pending", context:$c, target_url:$u, description:"GitHub Actions"}' |
+          curl -fsS -o /dev/null -X POST -H "Authorization: token $GITEA_TOKEN" -H 'Content-Type: application/json' \
+            --data @- "$GITEA_URL/api/v1/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA"
+
+  # ----------------------------------------------------- license compliance --
+  rust-licenses:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e # 1-bookworm
+    strategy:
+      matrix:
+        CRATE_DIR: [agent, search]
+    env:
+      CRATE_DIR: ${{ matrix.CRATE_DIR }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: cargo install cargo-deny --locked --quiet || cargo install cargo-deny --locked
+      - run: cargo deny --manifest-path "$CRATE_DIR/Cargo.toml" check licenses
+
+  go-licenses:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    strategy:
+      matrix:
+        MODULE_DIR: [api, ingest, alerting, enterprise, deploy/operator, terraform, proto, hack/benchmark-fixture, hack/windows-fixture]
+    env:
+      MODULE_DIR: ${{ matrix.MODULE_DIR }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: go install github.com/google/go-licenses@latest
+      - run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          cd "$MODULE_DIR"
+          go-licenses check ./... \
+            --allowed_licenses=MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0,0BSD,Unlicense \
+            --ignore github.com/cairnobs/cairnobs \
+            --ignore github.com/segmentio/asm
+
+  npm-licenses:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 # 22-bookworm-slim
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          cd web
+          npm ci
+          npx --yes license-checker \
+            --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;MPL-2.0" \
+            --excludePackages "web@0.0.1"
+
+  # ---------------------------------------------------------- security scan --
+  rust-advisories:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    needs: [rust-licenses, go-licenses, npm-licenses]
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e # 1-bookworm
+    strategy:
+      matrix:
+        CRATE_DIR: [agent, search]
+    env:
+      CRATE_DIR: ${{ matrix.CRATE_DIR }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: cargo install cargo-deny --locked --quiet || cargo install cargo-deny --locked
+      - run: cargo deny --manifest-path "$CRATE_DIR/Cargo.toml" check advisories
+
+  go-vulncheck:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    needs: [rust-licenses, go-licenses, npm-licenses]
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    strategy:
+      matrix:
+        MODULE_DIR: [api, ingest, alerting, enterprise, deploy/operator, terraform, proto, hack/benchmark-fixture, hack/windows-fixture]
+    env:
+      MODULE_DIR: ${{ matrix.MODULE_DIR }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          cd "$MODULE_DIR"
+          govulncheck ./...
+
+  npm-audit:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    needs: [rust-licenses, go-licenses, npm-licenses]
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 # 22-bookworm-slim
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          cd web
+          npm ci
+          npm audit --omit=dev
+
+  # ----------------------------------------------------------- other checks --
+  # Both of these shell out to `go`, so they need the Go image rather than a
+  # bare debian.
+  tenant-boundary:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    needs: [rust-advisories, go-vulncheck, npm-audit]
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash hack/check-tenant-boundary.sh
+
+  web-routes:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    needs: [rust-advisories, go-vulncheck, npm-audit]
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.26-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d # 1.26-bookworm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash hack/check-web-routes.sh
+
+  conformance-corpus:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    needs: [rust-advisories, go-vulncheck, npm-audit]
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.13-slim@sha256:8d9d0b8bcf6506481eae4907c18f5e3e7902e629f5f6d684f9e7c32e85e3ddf0 # 3.13-slim
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 processing/conformance/validate.py
+
+  # One commit status on Gitea for the whole run. Gitea's ci.yml `github` job
+  # waits on exactly this context.
+  report:
+    if: ${{ always() && vars.BUILD_ON == 'github' }}
+    needs: [pending, rust-licenses, go-licenses, npm-licenses, rust-advisories, go-vulncheck, npm-audit, tenant-boundary, web-routes, conformance-corpus]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          CONTEXT: github/ci (${{ github.ref_type }})
+          STATE: ${{ (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && 'failure' || 'success' }}
+        run: |
+          jq -n --arg s "$STATE" --arg c "$CONTEXT" --arg u "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{state:$s, context:$c, target_url:$u, description:"GitHub Actions"}' |
+          curl -fsS -o /dev/null -X POST -H "Authorization: token $GITEA_TOKEN" -H 'Content-Type: application/json' \
+            --data @- "$GITEA_URL/api/v1/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA"
