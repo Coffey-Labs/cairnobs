@@ -190,7 +190,7 @@ first attempt (before any `tenant_memberships` row existed) correctly
 failed closed with "this identity has no tenant membership" while still
 creating the `users` row via `UpsertUserBySSO`, exactly as designed;
 after `-grant-membership-*` granted that real Auth0 identity
-(`john@linuxexperts.net`) an `admin` role on `acme`, a second login
+(the administrator account) an `admin` role on `acme`, a second login
 completed the full OAuth code exchange, consent screen, and redirect to
 `web`, landing a real `cairnobs_session` cookie; `POST
 /internal/authorize` with that cookie returned
