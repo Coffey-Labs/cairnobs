@@ -260,7 +260,7 @@ next step for this project rather than a 1.0 tag.
 
 ## Licensing
 
-Copyright (C) 2026 Coffey Labs.
+Copyright (C) 2026 Coffey Labs LLC.
 
 AGPLv3, no exceptions — see [`LICENSE`](LICENSE). `enterprise/` was under a
 commercial-license stub from Phase 4 through Phase 5; Phase 6 relicensed it to
