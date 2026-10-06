@@ -15,7 +15,7 @@ Cairn OBS is under active development. Security fixes are applied to the latest 
 
 Instead, report security issues privately by emailing:
 
-**johnellisATlinuxDOTcom**
+**securityATcoffeylabsDOTorg**
 
 Please include as much of the following as you can:
 
