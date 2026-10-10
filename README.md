@@ -8,6 +8,12 @@
 </p>
 
 <p align="center">
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-0f766e?style=flat-square"></a>
+  <a href="https://cairnobs.org"><img alt="Website: cairnobs.org" src="https://img.shields.io/badge/website-cairnobs.org-0ea5e9?style=flat-square"></a>
+  <a href="https://discord.gg/nqcY4TKfAn"><img alt="Chat on Discord" src="https://img.shields.io/discord/1523538164084637797?label=discord&logo=discord&logoColor=white&color=5865f2&style=flat-square"></a>
+</p>
+
+<p align="center">
   Self-hosted, Kubernetes-native log aggregation and observability.<br>
   Built to match Splunk on capability while winning on cost-per-GB,<br>
   on a modern language stack.<br>
