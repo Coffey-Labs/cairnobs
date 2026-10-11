@@ -38,9 +38,26 @@ Open an issue describing:
 
 For larger changes, open an issue to discuss the approach **before** submitting a pull request — this saves everyone time if the direction needs adjusting.
 
+### Sending a change
+
+New accounts on git.coffeylabs.org can file issues but can't push or fork.
+Until you have repository access, open an
+[issue](https://git.coffeylabs.org/coffey-labs/cairnobs/issues) for the change, or say hello
+on [community.coffeylabs.org](https://community.coffeylabs.org), and attach the
+change to the issue as a patch:
+
+```bash
+git format-patch origin/main --stdout > my-change.patch
+```
+
+Repository access goes to volunteers we have worked with; a few good issues or
+patches is the usual way in. After that you push a branch here and open a pull
+request, as below. The GitHub copy is a read-only mirror, so pull requests opened
+there are not merged.
+
 ### Submitting Pull Requests
 
-1. **Fork** the repository and create your branch from `main`.
+1. **Create your branch** from `main`. Pushing it needs repository access; see [Sending a change](#sending-a-change).
 2. **Name your branch** descriptively, e.g. `fix/tantivy-merge-stall` or `feat/alert-absence-rules`.
 3. **Keep PRs focused** — one logical change per PR.
 4. **Write clear commit messages** describing what changed and why. The "why" matters more than the "what"; the diff already says what.
@@ -48,7 +65,7 @@ For larger changes, open an issue to discuss the approach **before** submitting 
 6. **Update documentation** if your change affects setup, configuration, the query language, or user-facing behaviour.
 7. **Open the pull request** against `main`, with a summary, any related issue numbers, screenshots for UI changes, and what you actually ran to check it.
 
-Please sign off your commits: `git commit -s` adds the `Signed-off-by` trailer, which is a statement that you have the right to submit the work under this project's licence. GitHub enforces it for commits made through the web interface; for everything else it is asked for rather than blocked.
+Please sign off your commits: `git commit -s` adds the `Signed-off-by` trailer, which is a statement that you have the right to submit the work under this project's licence. It is asked for rather than blocked.
 
 ### CI
 
@@ -67,9 +84,9 @@ Three workflows run on a pull request:
 
 ### Development Setup
 
-1. Clone your fork:
+1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/cairnobs.git
+   git clone https://git.coffeylabs.org/coffey-labs/cairnobs.git
    cd cairnobs
    ```
 2. Bring the stack up:
