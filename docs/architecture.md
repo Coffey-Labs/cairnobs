@@ -11,7 +11,7 @@
 
 ## Mission
 
-Open-core, Kubernetes-native centralized logging platform. Compete with
+Self-hosted, Kubernetes-native centralized logging platform. Compete with
 Splunk on features; win on cost-per-GB, a modern language stack, and
 multi-tenant RBAC that's actually honest about its guarantees.
 
