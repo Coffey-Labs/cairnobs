@@ -1,0 +1,25 @@
+# The web interface behind the router's TLS (edge), and the agent port
+# passed through untouched: agents authenticate with client certificates
+# from Cairn OBS's own CA, which only works end to end.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: obs-beacond
+spec:
+  host: obs.apps.example.org
+  to: { kind: Service, name: obs-beacond }
+  port: { targetPort: web }
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: obs-beacond-agents
+spec:
+  host: obs-agents.apps.example.org
+  to: { kind: Service, name: obs-beacond }
+  port: { targetPort: agents }
+  tls:
+    termination: passthrough

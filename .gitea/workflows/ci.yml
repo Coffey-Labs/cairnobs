@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 Coffey Labs LLC
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Every pull request: `make check` (gofmt, go vet, go test, the interface's
+# type check), then a release build of both architectures and all packages,
+# so a tag can't be the first time the packaging runs. A second job runs
+# every test again on PostgreSQL 16, the oldest Cairn OBS supports.
+name: ci
+
+on:
+  pull_request:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: light
+    container:
+      image: golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 # 1.26-bookworm (1.26.11)
+    env:
+      NODE_VERSION: v22.23.4
+      NODE_SHA256: 1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce # node-v22.23.4-linux-x64.tar.xz
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - name: Node
+        run: |
+          set -euo pipefail
+          apt-get -qq update >/dev/null && apt-get -qq install -y --no-install-recommends xz-utils >/dev/null
+          f="node-$NODE_VERSION-linux-x64.tar.xz"
+          curl -fsSLO "https://nodejs.org/dist/$NODE_VERSION/$f"
+          echo "$NODE_SHA256  $f" | sha256sum -c -
+          tar -xJf "$f" -C /usr/local --strip-components=1 && rm "$f"
+      - run: make check
+      - run: scripts/build-release.sh v0.0.0 dist
+
+  postgres:
+    runs-on: light
+    # One at a time: the runner puts every job on one network, where two
+    # jobs' services both answer to "postgres", and a test's connections
+    # land on either server (its schema missing on the other).
+    concurrency:
+      group: beacon-postgres
+      cancel-in-progress: false
+    container:
+      image: golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 # 1.26-bookworm (1.26.11)
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139 # 16.15
+        env:
+          POSTGRES_USER: cobs
+          POSTGRES_PASSWORD: cobs-ci # a throwaway server that lives as long as the job
+          POSTGRES_DB: cobs
+      # Vault and OpenBao in dev mode, for internal/vault (docs/vault.md).
+      # Named for this repo: the runner's network is shared.
+      cobs-vault:
+        image: hashicorp/vault@sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569 # 1.21.4
+        env:
+          VAULT_DEV_ROOT_TOKEN_ID: root-ci # a throwaway server that lives as long as the job
+          VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+          SKIP_SETCAP: "true"
+      cobs-openbao:
+        image: openbao/openbao@sha256:597f62847dd382382056a1d6704d50465908c2040038c4611832a23269a67112 # 2.4.1
+        env:
+          BAO_DEV_ROOT_TOKEN_ID: root-ci
+          BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+          SKIP_SETCAP: "true"
+    env:
+      # synchronous_commit off: every test makes its own schema, and a
+      # throwaway server needn't wait on the runner's disk for each commit.
+      CAIRN_OBS_TEST_POSTGRES: postgres://cobs:cobs-ci@postgres:5432/cobs?sslmode=disable&synchronous_commit=off
+      CAIRN_OBS_TEST_VAULT: http://cobs-vault:8200,http://cobs-openbao:8200
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 60); do
+            (exec 3<>/dev/tcp/postgres/5432) 2>/dev/null && exit 0
+            sleep 1
+          done
+          echo "PostgreSQL didn't start" >&2
+          exit 1
+      - name: Wait for Vault and OpenBao
+        run: |
+          for h in cobs-vault cobs-openbao; do
+            for i in $(seq 60); do
+              (exec 3<>/dev/tcp/$h/8200) 2>/dev/null && break
+              [ $i = 60 ] && { echo "$h didn't start" >&2; exit 1; }
+              sleep 1
+            done
+          done
+      - run: go test -count=1 ./...

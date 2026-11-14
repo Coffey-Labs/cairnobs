@@ -1,0 +1,66 @@
+# One replica only: SQLite has one writer. Recreate, so the old pod lets go
+# of the volume before the new one mounts it. components/postgres runs
+# several, rolling.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obs-beacond
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      serviceAccountName: obs-beacon
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        # No runAsUser or fsGroup: OpenShift and OKD assign both from the
+        # namespace's range. plain/ sets them for other clusters.
+      containers:
+        - name: obs-beacond
+          image: obs-beacond
+          ports:
+            - name: web
+              containerPort: 8150
+            - name: agents
+              containerPort: 8461
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe: # ready once caught up; unready as soon as it's stopping
+            httpGet: { path: /readyz, port: web }
+            periodSeconds: 10
+          startupProbe: # up to 3 minutes to start, e.g. while its database starts too
+            httpGet: { path: /healthz, port: web }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /healthz, port: web }
+            periodSeconds: 30
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/obs-beacon/obs-beacond.yaml, subPath: obs-beacond.yaml, readOnly: true }
+            - { name: state-key, mountPath: /etc/obs-beacon/key, readOnly: true }
+            - { name: data, mountPath: /var/lib/obs-beacon }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap:
+            name: obs-beacond
+        - name: state-key
+          secret:
+            secretName: obs-beacon-state-key # docs/kubernetes.md: create it once, keep a copy
+            defaultMode: 0440 # group-readable: the pod's user is assigned, its group isn't
+        - name: data
+          persistentVolumeClaim:
+            claimName: obs-beacon-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

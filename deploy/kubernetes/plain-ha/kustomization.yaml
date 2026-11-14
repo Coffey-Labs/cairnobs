@@ -1,0 +1,8 @@
+# Any other Kubernetes, several copies on PostgreSQL:
+# `kubectl apply -k deploy/kubernetes/plain-ha -n <namespace>`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../plain
+components:
+  - ../components/postgres

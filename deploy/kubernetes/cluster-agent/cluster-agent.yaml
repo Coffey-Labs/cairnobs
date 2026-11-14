@@ -1,0 +1,165 @@
+# The Cairn OBS cluster agent (docs/cluster-watcher.md): one per cluster,
+# reading it through the API with get, list and watch only, and sending
+# short records of its nodes, pods, controllers, jobs and volumes to
+# obs-beacond's agent listener.
+#
+# obs-beacond hands this file out at /cluster.yaml, with @IMAGE@ filled in
+# and, for Add a cluster, the join token's Secret where #@SECRET@ is:
+#
+#   curl -fsSL -H 'Authorization: Bearer cobsj1_…' https://<server>/cluster.yaml | kubectl apply -f -
+#
+# Without the token the same address gives the manifest alone: apply it to
+# upgrade the agent, or delete with it to take the agent out.
+#
+# Not granted: Secrets (other than its own, below), ConfigMaps, exec,
+# attach, port-forward, nodes/proxy, and any write to the cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cairn-obs-agent
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: obs-beacon-agent
+  namespace: cairn-obs-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cairn-obs-agent
+rules:
+  - apiGroups: [""]
+    resources: [nodes, pods, namespaces, persistentvolumeclaims, services]
+    verbs: [get, list, watch]
+  # For the maps: what reaches what.
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch]
+  - apiGroups: [route.openshift.io]
+    resources: [routes]
+    verbs: [get, list, watch]
+  # The certificate inventory: cert-manager's Certificates, from their
+  # status; never the Secrets they fill. Harmless where it isn't installed.
+  - apiGroups: [cert-manager.io]
+    resources: [certificates]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list, watch]
+  # CPU and memory now, from metrics-server (OpenShift serves it too).
+  - apiGroups: [metrics.k8s.io]
+    resources: [nodes, pods]
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  # OpenShift and OKD; harmless where these aren't served.
+  - apiGroups: [config.openshift.io]
+    resources: [clusterversions, clusteroperators]
+    verbs: [get, list, watch]
+  - apiGroups: [machineconfiguration.openshift.io]
+    resources: [machineconfigpools]
+    verbs: [get, list, watch]
+  # KubeVirt (OpenShift Virtualization) and CDI; harmless where they aren't
+  # installed. Of the guest agent's subresources, only the file system list:
+  # not its users, not consoles.
+  - apiGroups: [kubevirt.io]
+    resources: [virtualmachines, virtualmachineinstances, virtualmachineinstancemigrations]
+    verbs: [get, list, watch]
+  - apiGroups: [subresources.kubevirt.io]
+    resources: [virtualmachineinstances/filesystemlist]
+    verbs: [get]
+  - apiGroups: [cdi.kubevirt.io]
+    resources: [datavolumes]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cairn-obs-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cairn-obs-agent
+subjects:
+  - kind: ServiceAccount
+    name: obs-beacon-agent
+    namespace: cairn-obs-agent
+---
+# Its own Secret, and only that one: the join token, then its key and
+# certificate, which it renews.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: obs-beacon-agent
+  namespace: cairn-obs-agent
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [obs-beacon-agent]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: obs-beacon-agent
+  namespace: cairn-obs-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: obs-beacon-agent
+subjects:
+  - kind: ServiceAccount
+    name: obs-beacon-agent
+    namespace: cairn-obs-agent
+#@SECRET@
+---
+# One replica: two would send the same cluster twice. Recreate, so the old
+# one has stopped before the new one starts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obs-beacon-agent
+  namespace: cairn-obs-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: obs-beacon-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: obs-beacon-agent
+        app.kubernetes.io/part-of: cairn-obs
+    spec:
+      serviceAccountName: obs-beacon-agent
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        # No runAsUser: OpenShift and OKD assign one; elsewhere the image's
+        # user (1001) is used.
+      containers:
+        - name: agent
+          image: "@IMAGE@"
+          command: [/usr/bin/obs-beacon-agent, cluster]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef: { fieldPath: metadata.namespace }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 512Mi }

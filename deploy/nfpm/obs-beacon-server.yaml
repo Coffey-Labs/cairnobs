@@ -1,0 +1,47 @@
+# nfpm config for the server package (.deb and .rpm). scripts/build-release.sh
+# sets ARCH (amd64, arm64) and VERSION, which nfpm expands, and stages this
+# arch's binaries in bin/package/ (nfpm doesn't expand paths).
+name: obs-beacon-server
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: admin
+priority: optional
+maintainer: Coffey Labs LLC <hello@coffeylabs.org>
+vendor: Coffey Labs LLC
+homepage: https://cairnobs.org
+license: AGPL-3.0-or-later
+description: |-
+  Cairn OBS server: obs-beacond.
+  Takes reports from obs-beacon-agent on each host, judges them, raises
+  and routes alerts, and serves the web interface (built in).
+
+contents:
+  - src: bin/package/obs-beacond
+    dst: /usr/bin/obs-beacond
+    file_info: {mode: 0755}
+  - src: deploy/systemd/obs-beacond.service
+    dst: /usr/lib/systemd/system/obs-beacond.service
+    file_info: {mode: 0644}
+  - src: config/obs-beacond.example.yaml
+    dst: /usr/share/doc/obs-beacon-server/examples/obs-beacond.yaml
+    file_info: {mode: 0644}
+  - src: config/checks.example.yaml
+    dst: /usr/share/doc/obs-beacon-server/examples/checks.yaml
+    file_info: {mode: 0644}
+  - src: config/expected.example.yaml
+    dst: /usr/share/doc/obs-beacon-server/examples/expected.yaml
+    file_info: {mode: 0644}
+  - src: LICENSE
+    dst: /usr/share/doc/obs-beacon-server/LICENSE
+    file_info: {mode: 0644}
+  - src: THIRD_PARTY_NOTICES.md
+    dst: /usr/share/doc/obs-beacon-server/THIRD_PARTY_NOTICES.md
+    file_info: {mode: 0644}
+
+scripts:
+  preinstall: deploy/nfpm/scripts/user.sh
+  postinstall: deploy/nfpm/scripts/server-postinstall.sh
+  preremove: deploy/nfpm/scripts/server-preremove.sh
+  postremove: deploy/nfpm/scripts/postremove.sh

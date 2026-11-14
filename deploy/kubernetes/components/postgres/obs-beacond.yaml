@@ -1,0 +1,20 @@
+# obs-beacond.yaml for several copies on one PostgreSQL database (the
+# CloudNativePG cluster in database.yaml). Everything else is as in
+# base/obs-beacond.yaml; set the same public names here.
+listen: 0.0.0.0:8150
+agent_listen: 0.0.0.0:8461 # TLS with Cairn OBS's own CA: pass it through, never terminate it
+# The cluster's read-write Service, with TLS checked against the
+# operator's CA. The password comes from the operator's app Secret.
+database: postgres://cobs@obs-beacon-db-rw:5432/cobs?sslmode=verify-full&sslrootcert=/etc/obs-beacon/db-ca/ca.crt
+database_password_file: /etc/obs-beacon/db/password
+data_dir: /var/lib/obs-beacon # nothing here needs keeping: the agent CA is in the database
+state_key_file: /etc/obs-beacon/key/state.key # one Secret, the same in every copy
+# Stopping: unready at once, then keep serving while the Service and the
+# router stop sending here, then close.
+shutdown_delay: 10s
+shutdown_grace: 30s
+alerts:
+  public_url: https://obs.apps.example.org # the web Route or Ingress
+join:
+  agent_url: https://obs-agents.apps.example.org:443
+  # packages_url: https://downloads.example.org/cairnobs/v0.1.0

@@ -1,0 +1,120 @@
+/* Cairn OBS — cairnobs.org colour and type, console-style parts. The trace orange marks the brand and what you can click; it is
+   never a state or a reading. Readings are sig blue; status colours are
+   green / yellow / violet / red and always come with an icon and a word. */
+@font-face { font-family: 'Overpass'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/fonts/overpass-variable.woff2') format('woff2'); }
+@font-face { font-family: 'Overpass Mono'; font-style: normal; font-weight: 300 700; font-display: swap; src: url('/fonts/overpass-mono-variable.woff2') format('woff2'); }
+
+:root {
+	color-scheme: dark;
+	--content: #0d0b10; --background: #110f15; --card: #17141d; --popover: #1e1a26; --muted: #1e1a26;
+	--foreground: #f2eff5; --muted-fg: #aba3b5; --border: #2a2533; --input: #3d3546; --thead: #1b1822;
+	--primary: #ff8a00; --primary-fg: #140a00; --accent: rgba(255, 138, 0, .12); --accent-fg: #ff9a2e; --glow: rgba(255, 138, 0, .32);
+	--data: #3fb6ff;
+	--s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #aba3b5; --s5: #e0629f; /* map layers: web, mail, mesh/data, probes, messaging */
+	--good: #3dd68c; --warning: #f2d43d; --serious: #d65cff; --critical: #ff4545; --info: #3fb6ff; --on-sev: #140a00;
+	--grid: rgba(98, 87, 110, .22);
+	--shadow-soft: 0 1px 2px rgba(0, 0, 0, .35), 0 14px 34px -18px rgba(0, 0, 0, .8);
+	--shadow: 0 30px 70px -30px rgba(0, 0, 0, .9);
+	--radius: 6px;
+	--sans: 'Overpass', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	--mono: 'Overpass Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+:root[data-theme='light'] {
+	color-scheme: light;
+	--content: #f6f4f8; --background: #fbfafc; --card: #ffffff; --popover: #ffffff; --muted: #f4f1f7;
+	--foreground: #17131c; --muted-fg: #554d60; --border: #e2dde8; --input: #c9c1d2; --thead: #f4f1f7;
+	--primary: #c25400; --primary-fg: #ffffff; --accent: rgba(194, 84, 0, .08); --accent-fg: #9a4300; --glow: transparent;
+	--data: #0a6ea8;
+	--s1: #2a78d6; --s2: #eb6834; --s3: #199e70; --s4: #554d60; --s5: #b83d7a;
+	--good: #0d7a5f; --warning: #7d6b00; --serious: #8a2bd1; --critical: #b0103f; --info: #0a6ea8; --on-sev: #ffffff;
+	--grid: rgba(98, 87, 110, .12);
+	--shadow-soft: 0 1px 2px rgba(23, 19, 28, .05), 0 10px 26px -16px rgba(23, 19, 28, .22);
+	--shadow: 0 30px 60px -30px rgba(23, 19, 28, .32);
+}
+
+* { box-sizing: border-box; border-color: var(--border); }
+html, body { margin: 0; }
+body { background: var(--content); color: var(--foreground); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: var(--primary); text-decoration: none; }
+button { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -.015em; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted-fg); }
+.sub { color: var(--muted-fg); font-size: 12px; }
+svg.i { width: 16px; height: 16px; flex: none; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* buttons, pills, chips */
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--input); background: var(--card); color: var(--foreground); cursor: pointer; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
+a.btn { text-decoration: none; }
+.btn:hover { background: var(--muted); }
+.btn.pri { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.btn.pri:hover { filter: brightness(1.06); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.iconbtn { width: 36px; height: 36px; display: grid; place-items: center; border: 0; background: transparent; border-radius: var(--radius); cursor: pointer; color: var(--foreground); }
+.iconbtn:hover { background: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); font-size: 12px; cursor: pointer; }
+.chip.on { border-color: var(--primary); color: var(--foreground); background: var(--accent); }
+.chip b { font: 600 11px var(--mono); }
+.input { height: 32px; padding: 0 10px; border-radius: var(--radius); border: 1px solid var(--input); background: transparent; color: var(--foreground); font: inherit; font-size: 13px; min-width: 0; }
+.pill { display: inline-flex; padding: 1px 8px; border-radius: 6px; background: var(--muted); font-size: 12px; }
+
+/* page */
+.page { padding: 24px; max-width: 1760px; min-width: 0; }
+.phead { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.phead .tile { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in oklab, var(--primary) 16%, var(--card)); color: var(--primary); flex: none; }
+.phead .tile svg { width: 20px; height: 20px; }
+.phead h1 { font-size: 24px; line-height: 1.2; }
+.phead p { margin: 2px 0 0; color: var(--muted-fg); }
+.phead .acts { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.grid { display: grid; gap: 20px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mt { margin-top: 20px; }
+.foot-note { color: var(--muted-fg); font-size: 13px; margin: 10px 0 0; }
+.empty { color: var(--muted-fg); padding: 24px 0; text-align: center; }
+
+/* stat tile */
+.stat .lab { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted-fg); }
+.stat .val { font: 600 28px var(--mono); letter-spacing: -.02em; margin-top: 6px; }
+.stat .val small { font-size: 14px; color: var(--muted-fg); font-weight: 500; }
+.stat .sub { margin-top: 2px; }
+
+/* meters */
+.meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.meter .ml { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted-fg); }
+.meter .ml b { color: var(--foreground); font: 600 12px var(--mono); }
+.meter .bar { height: 6px; border-radius: 3px; background: color-mix(in oklab, var(--data) 16%, transparent); margin-top: 4px; overflow: hidden; }
+.meter .bar i { display: block; height: 100%; border-radius: 3px; background: var(--data); }
+.meter.warn .bar { background: color-mix(in oklab, var(--warning) 18%, transparent); }
+.meter.warn .bar i { background: var(--warning); }
+.meter.crit .bar { background: color-mix(in oklab, var(--critical) 18%, transparent); }
+.meter.crit .bar i { background: var(--critical); }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { background: var(--thead); text-align: left; font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-fg); padding: 11px 14px; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.tbl td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover td { background: color-mix(in oklab, var(--muted) 45%, transparent); }
+.tbl .r { text-align: right; white-space: nowrap; }
+.filters { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+
+@media (max-width: 1180px) { .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) { .g2 { grid-template-columns: 1fr; } .page { padding: 16px; } }
+@media (max-width: 520px) { .g4 { grid-template-columns: 1fr 1fr; } .phead .acts { margin-left: 0; } }
+
+/* Map links: a soft base line with dots flowing along it (the demo's look). */
+.flow { stroke-dasharray: 2 8; stroke-linecap: round; animation: flow 1.3s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; } }
+.map-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 20px 14px; font-size: 12px; color: var(--muted-fg); }
+.map-legend i { display: inline-block; width: 18px; border-top: 3px solid; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+
+/* Map lines: a soft base line with dots flowing along it toward what's
+   needed (the first demo's look); still for anyone who prefers less motion. */
+.flow { fill: none; stroke-dasharray: 2 8; stroke-linecap: round; animation: flow 1.3s linear infinite; pointer-events: none; }
+@keyframes flow { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; } }

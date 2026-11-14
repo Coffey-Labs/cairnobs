@@ -1,0 +1,7 @@
+# OpenShift and OKD: `oc apply -k deploy/kubernetes/openshift -n <namespace>`.
+# Runs under the default restricted-v2 security context constraint.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - routes.yaml

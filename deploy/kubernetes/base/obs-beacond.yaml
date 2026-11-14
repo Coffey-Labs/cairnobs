@@ -1,0 +1,18 @@
+# obs-beacond.yaml for Kubernetes (docs/formats.md has every setting). The
+# web interface and the agents each get their own port; a Route or Ingress
+# puts them on the outside.
+listen: 0.0.0.0:8150
+agent_listen: 0.0.0.0:8461 # TLS with Cairn OBS's own CA: pass it through, never terminate it
+database: /var/lib/obs-beacon/beacon.db
+state_key_file: /etc/obs-beacon/key/state.key
+alerts:
+  public_url: https://obs.apps.example.org # the web Route or Ingress
+join:
+  # The agents' Route (passthrough) or load balancer as new hosts reach it.
+  agent_url: https://obs-agents.apps.example.org:443
+  # Agent packages for install.sh: a release's download URL. (The server
+  # image doesn't carry them, so packages_dir doesn't apply here.)
+  # packages_url: https://downloads.example.org/cairnobs/v0.1.0
+  # Where clusters pull this image from, for Configure, Clusters (it
+  # carries the cluster agent too). Without a tag, this version's.
+  # image: registry.example.org/ops/obs-beacond

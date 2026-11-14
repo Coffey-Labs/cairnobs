@@ -1,0 +1,14 @@
+# The database, the agent CA and the ACME cache. SQLite needs a disk of its
+# own: ReadWriteOnce block storage (Pure FlashArray through Pure CSI or
+# Portworx, Ceph RBD, a cloud disk), never a shared file system such as NFS.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: obs-beacon-data
+spec:
+  accessModes: [ReadWriteOnce]
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: pure-block   # Pure CSI; Portworx: px-csi-db. Default: the cluster's default class.

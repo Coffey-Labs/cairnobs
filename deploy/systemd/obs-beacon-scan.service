@@ -1,0 +1,31 @@
+# The backup scan: root, because the backup directories belong to their
+# senders' users and smartctl needs the disks. It only lists directories,
+# reads file sizes and times, and asks systemd and smartctl; no network,
+# and it writes nothing but its own state directory.
+[Unit]
+Description=Cairn OBS backup scan (read-only)
+Documentation=https://cairnobs.org
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/obs-beacon-agent scan -config /etc/obs-beacon/backups.yaml -out /var/lib/obs-beacon-scan/backups.json
+StateDirectory=obs-beacon-scan
+StateDirectoryMode=0750
+Group=obs-beacon
+UMask=0027
+TimeoutStartSec=3min
+MemoryMax=64M
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_RAWIO CAP_SYS_ADMIN

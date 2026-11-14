@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: obs-beacond
+spec:
+  rules:
+    - host: obs.example.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: obs-beacond, port: { name: web } }
+  tls:
+    - hosts: [obs.example.org]
+      secretName: obs-beacond-tls

@@ -1,0 +1,24 @@
+# Several copies of obs-beacond on one PostgreSQL database, run by the
+# CloudNativePG operator (docs/kubernetes.md, More than one copy). Add it
+# to an overlay: openshift-ha/ and plain-ha/ do. Needs the CloudNativePG
+# operator installed in the cluster (OperatorHub on OpenShift and OKD).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - database.yaml
+  - pdb.yaml
+  - hpa.yaml
+configMapGenerator:
+  - name: obs-beacond
+    behavior: replace
+    files:
+      - obs-beacond.yaml
+patches:
+  - path: deployment-patch.yaml
+  - target: { kind: PersistentVolumeClaim, name: obs-beacon-data }
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: obs-beacon-data

@@ -1,0 +1,9 @@
+.DS_Store
+*.log
+bin/
+/dev/state/
+internal/webui/dist/*
+!internal/webui/dist/.keep
+dist/
+/obs-beacon-agent
+/obs-beacond

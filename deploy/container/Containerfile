@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Coffey Labs LLC
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The obs-beacond image for OpenShift, OKD and Kubernetes: the static
+# binaries, a CA bundle (with its copyright file), the license and the
+# notices, nothing else. obs-beacon-agent is in it too, for the cluster
+# agent (deploy/kubernetes/cluster-agent runs `obs-beacon-agent cluster`
+# from this image), so a cluster needs one image, not two. Built from a
+# release's binaries (scripts/build-image.sh stages the build context: the
+# binaries for both platforms, LICENSE and THIRD_PARTY_NOTICES.md), for
+# linux/amd64 and arm64.
+#
+# It runs as any user ID in group 0, as OpenShift's restricted-v2 policy
+# assigns one: nothing in the image is written to. State lives on the
+# volume at /var/lib/obs-beacon (a ReadWriteOnce block PVC), the config and
+# the state key are mounted read-only, and /tmp is an emptyDir.
+#
+# The certificates come from the same pinned image the releases build in,
+# taken on the build machine's platform: no emulation is needed.
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS certs
+
+FROM scratch
+ARG TARGETARCH
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="Cairn OBS server (obs-beacond)" \
+      org.opencontainers.image.vendor="Coffey Labs LLC" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.version="$VERSION" \
+      io.k8s.display-name="Cairn OBS server" \
+      io.k8s.description="Watches hosts, containers, services, VMs and clusters; serves the web interface. Also the cluster agent (obs-beacon-agent cluster)." \
+      io.openshift.tags="monitoring,cairnobs"
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# The bundle's own terms (Mozilla's CA data, MPL 2.0), next to ours.
+COPY --from=certs /usr/share/doc/ca-certificates/copyright /usr/share/doc/obs-beacon/ca-certificates.copyright
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/obs-beacon/
+COPY obs-beacond-linux-$TARGETARCH /usr/bin/obs-beacond
+COPY obs-beacon-agent-linux-$TARGETARCH /usr/bin/obs-beacon-agent
+ENV TMPDIR=/tmp
+USER 1001:0
+EXPOSE 8150 8461
+ENTRYPOINT ["/usr/bin/obs-beacond", "-config", "/etc/obs-beacon/obs-beacond.yaml"]

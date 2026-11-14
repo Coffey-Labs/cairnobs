@@ -1,0 +1,34 @@
+# Checks Cairn OBS's agents run. Copy to /etc/obs-beacon/checks.yaml; obs-beacond
+# re-reads it when it changes. A check is down when two hosts agree.
+
+checks:
+  - id: site
+    name: example.org
+    http: https://example.org/
+    contains: Example         # text the page must have
+
+  - id: smtp
+    name: mail.example.org SMTP
+    tcp: mail.example.org:25
+    contains: ESMTP           # the greeting's first line
+    every: 2m
+
+  - id: imaps
+    name: mail.example.org IMAP
+    tcp: mail.example.org:993
+    tls: true                 # TLS from the first byte; the certificate is checked too
+    contains: "* OK"
+
+  - id: mx
+    name: example.org MX
+    dns: example.org
+    type: MX
+    contains: mail.example.org
+    server: "1.1.1.1:53"      # ask a public resolver, not the host's
+    every: 5m
+    severity: warning
+
+  - id: ping-host1
+    name: host1 over the private network
+    ping: 10.0.0.1
+    from: [host2, host3]      # default: every agent

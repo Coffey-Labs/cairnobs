@@ -1,0 +1,33 @@
+# Optional: lets the Cairn OBS cluster agent ask cert-manager to renew a
+# Certificate now, as `cmctl renew` does (docs/cert-rotation.md, step 3).
+# It sets the Certificate's Issuing condition; cert-manager does the rest.
+# Nothing else is granted: not the Certificates themselves, not their
+# Secrets, not Issuers.
+#
+# The agent also needs -cert-renew, and an admin presses "Renew now" on
+# the Certificates page each time. obs-beacond hands out both together:
+#
+#   curl -fsSL 'https://<server>/cluster.yaml?cert_renew=1' | kubectl apply -f -
+#
+# Use the same address when upgrading the agent, and to take it out.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cairn-obs-agent-cert-renew
+rules:
+  - apiGroups: [cert-manager.io]
+    resources: [certificates/status]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cairn-obs-agent-cert-renew
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cairn-obs-agent-cert-renew
+subjects:
+  - kind: ServiceAccount
+    name: obs-beacon-agent
+    namespace: cairn-obs-agent

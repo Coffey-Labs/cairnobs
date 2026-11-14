@@ -1,0 +1,32 @@
+# PostgreSQL for obs-beacond: three instances, one primary and two
+# streaming replicas, failing over by themselves. The operator makes the
+# Secrets obs-beacon-db-app (the cobs role's password) and obs-beacon-db-ca.
+# Storage can grow while running: raise size (the storage class must allow
+# volume expansion; Pure CSI, Portworx and most cloud classes do).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: obs-beacon-db
+spec:
+  instances: 3
+  # imageName: ghcr.io/cloudnative-pg/postgresql:17   # the operator's default otherwise; 16 or newer
+  bootstrap:
+    initdb:
+      database: cobs
+      owner: cobs
+  storage:
+    size: 20Gi
+    # storageClass: pure-block   # Pure CSI; Portworx: px-csi-db. Default: the cluster's default class.
+  walStorage:
+    size: 10Gi
+  postgresql:
+    parameters:
+      max_connections: "200" # 16 per copy of obs-beacond, ten copies, and room to spare
+  # One instance at a time during the operator's own upgrades.
+  primaryUpdateStrategy: unsupervised
+  # A primary whose pod is deleted waits this long for clients to leave
+  # before shutting down; obs-beacond keeps connections open, so without
+  # this the failover waits the default 3 minutes. Its transactions are
+  # short: 15 seconds is plenty.
+  smartShutdownTimeout: 15
+  enablePDB: true

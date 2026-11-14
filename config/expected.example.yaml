@@ -1,0 +1,20 @@
+# What should run where. Patterns match Docker container names; * matches
+# any run of characters. See docs/formats.md.
+#
+# The real file is written from each host's `docker ps -a` when Cairn OBS is
+# first deployed, then kept up to date in this repo.
+
+hosts:
+  host2:
+    running:
+      - mastodon-*
+      - discourse
+      - inbuxa-admin
+      - inbuxa-demo
+    stopped:
+      - match: cairnobs-demo-*
+        note: Paused since 2026-09-18 while cairnobs development is on hold.
+
+# CI job containers come and go. They are counted, never listed or alerted on.
+ci_jobs:
+  - GITEA-ACTIONS-TASK-*

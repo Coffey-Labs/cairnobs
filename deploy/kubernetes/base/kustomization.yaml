@@ -1,0 +1,23 @@
+# Cairn OBS's server on Kubernetes. Use an overlay: openshift/ (OpenShift
+# and OKD, with Routes) or plain/ (any other Kubernetes, with an Ingress).
+# docs/kubernetes.md walks through it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/name: obs-beacon
+      app.kubernetes.io/part-of: cairnobs
+    includeSelectors: true
+resources:
+  - serviceaccount.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+configMapGenerator:
+  - name: obs-beacond
+    files:
+      - obs-beacond.yaml
+images:
+  - name: obs-beacond
+    newName: registry.example.org/ops/obs-beacond # where scripts/build-image.sh pushed it
+    newTag: 0.1.0

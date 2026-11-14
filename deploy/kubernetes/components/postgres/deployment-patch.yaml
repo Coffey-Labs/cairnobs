@@ -1,0 +1,43 @@
+# Three copies, replaced one at a time with none down: a new copy has to be
+# ready (caught up) before an old one is told to stop.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obs-beacond
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    spec:
+      terminationGracePeriodSeconds: 50 # shutdown_delay + shutdown_grace, and some
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: obs-beacon
+      containers:
+        - name: obs-beacond
+          volumeMounts:
+            - { name: db-password, mountPath: /etc/obs-beacon/db, readOnly: true }
+            - { name: db-ca, mountPath: /etc/obs-beacon/db-ca, readOnly: true }
+      volumes:
+        - name: data
+          persistentVolumeClaim: null
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: db-password
+          secret:
+            secretName: obs-beacon-db-app
+            items: [{ key: password, path: password }]
+            defaultMode: 0440
+        - name: db-ca
+          secret:
+            secretName: obs-beacon-db-ca
+            items: [{ key: ca.crt, path: ca.crt }] # not the CA's key
+            defaultMode: 0444

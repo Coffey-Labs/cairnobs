@@ -1,0 +1,51 @@
+# nfpm config for the agent package (.deb and .rpm). scripts/build-release.sh
+# sets ARCH (amd64, arm64) and VERSION, which nfpm expands, and stages this
+# arch's binaries in bin/package/ (nfpm doesn't expand paths).
+name: obs-beacon-agent
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: admin
+priority: optional
+maintainer: Coffey Labs LLC <hello@coffeylabs.org>
+vendor: Coffey Labs LLC
+homepage: https://cairnobs.org
+license: AGPL-3.0-or-later
+description: |-
+  Cairn OBS agent: reports one host to obs-beacond.
+  Reads CPU, memory, disks, network, systemd units and (through a
+  read-only root helper) Docker containers, runs the checks obs-beacond
+  hands it, and sends the results. It never takes commands.
+
+contents:
+  - src: bin/package/obs-beacon-agent
+    dst: /usr/bin/obs-beacon-agent
+    file_info: {mode: 0755}
+  - src: deploy/systemd/obs-beacon-agent.service
+    dst: /usr/lib/systemd/system/obs-beacon-agent.service
+    file_info: {mode: 0644}
+  - src: deploy/systemd/obs-beacon-agent-helper.service
+    dst: /usr/lib/systemd/system/obs-beacon-agent-helper.service
+    file_info: {mode: 0644}
+  - src: deploy/systemd/obs-beacon-scan.service
+    dst: /usr/lib/systemd/system/obs-beacon-scan.service
+    file_info: {mode: 0644}
+  - src: deploy/systemd/obs-beacon-scan.timer
+    dst: /usr/lib/systemd/system/obs-beacon-scan.timer
+    file_info: {mode: 0644}
+  - src: config/agent.example.yaml
+    dst: /usr/share/doc/obs-beacon-agent/examples/agent.yaml
+    file_info: {mode: 0644}
+  - src: LICENSE
+    dst: /usr/share/doc/obs-beacon-agent/LICENSE
+    file_info: {mode: 0644}
+  - src: THIRD_PARTY_NOTICES.md
+    dst: /usr/share/doc/obs-beacon-agent/THIRD_PARTY_NOTICES.md
+    file_info: {mode: 0644}
+
+scripts:
+  preinstall: deploy/nfpm/scripts/user.sh
+  postinstall: deploy/nfpm/scripts/agent-postinstall.sh
+  preremove: deploy/nfpm/scripts/agent-preremove.sh
+  postremove: deploy/nfpm/scripts/postremove.sh

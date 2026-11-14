@@ -1,0 +1,11 @@
+[Unit]
+Description=Cairn OBS backup scan every 15 minutes
+Documentation=https://cairnobs.org
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

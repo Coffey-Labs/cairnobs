@@ -1,0 +1,41 @@
+# The agent's root helper: passes on a fixed list of Docker reads, takes
+# the map sample (interfaces, WireGuard peers, sockets and who holds them)
+# and reads certificate files. The one thing it changes: reloading a unit
+# for a renewed certificate, only as agent.yaml's cert_reload lists (read
+# here, not taken from the agent; absent, never). Nothing else.
+[Unit]
+Description=Cairn OBS agent helper (read-only Docker gate, map sample, certificate reloads)
+Documentation=https://cairnobs.org
+# Runs with or without Docker; without it, the agent reports no containers.
+After=docker.service
+
+[Service]
+ExecStart=/usr/bin/obs-beacon-agent helper -listen /run/obs-beacon/helper.sock -docker /var/run/docker.sock -group obs-beacon
+RuntimeDirectory=obs-beacon
+RuntimeDirectoryMode=0750
+Group=obs-beacon
+Restart=always
+RestartSec=5
+MemoryMax=32M
+# Only what it needs: its socket's group (CHOWN), other processes' socket
+# descriptors and network namespaces (SYS_PTRACE, DAC_READ_SEARCH), and
+# WireGuard's peer list (NET_ADMIN; only public keys are read out).
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_SYS_PTRACE CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# The host's own network namespace, for its interfaces and WireGuard; it
+# opens no network sockets, only netlink and unix ones (systemctl reaches
+# systemd over its unix socket).
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+IPAddressDeny=any
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

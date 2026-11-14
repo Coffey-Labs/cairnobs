@@ -1,0 +1,167 @@
+# obs-beacond's config. Copy to /etc/obs-beacon/obs-beacond.yaml (root:obs-beacon, 0640).
+# Quote addresses: YAML reads an unquoted [::1] as a list.
+
+listen: "127.0.0.1:8150"          # web UI + browser API, behind host3's nginx
+agent_listen: ":8461"             # agents only: TLS with obs-beacond's own agent CA (needs database)
+# agent_tls:
+#   names: ["beacon.example.org"]  # extra names for its certificate (agents don't check names)
+#   off: true                      # plain HTTP with tokens; only inside a VPN, while agents move over
+emergency_listen: "127.0.0.1:8152"  # the emergency door: SSH tunnel only; every use alerts everyone
+# tls:                             # serve the web interface over HTTPS directly (else put a proxy in front)
+#   cert: /etc/obs-beacon/tls/obs-beacond.crt
+#   key: /etc/obs-beacon/tls/obs-beacond.key
+#   acme:                          # or: get and renew a certificate itself (instead of cert/key)
+#     hostnames: ["obs.example.org"] # port 443 of each must reach listen; the first is the public address
+#     email: ops@example.org        # optional: the CA's expiry notices
+#     accept_terms: true            # the CA's subscriber agreement (default CA: Let's Encrypt)
+#     http_listen: ":80"            # HTTP-01 and a redirect to https
+stale_after: 60s                  # a host is "silent" after this long without a report
+expected: /etc/obs-beacon/expected.yaml
+checks: /etc/obs-beacon/checks.yaml    # web, port, DNS and ping checks agents run (re-read on change)
+topology: /etc/obs-beacon/topology.yaml # what the network and service maps draw
+
+# The data layer (Data layer page): Patroni's API asked by obs-beacond over the
+# mesh, status pages read by each agent on its own host.
+datalayer:
+  patroni: ["http://10.0.0.1:8008", "http://10.0.0.2:8008", "http://10.0.0.3:8008"]
+  sync_standby: true
+  # lag_warn_mb: 16
+  probes:
+    - {id: haproxy, kind: haproxy, url: "http://127.0.0.1:8404/stats;csv", exactly_one: [pg-primary], at_least_one: [pg-replicas]}
+    - {id: nats, kind: nats, url: "http://127.0.0.1:8222/varz", peers: 2}
+    - {id: garage, kind: garage, url: "http://127.0.0.1:3903/health"}
+
+# Daily windows when a host's alerts are held (the auto-reboots). Use the
+# host's timezone so daylight saving moves the window with its timer.
+maintenance:
+  - name: host1 auto-reboot
+    hosts: [host1]
+    daily: "04:30"
+    timezone: Europe/Berlin
+    duration: 20m
+
+# obs-beacond's own state: sessions, incidents and the audit log, so a restart
+# signs nobody out and forgets no alert. Leave `database` out to keep it all
+# in memory. The key seals sign-in tokens in the database; make it once with
+#   head -c 32 /dev/urandom | base64 > /etc/obs-beacon/state.key   (root:obs-beacon, 0640)
+database: /var/lib/obs-beacon/beacon.db
+state_key_file: /etc/obs-beacon/state.key
+snapshot: /var/lib/obs-beacon/backup/beacon.db   # a consistent copy for the backups
+# snapshot_every: 6h
+# Or PostgreSQL 16+, for clusters (docs/formats.md, State); no snapshot then:
+# database: "postgres://obs_beacon@db.example.internal:5432/obs_beacon?sslmode=verify-full"
+# database_password_file: /etc/obs-beacon/database.password
+# data_dir: /var/lib/obs-beacon                     # agent CA, ACME cache
+
+# Stopping (SIGTERM): /readyz fails at once, the listeners stay open for
+# shutdown_delay while a load balancer moves traffic off, then requests in
+# flight get shutdown_grace to finish.
+# shutdown_delay: 0s     # 5-10s behind a load balancer or on Kubernetes
+# shutdown_grace: 30s
+
+# Adding hosts from the web interface (Hosts): where new hosts reach the
+# agent listener, and where install.sh gets the agent package. Joined hosts
+# live in the database, not in `agents` below.
+# join:
+#   agent_url: "https://beacon.example.org:8461"  # default: alerts.public_url's host, agent_listen's port
+#   packages_dir: /var/lib/obs-beacon/agent-packages  # a release's agent .deb/.rpm + SHA256SUMS, served at /agent-packages/
+#   packages_url: "https://..."                    # or a release download URL with the same files
+
+# Agents managed in this file instead. `obs-beacond token` prints a new
+# token and its hash; the token goes on the host, only the hash goes here.
+agents:
+  - name: host1
+    token_sha256: "<64 hex characters>"
+  - name: host2
+    token_sha256: "<64 hex characters>"
+  - name: host3
+    token_sha256: "<64 hex characters>"
+  # - name: bench                  # a desk machine: watched, never pages
+  #   token_sha256: "<64 hex characters>"
+  #   workstation: true               # docs/formats.md, "Workstations"
+
+# Alerts. A problem becomes an alert once it has lasted
+# `for`; critical alerts nobody has acknowledged repeat every `repeat`.
+alerts:
+  for: 2m
+  repeat: 15m
+  public_url: "https://obs.example.org"   # links in notices
+  channels:                        # secrets live in files (root:obs-beacon, 0640), never here
+    - id: phone
+      type: ntfy
+      server: "https://ntfy.sh"    # or our own ntfy
+      topic_file: /etc/obs-beacon/ntfy-topic          # anyone who knows the topic can read it: make it long and random
+      # token_file: /etc/obs-beacon/ntfy-token        # if the topic is access-controlled
+      min: serious                 # warning, serious or critical
+    - id: ops
+      type: discord
+      webhook_file: /etc/obs-beacon/discord-ops-webhook
+      min: warning
+      mention_critical: true       # @here when something goes critical
+    # - id: mail                    # serious and up by email; never the only path for critical
+    #   type: email
+    #   smtp: "mail.example.org:587"   # STARTTLS; or :465 for TLS from the first byte
+    #   from: "Cairn OBS <obs@example.org>"
+    #   password_file: /etc/obs-beacon/smtp-password
+    #   to: ["ops@example.org"]
+    #   min: serious
+    # - id: hook
+    #   type: webhook              # JSON POST; X-Beacon-Signature: sha256=<HMAC> when a secret is set
+    #   url_file: /etc/obs-beacon/webhook-url
+    #   secret_file: /etc/obs-beacon/webhook-secret
+    # - id: oncall
+    #   type: pagerduty            # follows each incident: trigger, acknowledge, resolve
+    #   routing_key_file: /etc/obs-beacon/pagerduty-key   # Events API v2 integration key
+    #   min: critical
+
+# Ways to sign in, in the order the sign-in page shows them.
+signin:
+  providers:
+    - id: inbuxa                   # used in URLs: /auth/inbuxa/login and /auth/inbuxa/callback
+      type: inbuxa
+      label: Sign in with inbuxa
+      issuer: "https://mail.example.org"
+      client_id: cairn-obs         # the x:OAuthClient registered for Cairn OBS
+      redirect_url: "https://obs.example.org/auth/inbuxa/callback"
+      # admin_permissions: [impersonate, liveMetrics, sysLegalHoldGet]   # the default: System Administrators only
+      # operator_permissions: [liveMetrics]   # all of these, short of an admin's, make an operator (none by default)
+      # recheck: 15m               # ask inbuxa again this often
+      # grace: 24h                 # keep sessions this long while inbuxa can't be reached
+    # - id: sso                    # any OpenID Connect provider (docs/formats.md, Sign-in providers)
+    #   type: oidc
+    #   label: Sign in with Okta
+    #   issuer: "https://example.okta.com"
+    #   client_id: cairn-obs
+    #   client_secret_file: /etc/obs-beacon/sso-client-secret
+    #   redirect_url: "https://obs.example.org/auth/sso/callback"
+    #   admin_groups: [obs-admins]     # and/or admin_emails: [ada@example.org, "@example.org"]
+    #   operator_groups: [obs-operators] # see everything, log lines included; acknowledge alerts
+    #   viewer_groups: [obs-viewers]
+    - id: local                    # the local directory: passkeys, admins add people under Configure › Users
+      type: local
+      origin: "https://obs.example.org"   # passkeys are bound to this address
+      # passwords: true            # also a password + authenticator code (never a password alone)
+# With no `signin` at all, a built-in local directory with passwords is used,
+# and the log carries a one-time link to make the first admin.
+
+# dev_signin: true                 # local development only; refused unless listen is a loopback address
+
+# Cloudflare (optional): load balancer health per origin, each zone's SSL
+# mode and edge certificates, Cloudflare's status page. The token is
+# read-only (Zone, Zone Settings, DNS, SSL and Certificates, Analytics and
+# Load Balancers: Read; account Load Balancing: Monitors and Pools: Read)
+# and is re-read on every poll, so replacing it needs no restart.
+cloudflare:
+  token_file: /etc/obs-beacon/cloudflare-token
+  every: 5m
+  # zones: [example.org, example.net]   # default: every zone the token can read
+  ssl_mode: strict                # alert when a zone uses anything else
+  # ssl_mode_zones:               # zones that use another mode on purpose
+  #   example.net: full
+  cert_warn_days: 14
+  cert_critical_days: 3
+  # error_warn_pct: 5              # 5xx share of the last 15 minutes
+  # error_critical_pct: 25
+  # error_min: 20                 # fewer 5xx than this never alerts
+  # block_min: 100                # Cloudflare blocks before it can be a spike
+  # block_factor: 10              # times the day before's average

@@ -1,0 +1,32 @@
+# The agent's main process: unprivileged, read-only view of the host.
+[Unit]
+Description=Cairn OBS agent
+Documentation=https://cairnobs.org
+After=network-online.target obs-beacon-agent-helper.service
+Wants=network-online.target obs-beacon-agent-helper.service
+
+[Service]
+User=obs-beacon
+Group=obs-beacon
+ExecStart=/usr/bin/obs-beacon-agent -config /etc/obs-beacon/agent.yaml
+# Its certificate and key (agentlink): the only place it writes.
+StateDirectory=obs-beacon-agent
+StateDirectoryMode=0700
+Restart=always
+RestartSec=5
+MemoryMax=64M
+CPUQuota=10%
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

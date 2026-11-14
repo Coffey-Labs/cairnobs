@@ -1,0 +1,10 @@
+# Draining nodes takes obs-beacond's copies one at a time.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: obs-beacond
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: obs-beacon

@@ -1,0 +1,20 @@
+# More copies when they're busy. Each copy takes reports and serves the
+# interface; one of them is the evaluator, whichever holds the lease.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: obs-beacond
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: obs-beacond
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

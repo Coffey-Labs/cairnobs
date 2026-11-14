@@ -1,0 +1,23 @@
+# Any other Kubernetes: `kubectl apply -k deploy/kubernetes/plain -n <namespace>`.
+# Sets the user and volume group OpenShift would assign, and puts the web
+# interface behind an Ingress. The agent port needs TLS passthrough: a
+# LoadBalancer Service (agents-service.yaml), or an ingress controller that
+# passes TLS through.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - ingress.yaml
+  - agents-service.yaml
+patches:
+  - target: { kind: Deployment, name: obs-beacond }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/securityContext/runAsUser
+        value: 1001
+      - op: add
+        path: /spec/template/spec/securityContext/runAsGroup
+        value: 0
+      - op: add
+        path: /spec/template/spec/securityContext/fsGroup
+        value: 1001

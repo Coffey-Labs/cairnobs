@@ -1,0 +1,10 @@
+# The agent port, straight through to the pod: agents use client
+# certificates, so nothing in between may end their TLS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: obs-beacond-agents
+spec:
+  type: LoadBalancer
+  ports:
+    - { name: agents, port: 8461, targetPort: agents }

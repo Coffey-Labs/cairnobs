@@ -1,0 +1,26 @@
+<script lang="ts">
+	// The Cairn OBS mark, small cut (the logo bundle's icon-small.svg): the
+	// kitten over the scope, without the paws, whiskers and graticule that
+	// turn to mush at 40 px and below. Its colours are the brand's, the same
+	// on dark and light grounds.
+	let { size = 28 }: { size?: number } = $props();
+	const uid = $props.id();
+</script>
+
+<svg width={size} height={size} viewBox="8 14 112 112" aria-hidden="true">
+	<defs>
+		<linearGradient id="{uid}-trace" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB84D" /><stop offset="1" stop-color="#FF8A00" /></linearGradient>
+	</defs>
+	<g stroke="#0D0B10" stroke-linecap="round" stroke-linejoin="round">
+		<g transform="translate(64 62) scale(0.9) translate(-64 -60)">
+			<path d="M31 64 C30 50 31 38 34 27 Q36 20 42 23 L55 32 Q64 29.5 73 32 L86 23 Q92 20 94 27 C97 38 98 50 97 64 C96 83 82 92 64 92 C46 92 32 83 31 64 Z" fill="#F9A34C" stroke-width="6.25" />
+			<path d="M38 30 L50 37.5 L40 45.5 Z M90 30 L78 37.5 L88 45.5 Z" fill="#F47F35" stroke="none" />
+			<path d="M44 60 Q49.5 53 55 60 M73 60 Q78.5 53 84 60" stroke-width="5.25" fill="none" />
+			<path d="M60.8 65.5 h6.4 l-3.2 3.6 z" fill="#0D0B10" stroke-width="2" />
+		</g>
+	</g>
+	<path d="M12 124 A52 52 0 0 1 116 124 Z" fill="#62576E" stroke="#0D0B10" stroke-width="5.62" stroke-linejoin="round" />
+	<path d="M20 124 A44 44 0 0 1 108 124 Z" fill="#0D0B10" />
+	<path d="M24 115 L40 113 L52 111 L58 109 L64 92 L70 110 L84 107 L104 103" stroke="url(#{uid}-trace)" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round" fill="none" />
+	<circle cx="64" cy="92" r="5" fill="#FFB84D" />
+</svg>

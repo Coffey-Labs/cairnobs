@@ -1,0 +1,33 @@
+# obs-beacon-agent's config. Copy to /etc/obs-beacon/agent.yaml (root:obs-beacon, 0640).
+
+server: "https://beacon.example.org:8461"  # obs-beacond's agent listener (TLS)
+ca_fingerprint: "sha256:<64 hex characters>"  # `obs-beacond ca` on the server prints it
+token_file: /etc/obs-beacon/agent.token  # one line, from `obs-beacond token` (obs-beacon:obs-beacon, 0600); enrolls once
+# state_dir: /var/lib/obs-beacon-agent  # the agent's certificate and key (default)
+# host: host1                      # defaults to the short hostname
+interval: 15s
+helper_socket: /run/obs-beacon/helper.sock  # the root helper: containers and the map sample; remove to skip both
+# map: false                       # no map sample here: no socket sample, no WireGuard read (docs/maps.md)
+
+# Who watches Cairn OBS (hosts other than obs-beacond's): when reports have failed
+# for `after` AND obs-beacond's public health page doesn't answer, obs-beacond is
+# down, so this agent alerts through its own channels (same format as
+# obs-beacond's alerts.channels), and says when it's back. If only this host's
+# link is broken, the public page answers and nothing is sent here:
+# obs-beacond alerts that this host went quiet.
+# watch_server:
+#   after: 3m
+#   public_url: "https://obs.example.org/healthz"
+#   channels:
+#     - id: phone
+#       type: ntfy
+#       topic_file: /etc/obs-beacon/ntfy-topic
+#       min: critical
+#     - id: ops
+#       type: discord
+#       webhook_file: /etc/obs-beacon/discord-ops-webhook
+#   quiet:                          # obs-beacond's host's own reboot window
+#     - name: host3 auto-reboot
+#       daily: "05:30"
+#       timezone: Europe/Berlin
+#       duration: 20m

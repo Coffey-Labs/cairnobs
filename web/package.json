@@ -1,0 +1,20 @@
+{
+	"name": "obs-beacon-web",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-static": "3.0.10",
+		"@sveltejs/kit": "2.70.3",
+		"@sveltejs/vite-plugin-svelte": "7.1.2",
+		"svelte": "5.57.0",
+		"svelte-check": "4.6.0",
+		"typescript": "6.0.3",
+		"vite": "8.3.0"
+	}
+}

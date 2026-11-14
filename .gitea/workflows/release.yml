@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 Coffey Labs LLC
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# A v* tag is a release: obs-beacond and obs-beacon-agent for linux/amd64 and
+# linux/arm64, the .deb and .rpm packages, and SHA256SUMS, attached to a
+# Release on this repo (scripts/build-release.sh builds them all).
+#
+# Private until launch: the Release lives only on this
+# private repo, so only people with access to it can download. There is no
+# announce job and no GitHub copy on purpose.
+#
+# The tag must be annotated and on main, named vX.Y.Z or vX.Y.Z-rc.N; its
+# annotation is the release notes. A release candidate is a pre-release. The
+# Release is a draft until every file is attached, and a draft this run made
+# is deleted if an upload fails.
+#
+# The job image is pinned by digest, Node by checksum, nfpm by version (Go's
+# checksum database checks it), and the only action is coffey-labs/actions'
+# checkout pinned by SHA.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: light
+    container:
+      image: golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 # 1.26-bookworm (1.26.11)
+    env:
+      TAG: ${{ github.ref_name }}
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NODE_VERSION: v22.23.4
+      NODE_SHA256: 1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce # node-v22.23.4-linux-x64.tar.xz
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+        with:
+          fetch-depth: 0
+      - name: The tag is annotated and on main
+        run: |
+          set -eu
+          git merge-base --is-ancestor "$(git rev-parse "$TAG^{commit}")" origin/main \
+            || { echo "$TAG is not on main" >&2; exit 1; }
+          [ "$(git cat-file -t "refs/tags/$TAG")" = tag ] \
+            || { echo "$TAG is a lightweight tag; its annotation is the release notes" >&2; exit 1; }
+      - name: Node
+        run: |
+          set -euo pipefail
+          apt-get -qq update >/dev/null && apt-get -qq install -y --no-install-recommends xz-utils jq >/dev/null
+          f="node-$NODE_VERSION-linux-x64.tar.xz"
+          curl -fsSLO "https://nodejs.org/dist/$NODE_VERSION/$f"
+          echo "$NODE_SHA256  $f" | sha256sum -c -
+          tar -xJf "$f" -C /usr/local --strip-components=1 && rm "$f"
+          node --version
+      - run: make check
+      - run: scripts/build-release.sh "$TAG" dist
+      - name: Sign SHA256SUMS with minisign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+            echo "MINISIGN_SECRET_KEY is not set; this release will be unsigned" >&2
+            exit 0
+          fi
+          apt-get -qq install -y --no-install-recommends minisign >/dev/null
+          umask 077
+          key="$(mktemp)"; printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          minisign -S -s "$key" -m dist/SHA256SUMS -t "Cairn OBS $TAG"
+          rm -f "$key"
+      - name: Release on Gitea
+        run: |
+          set -euo pipefail
+          API="$CI_SERVER_INTERNAL/api/v1/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: token $TOKEN")
+          notes="$(git for-each-ref "refs/tags/$TAG" --format='%(contents)' | sed -e '/^-----BEGIN [A-Z ]*SIGNATURE-----$/,$d')"  # PGP or SSH
+          notes="$notes"$'\n\n'"Packages (.deb, .rpm) and static binaries for linux/amd64 and linux/arm64. Check them against SHA256SUMS."
+          [ -e dist/SHA256SUMS.minisig ] && notes="$notes SHA256SUMS is signed (SHA256SUMS.minisig)." || notes="$notes This release is not signed."
+          pre=false; [[ "$TAG" == *-rc.* ]] && pre=true
+          created=0
+          id="$(curl -fsS "${auth[@]}" "$API/releases/tags/$TAG" 2>/dev/null | jq -r '.id // empty' || true)"
+          if [ -z "$id" ]; then
+            id="$(curl -fsS "${auth[@]}" -H 'Content-Type: application/json' \
+                  -d "$(jq -n --arg t "$TAG" --arg b "$notes" --argjson p "$pre" '{tag_name:$t, name:$t, draft:true, prerelease:$p, body:$b}')" \
+                  "$API/releases" | jq -r '.id // empty')"
+            [ -n "$id" ] || { echo "could not create the release" >&2; exit 1; }
+            created=1
+          fi
+          have="$(curl -fsS "${auth[@]}" "$API/releases/$id/assets" | jq -r '.[].name')"
+          for f in dist/*; do
+            n="$(basename "$f")"
+            if grep -qxF "$n" <<<"$have"; then echo "already attached: $n"; continue; fi
+            echo "uploading $n"
+            curl -fsS --retry 3 --retry-all-errors -o /dev/null "${auth[@]}" --form "attachment=@$f" \
+              "$API/releases/$id/assets?name=$(jq -rn --arg n "$n" '$n|@uri')" || {
+              [ "$created" = 1 ] && curl -sS -o /dev/null "${auth[@]}" -X DELETE "$API/releases/$id"
+              exit 1
+            }
+          done
+          if [ "$created" = 1 ]; then
+            curl -fsS -o /dev/null "${auth[@]}" -H 'Content-Type: application/json' -X PATCH \
+              -d '{"draft":false}' "$API/releases/$id"
+          fi
+          echo "released $TAG"

@@ -1,0 +1,8 @@
+# OpenShift and OKD, several copies on PostgreSQL:
+# `oc apply -k deploy/kubernetes/openshift-ha -n <namespace>`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../openshift
+components:
+  - ../components/postgres
