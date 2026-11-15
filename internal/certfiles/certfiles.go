@@ -8,7 +8,9 @@ package certfiles
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io/fs"
@@ -281,4 +283,15 @@ func (w *Watch) Report(now time.Time) *report.CertFiles {
 	}
 	w.last, w.sent = key.String(), now
 	return &report.CertFiles{At: now.UTC(), List: append([]report.CertFile{}, w.list...)}
+}
+
+// StorePrefix starts the path of a certificate a Windows agent read from
+// the machine's certificate store (ReadStores), not from a file.
+const StorePrefix = `Cert:\LocalMachine\`
+
+// StorePath is where a certificate sits in the machine's store, by its
+// thumbprint (SHA-1 of the certificate, as Windows names them).
+func StorePath(store string, der []byte) string {
+	sum := sha1.Sum(der)
+	return StorePrefix + store + `\` + strings.ToUpper(hex.EncodeToString(sum[:]))
 }

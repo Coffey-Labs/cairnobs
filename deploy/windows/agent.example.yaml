@@ -14,3 +14,8 @@ interval: 15s
 # itself, as its own service account (docs/windows.md). Everything else in
 # the Linux example (watch_server, proxmox, vsphere, nutanix, pure, ...)
 # works the same here, with Windows paths for its files.
+
+# The machine's certificate stores read for the certificate inventory
+# (LocalMachine\<name>), read-only: certificates only, never a key.
+# Absent: My (Personal) and WebHosting. [] reads none.
+# cert_stores: [My, WebHosting, "Remote Desktop"]

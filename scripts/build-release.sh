@@ -4,7 +4,7 @@
 #
 # Build a release: the web interface, obs-beacond and obs-beacon-agent for
 # linux/amd64 and linux/arm64, the .deb and .rpm packages, the Windows
-# agent's zip (windows/amd64, docs/windows.md), and SHA256SUMS.
+# agent's zips (windows/amd64 and windows/arm64, docs/windows.md), and SHA256SUMS.
 #
 # Usage: scripts/build-release.sh TAG OUTDIR
 #        scripts/build-release.sh v0.1.0 dist
@@ -46,16 +46,18 @@ for arch in amd64 arm64; do
 done
 
 # Windows: the agent alone, in a zip with its example config and licences.
-rm -rf "$stage"; mkdir -p "$stage"
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
-  -ldflags "-s -w -X $MODULE/internal/version.Version=$VERSION" -o "$stage/obs-beacon-agent.exe" ./cmd/obs-beacon-agent
-go run ./scripts/zipfiles "$OUT/obs-beacon-agent_${VERSION}_windows_amd64.zip" \
-  "$(git log -1 --format=%cI HEAD 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  obs-beacon-agent.exe="$stage/obs-beacon-agent.exe" \
-  agent.example.yaml=deploy/windows/agent.example.yaml \
-  README.txt=deploy/windows/README.txt \
-  LICENSE.txt=LICENSE \
-  THIRD_PARTY_NOTICES.md=THIRD_PARTY_NOTICES.md
+for arch in amd64 arm64; do
+  rm -rf "$stage"; mkdir -p "$stage"
+  CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -buildvcs=false \
+    -ldflags "-s -w -X $MODULE/internal/version.Version=$VERSION" -o "$stage/obs-beacon-agent.exe" ./cmd/obs-beacon-agent
+  go run ./scripts/zipfiles "$OUT/obs-beacon-agent_${VERSION}_windows_${arch}.zip" \
+    "$(git log -1 --format=%cI HEAD 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    obs-beacon-agent.exe="$stage/obs-beacon-agent.exe" \
+    agent.example.yaml=deploy/windows/agent.example.yaml \
+    README.txt=deploy/windows/README.txt \
+    LICENSE.txt=LICENSE \
+    THIRD_PARTY_NOTICES.md=THIRD_PARTY_NOTICES.md
+done
 rm -rf "$stage"
 
 (cd "$OUT" && sha256sum -- * > SHA256SUMS)

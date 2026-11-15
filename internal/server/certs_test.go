@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cairnobs/cairnobs/internal/certfiles"
 	"github.com/cairnobs/cairnobs/internal/certinfo"
 	"github.com/cairnobs/cairnobs/internal/report"
 	"github.com/cairnobs/cairnobs/internal/vault"
@@ -169,6 +170,30 @@ func TestCertFiles(t *testing.T) {
 	srv.store.Put("host1", r, now)
 	if c := srv.certificates(now); slices.ContainsFunc(c, func(c *CertInv) bool { return c.Fingerprint == old.Fingerprint && len(c.NotReloaded) > 0 }) {
 		t.Error("warned within the hour")
+	}
+}
+
+// A Windows host's certificate store is listed as a store, not a file,
+// and judged as a file is: at 7 days, not 21.
+func TestCertStore(t *testing.T) {
+	srv, _ := checkServer(t)
+	now := time.Now()
+	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	iis := testCert(t, "intranet.corp.example", ec, &ec.PublicKey, 15*24*time.Hour)
+	r := results(now)
+	r.CertFiles = &report.CertFiles{At: now, List: []report.CertFile{
+		{Path: certfiles.StorePath("My", []byte("der")), Mod: iis.NotBefore, Cert: *iis},
+	}}
+	srv.store.Put("win1", r, now)
+	var row *CertInv
+	for _, c := range srv.certificates(now) {
+		if c.Fingerprint == iis.Fingerprint {
+			row = c
+		}
+	}
+	if row == nil || row.Status != "good" || len(row.Kinds) != 1 || row.Kinds[0] != "store" ||
+		!strings.HasPrefix(row.Places[0].Where, `win1:Cert:\LocalMachine\My\`) || len(row.Places[0].Where) != len(`win1:Cert:\LocalMachine\My\`)+40 {
+		t.Errorf("the store's: %+v", row)
 	}
 }
 

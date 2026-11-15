@@ -566,7 +566,7 @@ func (srv *Server) handleAgentPackage(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
 	if srv.cfg.Join.PackagesDir == "" || name != path.Base(name) || strings.HasPrefix(name, ".") ||
 		!(name == "SHA256SUMS" || name == "SHA256SUMS.minisig" || strings.HasSuffix(name, ".deb") || strings.HasSuffix(name, ".rpm") ||
-			strings.HasSuffix(name, "_windows_amd64.zip")) {
+			strings.HasSuffix(name, "_windows_amd64.zip") || strings.HasSuffix(name, "_windows_arm64.zip")) {
 		http.NotFound(w, r)
 		return
 	}

@@ -28,7 +28,7 @@ check: test
 
 test:
 	go vet ./...
-	GOOS=windows go vet ./cmd/obs-beacon-agent/ ./internal/collect/ ./internal/units/ ./internal/backup/ ./internal/netmap/
+	GOOS=windows go vet ./cmd/obs-beacon-agent/ ./internal/certfiles/ ./internal/collect/ ./internal/units/ ./internal/backup/ ./internal/netmap/
 	go test ./...
 
 # Run obs-beacond, a helper and an agent against this machine. See docs/development.md.
