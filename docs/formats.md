@@ -293,7 +293,7 @@ an `id`, a `type` and a `min` severity (warning, serious or critical):
 | `ntfy` | `topic_file`, optional `server` and `token_file` | priority urgent for critical, high for serious |
 | `discord` | `webhook_file`, optional `mention_critical` | colour by severity; @here only if asked |
 | `webhook` | `url_file`, optional `secret_file` | JSON body; `X-Beacon-Signature: sha256=<HMAC>` |
-| `email` | `smtp` (host:port), `password_file`, `from`, `to` (list), optional `username` (default: from's address) | authenticated submission only: STARTTLS on 587, TLS from the first byte on 465; refuses a server without TLS |
+| `email` | `smtp` (host:port), `password_file`, `from`, `to` (list), optional `username` (default: from's address) | authenticated submission only: STARTTLS on 587, TLS from the first byte on 465; refuses a server without TLS. `stand_in: true` is for a stand-in relay on this machine (the fleet simulator's demo): loopback only, without TLS |
 | `pagerduty` | `routing_key_file` (an Events API v2 integration key), optional `server` (EU accounts: `https://events.eu.pagerduty.com`) | follows each incident: Cairn OBS's incident id is the dedup key, so alerting triggers it, acknowledging it here acknowledges it there, and resolving resolves it; severities map to critical, error (serious) and warning. Repeats and digests aren't sent: PagerDuty's escalation policy does that. A test sends a change event, which pages nobody |
 | `log` | nothing | prints to obs-beacond's log, for development |
 
