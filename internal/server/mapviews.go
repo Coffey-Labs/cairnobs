@@ -556,6 +556,47 @@ func serviceStatus(s mapgraph.Service, hosts map[string]HostView, k8s map[string
 	return st, word
 }
 
+// declaredSignals is what judges each declared service besides its parts:
+// its checks and Cloudflare (topology.yaml), by service id.
+func (srv *Server) declaredSignals(now time.Time) map[string][]Signal {
+	svcs, ok := srv.serviceStates(now)
+	if !ok {
+		return nil
+	}
+	out := map[string][]Signal{}
+	for _, sv := range svcs {
+		for _, sg := range sv.Signals {
+			if sg.Kind == "check" || sg.Kind == "cloudflare" {
+				out[sv.ID] = append(out[sv.ID], sg)
+			}
+		}
+	}
+	return out
+}
+
+// withSignals folds a declared service's checks into its parts' status. A
+// service with no parts (mail judged only by its checks) takes theirs.
+func withSignals(st, word string, noParts bool, sigs []Signal) (string, string) {
+	answered := false
+	for _, sg := range sigs {
+		if sg.Status == "waiting" || sg.Status == "off" {
+			continue
+		}
+		if !answered && noParts {
+			st, word = "good", "OK"
+		}
+		answered = true
+		ss := sg.Status
+		if ss == "serious" { // the maps colour in four
+			ss = "critical"
+		}
+		if statusOrder[ss] > statusOrder[st] {
+			st, word = ss, sg.Name+": "+sg.Word
+		}
+	}
+	return st, word
+}
+
 func (srv *Server) servicesView(focus string, steps int, now time.Time) (*MapView, bool) {
 	g := srv.mapGraph(now)
 	_, hosts := srv.hostStatus(now)
@@ -570,9 +611,11 @@ func (srv *Server) servicesView(focus string, steps int, now time.Time) (*MapVie
 	status := map[string]string{}
 	words := map[string]string{}
 	k8s := srv.k8sParts()
+	judged := srv.declaredSignals(now)
 	for _, s := range g.Services {
 		svc[s.ID] = s
-		status[s.ID], words[s.ID] = serviceStatus(s, hosts, k8s)
+		st, word := serviceStatus(s, hosts, k8s)
+		status[s.ID], words[s.ID] = withSignals(st, word, len(s.Parts) == 0, judged[s.ID])
 	}
 	site := map[string]string{}
 	for _, n := range g.Hosts {
