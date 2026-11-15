@@ -1,0 +1,16 @@
+# obs-beacon-agent's config on Windows. Copy to C:\ProgramData\obs-beacon\agent.yaml
+# after `obs-beacon-agent.exe service install`, which makes that folder and lets
+# only SYSTEM, Administrators and the service's own account in.
+# `obs-beacon-agent.exe join <token>` (Hosts, Add host) writes it for you instead.
+
+server: "https://beacon.example.org:8461"  # obs-beacond's agent listener (TLS)
+ca_fingerprint: "sha256:<64 hex characters>"  # `obs-beacond ca` on the server prints it
+token_file: 'C:\ProgramData\obs-beacon\agent.token'  # one line, from `obs-beacond token`; enrolls once
+# state_dir: 'C:\ProgramData\obs-beacon\state'  # the agent's certificate and key (default)
+# host: win1                       # defaults to the computer name
+interval: 15s
+
+# No helper_socket on Windows: the agent reads the host and its services
+# itself, as its own service account (docs/windows.md). Everything else in
+# the Linux example (watch_server, proxmox, vsphere, nutanix, pure, ...)
+# works the same here, with Windows paths for its files.
