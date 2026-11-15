@@ -1,7 +1,9 @@
 # Windows agent: design note
 
 Status: decided 2026-11-14 (Decisions, at the end): every question went
-the recommended way.
+the recommended way. Built: steps 1–4 under Plan (2026-11-14), tested on
+Linux (unit tests, the Windows build vetted); not yet run on Windows itself
+(the evaluation VM, decision 5).
 
 John, 2026-11-12: "will need windows agent as well". Plenty of the fleets
 Cairn OBS is for have Windows servers beside the Linux ones (domain
