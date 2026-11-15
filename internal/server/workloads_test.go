@@ -652,3 +652,19 @@ func TestPVCVolumeLink(t *testing.T) {
 		t.Errorf("%d linked rows of %d: %s", links, len(got.Workloads), rec.Body)
 	}
 }
+
+func TestLowerFirst(t *testing.T) {
+	for in, want := range map[string]string{
+		"Running":                   "running",
+		"Shut off":                  "shut off",
+		"Hyper-V reports a failure": "Hyper-V reports a failure",
+		"CrashLoopBackOff":          "CrashLoopBackOff",
+		"OpenShift is updating":     "OpenShift is updating",
+		"A":                         "a",
+		"":                          "",
+	} {
+		if got := lowerFirst(in); got != want {
+			t.Errorf("lowerFirst(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

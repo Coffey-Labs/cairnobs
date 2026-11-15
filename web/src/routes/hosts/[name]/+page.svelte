@@ -37,6 +37,8 @@
 	});
 	const rank: Record<string, number> = { critical: 0, warning: 1, good: 2, off: 3 };
 	const sorted = $derived([...containers].sort((a, b) => (rank[a.verdict.severity] ?? 9) - (rank[b.verdict.severity] ?? 9) || a.name.localeCompare(b.name)));
+	// A Windows server without Docker has no containers to show.
+	const showContainers = $derived(!windows || sorted.length > 0 || !!host?.containers_error);
 </script>
 
 <svelte:head><title>Cairn OBS · {name}</title></svelte:head>
@@ -72,7 +74,7 @@
 		<Panel title="Up for"><div class="stat"><div class="val">{duration(host.uptime_s)}</div><div class="sub" title={hmz(host.last_seen ?? Date.now())}>last report {ago(host.last_seen)} · agent {host.agent}</div></div></Panel>
 	</div>
 
-	<div class="grid g2 mt">
+	<div class="grid mt" class:g2={showContainers}>
 		<Panel title="Disks" aside="{host.disks.length} filesystems" flush>
 			<div class="tbl-wrap flat">
 				<table class="tbl">
@@ -89,7 +91,7 @@
 				</table>
 			</div>
 		</Panel>
-		<Panel title="Containers" aside="{host.containers.running} fine · {host.containers.problems} need a look" flush>
+		{#if showContainers}<Panel title="Containers" aside="{host.containers.running} fine · {host.containers.problems} need a look" flush>
 			{#if host.containers_error}<p class="foot-note pad">Can't read containers: {host.containers_error}</p>{/if}
 			<div class="tbl-wrap flat">
 				<table class="tbl">
@@ -103,7 +105,7 @@
 					</tbody>
 				</table>
 			</div>
-		</Panel>
+		</Panel>{/if}
 	</div>
 	{#if host.units?.length}
 		<div class="mt">

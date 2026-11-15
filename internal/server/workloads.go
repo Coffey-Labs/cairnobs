@@ -1500,9 +1500,14 @@ func (srv *Server) handleWorkloadList(w http.ResponseWriter, r *http.Request) {
 }
 
 // lowerFirst lowers a word's first letter, for the middle of a sentence,
-// and leaves names like CrashLoopBackOff alone.
+// and leaves names alone: a first word with another capital in it
+// (CrashLoopBackOff, Hyper-V, OpenShift, CPU) keeps its own.
 func lowerFirst(s string) string {
 	if s == "" {
+		return s
+	}
+	first, _, _ := strings.Cut(s, " ")
+	if strings.ToLower(first[1:]) != first[1:] {
 		return s
 	}
 	return strings.ToLower(s[:1]) + s[1:]
