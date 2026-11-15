@@ -27,6 +27,7 @@ type email struct {
 	from     *mail.Address
 	to       []string
 	roots    *x509.CertPool // tests trust their own certificate; nil means the system's
+	plain    bool           // stand_in: a relay on loopback, without TLS
 }
 
 func newEmail(b base, c Config) (Channel, error) {
@@ -35,6 +36,12 @@ func newEmail(b base, c Config) (Channel, error) {
 		return nil, fmt.Errorf("alert channel %s: smtp must be host:port", c.ID)
 	}
 	e := &email{base: b, addr: c.SMTP, implicit: port == "465", user: c.Username}
+	if c.StandIn {
+		if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return nil, fmt.Errorf("alert channel %s: stand_in needs smtp on loopback (a stand-in on this machine)", c.ID)
+		}
+		e.plain, e.implicit = true, false
+	}
 	if e.from, err = mail.ParseAddress(c.From); err != nil {
 		return nil, fmt.Errorf("alert channel %s: from: %w", c.ID, err)
 	}
@@ -108,7 +115,7 @@ func (e *email) Send(ctx context.Context, n Notice) error {
 		return fmt.Errorf("email %s: %w", e.id, err)
 	}
 	defer c.Close()
-	if !e.implicit {
+	if !e.implicit && !e.plain {
 		if ok, _ := c.Extension("STARTTLS"); !ok {
 			return fmt.Errorf("email %s: the server doesn't offer STARTTLS; refusing to send in the clear", e.id)
 		}
@@ -116,7 +123,8 @@ func (e *email) Send(ctx context.Context, n Notice) error {
 			return fmt.Errorf("email %s: STARTTLS: %w", e.id, err)
 		}
 	}
-	// PlainAuth only sends over TLS (or to localhost), which we have by now.
+	// PlainAuth only sends over TLS (or to localhost), which we have by now
+	// (a stand-in is on loopback).
 	if err := c.Auth(smtp.PlainAuth("", e.user, e.password, host)); err != nil {
 		return fmt.Errorf("email %s: sign-in refused: %w", e.id, err)
 	}

@@ -159,3 +159,35 @@ func TestServiceMapJudgesByChecks(t *testing.T) {
 		t.Errorf("a check fails: %s", got)
 	}
 }
+
+// A unit the topology claims that has failed colours its service on the
+// map, though a failed unit no longer listens and so isn't one of its parts.
+func TestServiceMapJudgesByUnits(t *testing.T) {
+	srv := topoServer(t)
+	now := time.Now()
+	look := func() string {
+		t.Helper()
+		v, ok := srv.servicesView("", 3, now)
+		if !ok {
+			t.Fatal("no view")
+		}
+		for _, b := range v.Boxes {
+			if b.ID == "svc:db" {
+				return b.Status + "/" + b.Sub
+			}
+		}
+		t.Fatalf("no db box in %+v", v.Boxes)
+		return ""
+	}
+	unit := func(active string) report.Report {
+		return report.Report{V: report.Version, Units: []report.Unit{{Name: "patroni.service", Load: "loaded", Active: active, Sub: active, Since: now}}}
+	}
+	srv.store.Put("host1", unit("active"), now)
+	if got := look(); got != "good/OK" {
+		t.Errorf("patroni running: %s", got)
+	}
+	srv.store.Put("host1", unit("failed"), now)
+	if got := look(); !strings.HasPrefix(got, "critical/patroni.service") {
+		t.Errorf("patroni failed: %s", got)
+	}
+}

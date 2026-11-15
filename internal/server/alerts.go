@@ -96,7 +96,8 @@ type alerter struct {
 	channels []notify.Channel // replaced whole when the UI changes them; read with chans()
 	retry    []time.Duration  // waits between attempts
 
-	db *state.DB // nil: incidents live in memory only
+	db  *state.DB      // nil: incidents live in memory only
+	loc *time.Location // notices give times here: the reports' timezone (nil: UTC)
 
 	mu       sync.Mutex
 	open     map[string]*Incident // by condition key
@@ -175,8 +176,15 @@ func (a *alerter) setChannels(chans []notify.Channel) {
 	a.chMu.Unlock()
 }
 
+func (a *alerter) zone() *time.Location {
+	if a.loc == nil {
+		return time.UTC
+	}
+	return a.loc
+}
+
 func (a *alerter) notice(inc *Incident, kind string) notify.Notice {
-	n := notify.Notice{Kind: kind, ID: inc.ID, Severity: inc.Severity, Title: inc.Title, Detail: inc.Detail, Host: inc.Host, Since: inc.Opened}
+	n := notify.Notice{Kind: kind, ID: inc.ID, Severity: inc.Severity, Title: inc.Title, Detail: inc.Detail, Host: inc.Host, Since: inc.Opened.In(a.zone())}
 	if a.cfg.PublicURL != "" && inc.Href != "" {
 		n.URL = a.cfg.PublicURL + inc.Href
 	}
@@ -580,7 +588,7 @@ func (a *alerter) test(ctx context.Context, only string) []map[string]string {
 			continue
 		}
 		sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		err := ch.Send(sctx, notify.Notice{Kind: "test", Severity: "warning", Title: "Test", Since: time.Now(), URL: a.cfg.PublicURL})
+		err := ch.Send(sctx, notify.Notice{Kind: "test", Severity: "warning", Title: "Test", Since: time.Now().In(a.zone()), URL: a.cfg.PublicURL})
 		cancel()
 		res := map[string]string{"id": ch.ID(), "type": ch.Type(), "result": "sent"}
 		if err != nil {

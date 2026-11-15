@@ -204,3 +204,25 @@ func TestEmailConfig(t *testing.T) {
 		t.Fatalf("465 is implicit TLS: %v", err)
 	}
 }
+
+func TestEmailStandIn(t *testing.T) {
+	pw := filepath.Join(t.TempDir(), "pw")
+	_ = os.WriteFile(pw, []byte("s3cret-pass"), 0o600)
+	for _, smtpAddr := range []string{"mail.test:587", "192.0.2.1:25"} {
+		if _, err := New(Config{ID: "m", Type: "email", SMTP: smtpAddr, StandIn: true, PasswordFile: pw, From: "a@b.test", To: []string{"c@d.test"}}); err == nil {
+			t.Errorf("stand_in accepted %s", smtpAddr)
+		}
+	}
+	cert, _ := testCert(t)
+	f := startSMTP(t, cert, false, false) // no TLS at all, on loopback
+	ch, err := New(Config{ID: "m", Type: "email", SMTP: f.addr, StandIn: true, PasswordFile: pw, From: "obs@example.test", To: []string{"ops@example.test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ch.Send(context.Background(), sample); err != nil {
+		t.Fatal(err)
+	}
+	if msg := <-f.got; !strings.Contains(msg, "mail.example.org SMTP (25) is down") {
+		t.Fatalf("message: %s", msg)
+	}
+}

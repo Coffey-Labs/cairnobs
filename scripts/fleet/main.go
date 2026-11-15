@@ -173,7 +173,7 @@ func run(args []string) {
 	ntnxVMs := fs.Int("nutanix", 0, "this many VMs in a Prism Central read by fleet-0100's agent (0: none)")
 	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by fleet-0040's agent (0: none)")
 	akamaiDir := fs.String("akamai", "", "serve a fake Akamai account on loopback, and write its .edgerc and the akamai: section for obs-beacond.yaml to this directory's akamai.yaml (\"\": none)")
-	chanDir := fs.String("channels", "", "catch alerts on loopback as ntfy, Discord, PagerDuty and a webhook, and write their secrets and the alerts: and reports: sections for obs-beacond.yaml to this directory's channels.yaml (\"\": none)")
+	chanDir := fs.String("channels", "", "catch alerts on loopback as ntfy, Discord, PagerDuty, a webhook and an email relay, and write their secrets and the alerts: and reports: sections for obs-beacond.yaml to this directory's channels.yaml (\"\": none)")
 	mailDir := fs.String("mail", "", "serve a fake mail server on loopback, and write its password and the mail: section for obs-beacond.yaml to this directory's mail.yaml (\"\": none)")
 	cfDir := fs.String("cloudflare", "", "serve a fake Cloudflare account on loopback, and write its token and the cloudflare: section for obs-beacond.yaml to this directory's cloudflare.yaml (\"\": none)")
 	vaultDir := fs.String("vault", "", "serve two fake Vault clusters over HTTPS on loopback, and write their vault: list for obs-beacond.yaml to this directory's vault.yaml (\"\": none)")

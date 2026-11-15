@@ -63,7 +63,7 @@ with the same number of agents. Each of `-cloudflare`, `-mail`, `-channels`,
 for obs-beacond.yaml into its directory (`cloudflare.yaml`, `mail.yaml`,
 `channels.yaml`, …); add those once, and start fleet before obs-beacond so
 the first readings find them. `-channels` catches what the alert channels
-send (ntfy, Discord, PagerDuty and a webhook) and lists it on
+send (ntfy, Discord, PagerDuty, a webhook and email) and lists it on
 http://127.0.0.1:58450/. `fleet run -h` lists the rest: clusters, VMs,
 Proxmox, vSphere, Nutanix and Pure arrays.
 

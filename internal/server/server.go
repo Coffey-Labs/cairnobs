@@ -135,6 +135,7 @@ func New(cfg *Config) (*Server, error) {
 	if srv.alerts, err = newAlerter(cfg.Alerts); err != nil {
 		return nil, err
 	}
+	srv.alerts.loc = srv.reportsLoc()
 	if cfg.Cloudflare != nil {
 		if srv.cf, err = cloudflare.New(*cfg.Cloudflare); err != nil {
 			return nil, err

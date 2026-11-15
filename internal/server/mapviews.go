@@ -557,7 +557,10 @@ func serviceStatus(s mapgraph.Service, hosts map[string]HostView, k8s map[string
 }
 
 // declaredSignals is what judges each declared service besides its parts:
-// its checks and Cloudflare (topology.yaml), by service id.
+// its checks and Cloudflare (topology.yaml), and the units and containers
+// it claims, by service id. Those last are mostly its parts already, but a
+// unit that failed stops listening and drops off the map: without them a
+// service whose one copy is down read "Running" from the copies still up.
 func (srv *Server) declaredSignals(now time.Time) map[string][]Signal {
 	svcs, ok := srv.serviceStates(now)
 	if !ok {
@@ -566,7 +569,8 @@ func (srv *Server) declaredSignals(now time.Time) map[string][]Signal {
 	out := map[string][]Signal{}
 	for _, sv := range svcs {
 		for _, sg := range sv.Signals {
-			if sg.Kind == "check" || sg.Kind == "cloudflare" {
+			switch sg.Kind {
+			case "check", "cloudflare", "unit", "container":
 				out[sv.ID] = append(out[sv.ID], sg)
 			}
 		}

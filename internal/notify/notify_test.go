@@ -146,3 +146,15 @@ func TestConfigChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestSinceInTheGivenZone(t *testing.T) {
+	az := time.FixedZone("MST", -7*3600)
+	n := crit
+	n.Since = n.Since.In(az)
+	if b := body(n); !strings.Contains(b, "Since: 2026-10-15 11:00 MST\n") {
+		t.Fatalf("body:\n%s", b)
+	}
+	if b := body(crit); !strings.Contains(b, "Since: 2026-10-15 18:00 UTC\n") {
+		t.Fatalf("UTC body:\n%s", b)
+	}
+}
