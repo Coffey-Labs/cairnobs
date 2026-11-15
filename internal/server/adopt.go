@@ -95,6 +95,7 @@ func (srv *Server) handleSettingsExpected(w http.ResponseWriter, r *http.Request
 		"source": srv.expectedSource(), "file": srv.cfg.Expected, "host": host, "reported": seen,
 		"expected": hostExpectations{Running: nonNilSlice(eh.Running), Stopped: nonNilSlice(eh.Stopped), Units: nonNilSlice(eh.Units)},
 		"ci_jobs":  nonNilSlice(e.CIJobs),
+		"windows":  windowsHost(last.OS), // services are Windows', named without .service
 	}
 	// What's there now. Null, not empty, when the agent can't say: no
 	// Docker, no systemd, or an agent from before services were reported.

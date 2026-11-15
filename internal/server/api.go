@@ -127,6 +127,10 @@ type UnitView struct {
 	Word     string `json:"word"`
 }
 
+// windowsHost says a report's OS is Windows: its units are Windows
+// services (docs/windows.md).
+func windowsHost(os string) bool { return strings.HasPrefix(os, "Windows") }
+
 // judgeUnits compares a host's expected units with what its agent saw.
 func judgeUnits(host string, want []string, got []report.Unit) []UnitView {
 	seen := map[string]report.Unit{}
@@ -310,10 +314,18 @@ func (srv *Server) view(now time.Time) ([]HostView, []Condition) {
 				Title: fmt.Sprintf("%s on %s: %s", row.Name, h.name, strings.ToLower(row.Verdict.Word)), Detail: row.Verdict.Detail, Host: "", Href: "/containers"})
 		}
 		v.Units = judgeUnits(h.name, expected.Hosts[h.name].Units, r.Units)
+		manager, win := "systemd", windowsHost(r.OS)
+		if win {
+			manager = "Windows"
+		}
 		for _, u := range v.Units {
 			if u.Severity == "critical" {
-				add(Condition{Key: "unit/" + h.name + "/" + u.Name, Severity: "critical", Title: fmt.Sprintf("%s on %s: %s", u.Name, h.name, strings.ToLower(u.Word)),
-					Detail: "systemd reports it " + u.Active + " (" + u.Sub + ").", Host: "", Href: href})
+				name := u.Name
+				if win {
+					name = units.ServiceName(name)
+				}
+				add(Condition{Key: "unit/" + h.name + "/" + u.Name, Severity: "critical", Title: fmt.Sprintf("%s on %s: %s", name, h.name, strings.ToLower(u.Word)),
+					Detail: manager + " reports it " + u.Active + " (" + u.Sub + ").", Host: "", Href: href})
 			}
 		}
 		if v.ContainersError != "" {

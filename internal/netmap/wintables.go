@@ -108,3 +108,44 @@ func WinOwner(pid uint32, services map[uint32]string, exe map[uint32]string) str
 	}
 	return ""
 }
+
+// The kernel (process 4, System) holds what Windows serves through its own
+// drivers: SMB, and http.sys, which carries WinRM and IIS. Named by port,
+// they're the services people know.
+const winSystemPID = 4
+
+// winKernelOwner is the service behind one of System's ports, or "".
+func winKernelOwner(port uint16, iis bool) string {
+	switch port {
+	case 445, 139:
+		return "LanmanServer"
+	case 137, 138:
+		return "NetBT"
+	case 5985, 5986, 47001:
+		return "WinRM"
+	case 80, 443:
+		if iis {
+			return "W3SVC"
+		}
+	}
+	return ""
+}
+
+// KernelOwners gives System's sockets the service behind their local
+// port: their Inode becomes a key WinOwner reads (1<<32 | port) where one
+// is known. iis says W3SVC is running.
+func KernelOwners(socks []NSSocket, iis bool) {
+	for i, s := range socks {
+		if s.Inode == winSystemPID && winKernelOwner(s.Local.Port(), iis) != "" {
+			socks[i].Inode = 1<<32 | uint64(s.Local.Port())
+		}
+	}
+}
+
+// WinSocketOwner names what holds a socket keyed as KernelOwners left it.
+func WinSocketOwner(key uint64, iis bool, services map[uint32]string, exe map[uint32]string) string {
+	if key>>32 == 1 {
+		return "unit:" + winKernelOwner(uint16(key), iis) + ".service"
+	}
+	return WinOwner(uint32(key), services, exe)
+}
