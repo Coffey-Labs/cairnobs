@@ -11,6 +11,7 @@ import (
 	"github.com/cairnobs/cairnobs/internal/clusterwatch"
 	"github.com/cairnobs/cairnobs/internal/flasharray"
 	"github.com/cairnobs/cairnobs/internal/flashblade"
+	"github.com/cairnobs/cairnobs/internal/ibmi"
 	"github.com/cairnobs/cairnobs/internal/nutanix"
 	"github.com/cairnobs/cairnobs/internal/proxmox"
 	"github.com/cairnobs/cairnobs/internal/purerest"
@@ -22,9 +23,10 @@ import (
 // A host agent can read whole platforms beside its own host: a Proxmox VE
 // cluster it's a node of, a vCenter or Prism Central it can reach
 // (docs/cluster-watcher.md, steps 7 to 9), and any number of Pure
-// FlashArrays (docs/pure.md). Each is sent as a cluster agent sends its
-// cluster, as a source of its own named in every batch (docs/pure.md,
-// decision 1): "mgmt1:vcsa-01". One of each platform; arrays as listed.
+// FlashArrays (docs/pure.md) and IBM i partitions (docs/ibmi.md). Each is
+// sent as a cluster agent sends its cluster, as a source of its own named
+// in every batch (docs/pure.md, decision 1): "mgmt1:vcsa-01". One of each
+// platform; arrays and partitions as listed.
 
 // sourceName is what a source may be called: a host name.
 var sourceName = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$`)
@@ -59,6 +61,11 @@ func platformSetups(cfg *config) ([]namedSetup, error) {
 		} else {
 			out = append(out, namedSetup{c.Name, func() (*platform, error) { return flasharrayPlatform(*c) }})
 		}
+	}
+	for i := range cfg.IBMi {
+		c := &cfg.IBMi[i]
+		c.Defaults()
+		out = append(out, namedSetup{c.Name, func() (*platform, error) { return ibmiPlatform(*c) }})
 	}
 	seen := map[string]bool{}
 	for _, n := range out {
@@ -184,6 +191,24 @@ func flashbladePlatform(cfg flashblade.Config) (*platform, error) {
 				return nil, nil, err
 			}
 			return flashblade.Records(s), flashblade.Usage(s), nil
+		}}, nil
+}
+
+func ibmiPlatform(cfg ibmi.Config) (*platform, error) {
+	c, err := ibmi.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &platform{name: "ibmi " + c.Name(), every: cfg.Every,
+		down: func(last []report.Workload, err error) []report.Workload {
+			return ibmi.Unreachable(c.Name(), last, err)
+		},
+		read: func(ctx context.Context, now time.Time) ([]report.Workload, []report.Usage, error) {
+			s, err := c.Read(ctx, now)
+			if err != nil {
+				return nil, nil, err
+			}
+			return ibmi.Records(s), ibmi.Usage(s), nil
 		}}, nil
 }
 

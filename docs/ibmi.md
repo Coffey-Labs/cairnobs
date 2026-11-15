@@ -1,7 +1,7 @@
 # IBM i: design note
 
-Status: decided 2026-11-14 (Decisions, at the end); steps 1 to 3 to
-build, 4 after them.
+Status: decided 2026-11-14 (Decisions, at the end); step 1 built, 2 and
+3 next, 4 after them.
 
 John, 2026-11-12: "is there anything we can do for iseries?" Yes. The
 shops Cairn OBS is aimed at often still run their core business on IBM i
@@ -32,7 +32,7 @@ Every minute, one query per line, all SELECTs:
 | SQL service | Becomes |
 |---|---|
 | `QSYS2.SYSTEM_STATUS_INFO_BASIC`: CPU use, system ASP % used, jobs, temporary storage, restricted state, the attention light; `SYSIBMADM.ENV_SYS_INFO` and `QSYS2.GROUP_PTF_INFO`: the release and the Technology Refresh | the partition's own record: "PROD1 · read by mgmt1", "IBM i 7.5 TR6", CPU and storage graphs |
-| `QSYS2.ASP_INFO` and `SYSDISKSTAT`: each ASP's state and % used, each disk unit's status | parts: an ASP not varied on, or a disk unit not active, is degraded; ASP % used warns at the ASP's own threshold (IBM i's, not ours) |
+| `QSYS2.ASP_INFO` and `SYSDISKSTAT`: each ASP's state and % used, each disk unit's status | parts: a failed ASP is down, one with disk units missing or overflowing into the system ASP is degraded, a disk unit not active is degraded; ASP % used warns at the ASP's own threshold (IBM i's, not ours). An independent ASP varied off is said, not judged: PowerHA keeps it so on the node that isn't using it |
 | `QSYS2.SUBSYSTEM_INFO`: each subsystem and whether it's active | parts, as units are on Linux: `expected.yaml` names the subsystems that must be active (`subsystems: [QINTER, QBATCH, ORDERS]`) |
 | jobs waiting on a message (MSGW): see decision 2 | listed on the record: a job in MSGW is someone's batch stuck on a question; warns |
 | `QSYS2.MESSAGE_QUEUE_INFO` for QSYSOPR: inquiry messages not yet answered, and messages of severity 80 and up | listed on the record; an unanswered inquiry warns, severity 90+ is critical |
@@ -85,6 +85,60 @@ Most of the views above work for any user. Seeing other users' jobs in
 ACTIVE_JOB_INFO (for MSGW) needs *JOBCTL, which is also the authority
 to end and hold jobs: more than we want to hold. Question 2.
 
+## Setting it up
+
+On the partition, as a security officer:
+
+1. **Mapepire**, from IBM's open-source packages (ACS's Open Source
+   Package Management, or `yum install mapepire-server` in an SSH
+   session), started with Service Commander: `sc start mapepire`, and
+   `sc` again after an IPL unless it's set to start with TCP/IP. It
+   listens on 8076 with a certificate it makes itself; the agent pins
+   that with `fingerprint`:
+   `openssl s_client -connect prod1:8076 </dev/null | openssl x509 -noout -fingerprint -sha256`.
+2. **The profile**, with no special authorities and no command line:
+
+   ```
+   CRTUSRPRF USRPRF(CAIRNOBS) PASSWORD(...) USRCLS(*USER) SPCAUT(*NONE)
+             LMTCPB(*YES) INLMNU(*SIGNOFF) TEXT('Cairn OBS, read only')
+   ```
+
+   Its password goes alone in the agent's `password_file`. If the
+   shop's passwords expire, so does this one, and the partition then
+   shows as not answering until it's changed: `PWDEXPITV(*NOMAX)` is the
+   shop's call.
+3. **Mapepire's own rule** for the profile, so it's read only whatever
+   the agent asks, in `/QOpenSys/etc/mapepire/iprules.conf` (the last
+   rule that matches wins):
+
+   ```
+   deny cairnobs@*
+   allowbasiconly cairnobs@10.0.4.21
+   ```
+
+   with the agent host's address.
+4. **Optional:** `*USE` on two objects names the partition as the HMC
+   does and gives its Technology Refresh. Without them the partition is
+   named by its host name and its version is just the release.
+
+   ```
+   GRTOBJAUT OBJ(QSYS/QPMLPMGT) OBJTYPE(*SRVPGM) USER(CAIRNOBS) AUT(*USE)
+   GRTOBJAUT OBJ(QSYS/WRKPTFGRP) OBJTYPE(*CMD) USER(CAIRNOBS) AUT(*USE)
+   ```
+
+Then on the agent's host, in agent.yaml (formats.md):
+
+```yaml
+ibmi:
+  - address: prod1.example.com
+    user: CAIRNOBS
+    password_file: /etc/obs-beacon/prod1.password
+    fingerprint: "AB:CD:..."
+```
+
+The partition shows on Clusters as "PROD1 · read by mgmt1", once its
+first read is in; its CPU from the second.
+
 ## The Power servers: the HMC
 
 IBM i (and AIX, and Linux on Power) partitions run on Power servers
@@ -109,7 +163,10 @@ IBM i partition to the server it runs on. A separate step; question 4.
 4. **The HMC** (if question 4 says so).
 
 Tested against a fake Mapepire server built from IBM's documented
-results, then on a real partition (question 5).
+results (internal/mapepire's Fake, internal/ibmi's FakePartition), then
+on a real partition (question 5). The demo simulator's `-ibmi 4` adds
+four partitions read by fleet-0041: prod1 past its system ASP threshold,
+ha1 a PowerHA standby with its independent ASP varied off, dev1 on 7.4.
 
 ## Questions
 

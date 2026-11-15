@@ -64,7 +64,11 @@ export interface Cluster {
 	usage?: Usage; history?: string;
 	/** What it is (Cluster, Array, vCenter, Prism Central) and what its nodes are (Node, Controller, Host). */
 	noun: string; node_noun: string;
+	/** An IBM i partition's own numbers, in place of nodes. */
+	partition?: PartitionNums;
 }
+/** An IBM i partition now: CPU over the last minute (none until there's a minute to tell), its system ASP and jobs. */
+export interface PartitionNums { cpu_pct?: number; system_asp_pct: number; active_jobs: number; jobs: number; model?: string; processing_units?: number }
 /** One of an OpenShift or OKD cluster's own parts: its version, a machine config pool, an operator. */
 export interface ClusterPart { name: string; title: string; state: string; word: string; severity: Severity }
 export interface ClusterNode { name: string; state: string; severity: Severity; word: string; since?: string; facts?: Record<string, unknown> }
