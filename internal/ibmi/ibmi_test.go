@@ -88,6 +88,24 @@ func TestReadAndRecords(t *testing.T) {
 	if ia := recs["asp/33"]; ia.Name != "asp/PRODIASP" || ia.State != report.StateOK {
 		t.Errorf("IASP %+v", ia)
 	}
+	if b := recs["subsystem/QSYS/QINTER"]; b.Name != "subsystem/QINTER" || b.State != report.StateOK || b.Word != "Active, 41 jobs" {
+		t.Errorf("QINTER %+v", b)
+	}
+	if b := recs["subsystem/QSYS/QSPL"]; b.State != report.StateStopped || b.Word != "Inactive" {
+		t.Errorf("QSPL %+v", b)
+	}
+	if i := recs["interface/10.0.4.20"]; i.State != report.StateOK || i.Word != "Active on ETHLINE" {
+		t.Errorf("interface %+v", i)
+	}
+	if i := recs["interface/10.0.9.20"]; i.State != report.StateStopped || i.Word != "Inactive on ETHBKP (not set to start with TCP/IP)" {
+		t.Errorf("backup interface %+v", i)
+	}
+	if me.Facts["unanswered_inquiries"] != 0 {
+		t.Errorf("an answered inquiry counted: %v", me.Facts)
+	}
+	if _, ok := recs["interface/127.0.0.1"]; ok || len(recs) != 1+2+6+2 {
+		t.Errorf("loopback or link-local kept: %d records", len(recs))
+	}
 	// Every query was a SELECT of a view, and the connection was kept.
 	for _, q := range f.Queries {
 		if !strings.HasPrefix(q, "SELECT") || strings.Contains(q, "TABLE(") {
@@ -101,6 +119,19 @@ func TestTrouble(t *testing.T) {
 	p.Attention, p.NoTR = true, true
 	p.ASPs[0]["TOTAL_CAPACITY_AVAILABLE"] = 192_000.0 // 92% used
 	p.ASPs[1]["ASP_STATE"] = "VARIED OFF"
+	p.Disks[1]["HARDWARE_STATUS"] = "FAILED"
+	p.Disks = append(p.Disks, mapepire.Row{"ASP_NUMBER": 1.0, "UNIT_NUMBER": 3.0, "RESOURCE_NAME": "DMP003", "HARDWARE_STATUS": "ACTIVE",
+		"PROTECTION_STATUS": "ACTIVE", "SSD_PFA_WARNING": "YES"})
+	p.Interfaces[1]["INTERFACE_STATUS"] = "RCYPND"
+	// Newest first: a severity 99 message, two jobs waiting on the same
+	// question, the old answered one, and a severity 80 one of two days ago.
+	p.Messages = append([]mapepire.Row{
+		Msg("0000B100", "", "CPF0907", "COMPLETION", "Serious storage condition may exist. Press HELP.", 99, "000000/QSYS/SCPF", 600),
+		Msg("0000B000", "", "CPA0701", "INQUIRY", "MCH1211 received by procedure NIGHTLY. (C D I R)", 99, "123456/BATCH/NIGHTLY", 1800),
+		Msg("0000AF00", "", "CPA0701", "INQUIRY", "MCH1211 received by procedure ORDERS. (C D I R)", 99, "123455/BATCH/ORDERS", 2400),
+	}, append(p.Messages, Msg("00009000", "", "CPI0953", "INFORMATIONAL", "ASP storage limit exceeded.", 80, "000000/QSYS/SCPF", 2*86400))...)
+	p.JobQueues = append(p.JobQueues, JobQ("QGPL", "NIGHTQ", true, 3, "QBATCH"), JobQ("ORDLIB", "ORDERSQ", false, 1, ""))
+	p.Interfaces = append(p.Interfaces, iface("10.0.5.20", "ETHPROD2", "INACTIVE", true))
 	p.ASPs = append(p.ASPs, mapepire.Row{"ASP_NUMBER": 2.0, "ASP_STATE": "NONE", "ASP_TYPE": "USER", "NUMBER_OF_DISK_UNITS": 2.0,
 		"DISK_UNITS_PRESENT": "SOME", "TOTAL_CAPACITY": -2.0, "TOTAL_CAPACITY_AVAILABLE": -2.0, "STORAGE_THRESHOLD_PERCENTAGE": 90.0,
 		"OVERFLOW_STORAGE": 1_500.0})
@@ -112,7 +143,8 @@ func TestTrouble(t *testing.T) {
 	if me := recs[report.ClusterSelf]; me.State != report.StateDegraded || !strings.Contains(me.Word, "attention light") || me.Facts["version"] != "7.5" {
 		t.Errorf("self %+v", me)
 	}
-	if a := recs["asp/1"]; a.State != report.StateDegraded || a.Word != "92% used, past IBM i's threshold of 90%" {
+	if a := recs["asp/1"]; a.State != report.StateDegraded ||
+		a.Word != "92% used, past IBM i's threshold of 90%; disk unit 2 (DMP002) failed; disk unit 3 (DMP003) predicts its own failure (SSD)" {
 		t.Errorf("system ASP %+v", a)
 	}
 	if a := recs["asp/33"]; a.State != report.StateOK || a.Word != "Varied off" {
@@ -120,6 +152,37 @@ func TestTrouble(t *testing.T) {
 	}
 	if a := recs["asp/2"]; a.State != report.StateDegraded || a.Word != "Some of its disk units weren't found; overflowed 2 GB into the system ASP" || a.Facts["used_pct"] != nil {
 		t.Errorf("user ASP %+v", a)
+	}
+	if i := recs["interface/10.0.4.20"]; i.State != report.StateDown || i.Word != "Its line on ETHLINE is waiting for recovery (RCYPND)" {
+		t.Errorf("interface %+v", i)
+	}
+	if i := recs["interface/10.0.5.20"]; i.State != report.StateDegraded || i.Word != "Inactive on ETHPROD2, though it's set to start with TCP/IP" {
+		t.Errorf("second interface %+v", i)
+	}
+	if m := recs["message/0000B100"]; m.Name != "message/CPF0907 from 000000/QSYS/SCPF" || m.State != report.StateDown {
+		t.Errorf("severe %+v", m)
+	}
+	q := recs["inquiry/0000B000"]
+	if q.Name != "inquiry/CPA0701 from 123456/BATCH/NIGHTLY" || q.State != report.StateDegraded || q.Word != "MCH1211 received by procedure NIGHTLY. (C D I R)" ||
+		q.Facts["job"] != "123456/BATCH/NIGHTLY" || q.Since.IsZero() {
+		t.Errorf("inquiry %+v", q)
+	}
+	if _, ok := recs["inquiry/0000AF00"]; !ok {
+		t.Error("the second job's inquiry")
+	}
+	for _, k := range []string{"inquiry/000098F0", "message/00009000", "jobqueue/QSYS/QBATCH"} {
+		if _, ok := recs[k]; ok {
+			t.Errorf("%s: answered, too old or fine, but listed", k)
+		}
+	}
+	if j := recs["jobqueue/QGPL/NIGHTQ"]; j.Word != "Held, with 3 jobs waiting" {
+		t.Errorf("held queue %+v", j)
+	}
+	if j := recs["jobqueue/ORDLIB/ORDERSQ"]; j.Word != "1 job waiting, and no active subsystem takes from it" {
+		t.Errorf("orphan queue %+v", j)
+	}
+	if me := recs[report.ClusterSelf]; me.Facts["unanswered_inquiries"] != 2 || me.Facts["severe_messages"] != 1 {
+		t.Errorf("counts %v", me.Facts)
 	}
 }
 
@@ -130,7 +193,7 @@ func TestUnreachable(t *testing.T) {
 		t.Fatal(err)
 	}
 	recs := Unreachable("prod1", Records(s), errors.New("dial tcp: connection refused"))
-	if recs[0].State != report.StateDown || recs[0].Name != "PROD1" || len(recs) != 3 {
+	if recs[0].State != report.StateDown || recs[0].Name != "PROD1" || len(recs) != 11 {
 		t.Errorf("%+v", recs)
 	}
 }

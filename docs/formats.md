@@ -832,7 +832,17 @@ clusters:                 # what's adopted in each cluster (Cluster agents, abov
         alert: warn
       - name: vms/vm/build-runner
         stopped: true                      # a VM stopped on purpose
+  mgmt1:prod1:            # an IBM i partition, by its source (ibmi.md)
+    subsystems: [QINTER, QBATCH, ORDLIB/ORDERS]   # must be active
 ```
+
+An IBM i partition's `subsystems` must be active: one that isn't is
+critical, and so is one that isn't there at all, or that its profile may
+not see (it needs `*USE` on the subsystem description). Write a name, or
+`library/name` when two libraries hold one of that name. The rest are
+counted on Clusters and listed on Workloads, never alerted on. With
+expectations kept in the UI, set them by exporting the file, editing it
+and importing it.
 
 How a container is judged:
 

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -344,6 +345,13 @@ type wsnap struct {
 // by name.
 func (srv *Server) workloadSnapshot() []wsnap {
 	out := append(srv.clusterSnaps(), srv.hostVMSnaps()...)
+	if e := srv.currentExpected(); e != nil {
+		for i := range out {
+			if want := e.Clusters[out[i].name].Subsystems; len(want) > 0 && out[i].distribution() == ibmiDistribution {
+				out[i].recs = expectSubsystems(out[i].recs, want)
+			}
+		}
+	}
 	slices.SortFunc(out, func(a, b wsnap) int { return strings.Compare(a.name, b.name) })
 	return out
 }
@@ -506,7 +514,17 @@ func partTitle(name string) string {
 		return upperFirst(n) + " replication"
 	case "license":
 		return "Its license"
-	case "asp": // an IBM i partition's (docs/ibmi.md)
+	case "subsystem": // an IBM i partition's (docs/ibmi.md)
+		return "Subsystem " + n
+	case "interface":
+		return "Interface " + n
+	case "inquiry":
+		return "Unanswered inquiry " + n
+	case "message":
+		return "QSYSOPR message " + n
+	case "jobqueue":
+		return "Job queue " + n
+	case "asp":
 		switch {
 		case n == "1":
 			return "The system ASP"
@@ -1040,6 +1058,42 @@ type ClusterView struct {
 	Partition *PartitionView `json:"partition,omitempty"`
 }
 
+// expectSubsystems marks an IBM i partition's subsystems that
+// expected.yaml says must be active (docs/ibmi.md, step 2): one that isn't
+// is down, and one that isn't there at all is added, down. recs is the
+// snapshot's own copy; a record's facts are copied before they change.
+func expectSubsystems(recs []report.Workload, want []string) []report.Workload {
+	for _, w := range want {
+		lib, name, ok := strings.Cut(strings.ToUpper(w), "/")
+		if !ok {
+			lib, name = "", lib
+		}
+		found := false
+		for i, r := range recs {
+			if r.Name != "subsystem/"+name || (lib != "" && r.Facts["library"] != lib) {
+				continue
+			}
+			found = true
+			f := maps.Clone(r.Facts)
+			if f == nil {
+				f = map[string]any{}
+			}
+			f["expected"] = true
+			r.Facts = f
+			if r.State != report.StateOK && r.State != report.StateStarting {
+				r.State, r.Word = report.StateDown, r.Word+", and expected.yaml says it should be active"
+			}
+			recs[i] = r
+		}
+		if !found {
+			recs = append(recs, report.Workload{Kind: report.KindCluster, ID: "subsystem/expected/" + strings.ToUpper(w), Name: "subsystem/" + name,
+				State: report.StateDown, Word: "Not on the partition, or its profile may not use the subsystem's description (*USE)",
+				Facts: map[string]any{"expected": true}})
+		}
+	}
+	return recs
+}
+
 // ibmiDistribution is what an IBM i partition's own record says it is
 // (ibmi.Distribution, said again here to keep the reader out of obs-beacond).
 const ibmiDistribution = "IBM i"
@@ -1053,10 +1107,17 @@ type PartitionView struct {
 	Jobs          int      `json:"jobs"`
 	Model         string   `json:"model,omitempty"`
 	ProcessingCap float64  `json:"processing_units,omitempty"`
+	// Subsystems and interfaces, counted: the ones that aren't fine and
+	// the expected subsystems are its parts, the rest only counted.
+	Subsystems       int `json:"subsystems"`
+	SubsystemsActive int `json:"subsystems_active"`
+	Interfaces       int `json:"interfaces"`
+	InterfacesActive int `json:"interfaces_active"`
 }
 
-// partitionView reads a partition's own record's facts.
-func partitionView(r report.Workload) *PartitionView {
+// partitionView reads a partition's own record's facts, and counts its
+// subsystems and interfaces.
+func partitionView(r report.Workload, recs []report.Workload) *PartitionView {
 	f := func(k string) float64 {
 		switch v := r.Facts[k].(type) {
 		case float64:
@@ -1072,6 +1133,21 @@ func partitionView(r report.Workload) *PartitionView {
 		p.CPUPct = &c
 	}
 	p.Model, _ = r.Facts["model"].(string)
+	for _, x := range recs {
+		up := x.State == report.StateOK
+		switch {
+		case strings.HasPrefix(x.Name, "subsystem/") && !strings.HasPrefix(x.ID, "subsystem/expected/"):
+			p.Subsystems++
+			if up {
+				p.SubsystemsActive++
+			}
+		case strings.HasPrefix(x.Name, "interface/"):
+			p.Interfaces++
+			if up {
+				p.InterfacesActive++
+			}
+		}
+	}
 	return p
 }
 
@@ -1127,7 +1203,12 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 							v.OperatorsOK++
 						}
 					}
-					if !op || r.State != report.StateOK {
+					// An IBM i partition's subsystems and interfaces are many:
+					// only the ones that need a look, and the expected
+					// subsystems, are listed.
+					many := strings.HasPrefix(r.Name, "subsystem/") || strings.HasPrefix(r.Name, "interface/")
+					quiet := many && (sev == "good" || sev == "off") && r.Facts["expected"] != true
+					if (!op || r.State != report.StateOK) && !quiet {
 						v.Parts = append(v.Parts, ClusterPart{Name: r.Name, Title: partTitle(r.Name), State: r.State, Word: r.Word, Severity: sev})
 					}
 				}
@@ -1147,7 +1228,7 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 						v.History = historyKey(r)
 					}
 					if r.Facts["distribution"] == ibmiDistribution {
-						v.Partition = partitionView(r)
+						v.Partition = partitionView(r, s.recs)
 					}
 				}
 			case report.KindNode:

@@ -474,6 +474,53 @@ func TestIBMiSource(t *testing.T) {
 	}
 }
 
+// expected.yaml names the subsystems that must be active: one inactive is
+// down, one missing is added, down; the rest are only counted
+// (docs/ibmi.md, step 2).
+func TestIBMiExpectedSubsystems(t *testing.T) {
+	a, _, hostTok, _ := clusterCopies(t)
+	a.expected = &Expected{Clusters: map[string]ExpectedCluster{"host1:prod1": {Subsystems: []string{"QINTER", "qbatch", "ORDLIB/ORDERS"}}}}
+	snap := &ibmi.Snapshot{Name: "prod1", Release: "7.5", System: ibmi.System{PartitionName: "PROD1"},
+		Subsys: []ibmi.Subsystem{{Library: "QSYS", Name: "QINTER", Status: "ACTIVE", Jobs: 41}, {Library: "QSYS", Name: "QBATCH", Status: "INACTIVE"},
+			{Library: "QSYS", Name: "QSPL", Status: "INACTIVE"}, {Library: "QSYS", Name: "QUSRWRK", Status: "ACTIVE", Jobs: 9}},
+		Ifaces: []ibmi.Interface{{Address: "10.0.4.20", Line: "ETHLINE", Status: "ACTIVE", Autostart: true}, {Address: "10.0.9.20", Line: "ETHBKP", Status: "INACTIVE"}}}
+	sendBatch(t, a, hostTok, report.Workloads{Source: "prod1", Records: ibmi.Records(snap)})
+	now := time.Now()
+	titles := map[string]string{}
+	for _, c := range a.workloadConditions(now) {
+		titles[c.Key] = c.Severity + " " + c.Title
+	}
+	for key, want := range map[string]string{
+		"cluster/host1:prod1/subsystem/QBATCH": "critical Subsystem QBATCH in PROD1 (host1): inactive, and expected.yaml says it should be active",
+		"cluster/host1:prod1/subsystem/ORDERS": "critical Subsystem ORDERS in PROD1 (host1): not on the partition, or its profile may not use the subsystem's description (*USE)",
+	} {
+		if titles[key] != want {
+			t.Errorf("%s: %q, want %q", key, titles[key], want)
+		}
+	}
+	if len(titles) != 2 {
+		t.Errorf("conditions: %v", titles)
+	}
+	for _, v := range a.clusterViews(now, nil) {
+		if v.Name != "host1:prod1" {
+			continue
+		}
+		var names []string
+		for _, p := range v.Parts {
+			names = append(names, p.Name)
+		}
+		if got := strings.Join(names, " "); got != "subsystem/ORDERS subsystem/QBATCH subsystem/QINTER" {
+			t.Errorf("parts %q", got)
+		}
+		if p := v.Partition; p.Subsystems != 4 || p.SubsystemsActive != 2 || p.Interfaces != 2 || p.InterfacesActive != 1 {
+			t.Errorf("counts %+v", p)
+		}
+	}
+	if _, err := parseExpected([]byte("clusters:\n  host1:prod1:\n    subsystems: [\"QINTER;\"]\n")); err == nil {
+		t.Error("a bad subsystem name was taken")
+	}
+}
+
 // A FlashBlade's blades are blades, and its file systems link to PVCs as
 // a FlashArray's volumes do (docs/pure.md, step 5).
 func TestFlashBladeSource(t *testing.T) {
