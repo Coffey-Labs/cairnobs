@@ -62,6 +62,7 @@ func config(args []string) {
 	n := fs.Int("n", 1000, "agents")
 	clusters := fs.Int("clusters", 0, "cluster agents")
 	out := fs.String("out", ".", "where to write agents.yaml and tokens")
+	demo := fs.Bool("demo", false, "also write the demo's checks.yaml, expected.yaml, backups.yaml, and demo.yaml with the lines for obs-beacond.yaml (demo.go)")
 	_ = fs.Parse(args)
 	var agents, tokens bytes.Buffer
 	agents.WriteString("agents:\n")
@@ -89,6 +90,10 @@ func config(args []string) {
 		log.Fatal(err)
 	}
 	fmt.Printf("%d agents and %d cluster agents: %s/agents.yaml goes into obs-beacond.yaml; %s/tokens is for fleet run\n", *n, *clusters, *out, *out)
+	if *demo {
+		writeDemo(*out, *n)
+		fmt.Printf("the demo: %s/demo.yaml has the lines for obs-beacond.yaml; run fleet with -demo and the same -n\n", *out)
+	}
 }
 
 func hostName(i int) string { return fmt.Sprintf("fleet-%04d", i) }
@@ -169,6 +174,7 @@ func run(args []string) {
 	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by fleet-0040's agent (0: none)")
 	akamaiDir := fs.String("akamai", "", "serve a fake Akamai account on loopback, and write its .edgerc and the akamai: section for obs-beacond.yaml to this directory's akamai.yaml (\"\": none)")
 	vaultDir := fs.String("vault", "", "serve two fake Vault clusters over HTTPS on loopback, and write their vault: list for obs-beacond.yaml to this directory's vault.yaml (\"\": none)")
+	demo := fs.Bool("demo", false, "hosts report the demo's checks, units and backups (fleet config -demo, same number of agents)")
 	probe := fs.Bool("probe", true, "time how long a change in cluster-00 takes to show on every copy (needs dev_signin)")
 	_ = fs.Parse(args)
 
@@ -245,6 +251,10 @@ func run(args []string) {
 
 	fleetSites = max(1, (len(agents)+siteSize-1)/siteSize)
 	fleetClusters = len(clusterAgents)
+	var demoAll []demoCheck
+	if *demo {
+		demoAll = demoChecks(len(agents))
+	}
 	var made, delivered, queued atomic.Int64
 	log.Printf("fleet: %d agents every %s, %d containers each, to %s, for %s", len(agents), *interval, *containers, *servers, *dur)
 	var wg sync.WaitGroup
@@ -253,6 +263,10 @@ func run(args []string) {
 		go func() {
 			defer wg.Done()
 			h := newHost(i, a.host, *containers, *interval)
+			if *demo {
+				h.demo = newDemoHost(fleetIndex(i, a.host), len(agents), demoAll)
+				h.demo.setup(&h.r)
+			}
 			if *withMap {
 				h.m = fakeMap(i, a.host, h.r.Containers)
 				h.certs, h.files = hostCerts(i, a.host)
@@ -504,6 +518,8 @@ type host struct {
 
 	vms []report.Workload // its libvirt VMs, when it's a hypervisor
 
+	demo *demoHost // what it reports for the demo (demo.go), when it runs
+
 	certs     *report.CertScan  // what its ports serve (certs.go)
 	files     *report.CertFiles // what its files hold
 	certsSent time.Time
@@ -671,6 +687,9 @@ func (h *host) next(now time.Time) report.Report {
 		r.VMs = &report.VMs{List: h.vms, Usage: vmUsage(h.vms)}
 	}
 	h.stampCerts(&r, now)
+	if h.demo != nil {
+		h.demo.stamp(&r, h.start, now)
+	}
 	if h.m != nil && now.Sub(h.mapSent) >= netmap.SendEvery-time.Duration(r.Interval)*time.Second/2 {
 		// Handshakes are a minute or so old each time, as a live link's are.
 		for d := range h.m.WireGuard {

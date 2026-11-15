@@ -69,7 +69,7 @@
 	<span class="tile"><Icon name="archive" /></span>
 	<div>
 		<h1>Backups</h1>
-		<p>Every host sends its backups to the other two over the mesh. Each host here shows what it has received, the backup jobs it runs, and the health of its disks. A root-only scan reads them every {Math.round((data?.scan_every_s ?? 900) / 60)} minutes, with no network and without opening any files.</p>
+		<p>What each host has received from the others, as backups.yaml expects it, the backup jobs it runs, and the health of its disks. A root-only scan reads them every {Math.round((data?.scan_every_s ?? 900) / 60)} minutes, with no network and without opening any files.</p>
 	</div>
 </div>
 
