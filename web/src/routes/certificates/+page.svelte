@@ -105,7 +105,7 @@
 	const set = (fn: () => void) => { fn(); offset = 0; open = null; };
 	const clear = () => set(() => { within = ''; kind = ''; status = ''; typed = ''; q = ''; });
 	const windows = [['', 'Any time'], ['7', 'Within 7 days'], ['21', 'Within 21 days'], ['90', 'Within 90 days']] as const;
-	const kindNames: Record<string, string> = { host: 'Hosts', file: 'Files', vault: 'Vault PKI', check: 'Site checks', cloudflare: 'Cloudflare', akamai: 'Akamai', cluster: 'Clusters' };
+	const kindNames: Record<string, string> = { host: 'Hosts', file: 'Files', store: 'Windows stores', vault: 'Vault PKI', check: 'Site checks', cloudflare: 'Cloudflare', akamai: 'Akamai', cluster: 'Clusters' };
 	const left = (c: Certificate) => (c.days < 0 ? `ended ${-c.days} days ago` : c.days === 0 ? 'today' : c.days === 1 ? '1 day' : `${c.days} days`);
 	const date = (s: string) => s.slice(0, 10);
 </script>

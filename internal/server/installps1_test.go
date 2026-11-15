@@ -12,7 +12,7 @@ import (
 // PowerShell quotes, and the agent's zip is served from packages_dir.
 func TestInstallPS1(t *testing.T) {
 	dir := t.TempDir()
-	for _, f := range []string{"SHA256SUMS", "obs-beacon-agent_0.1.0_windows_amd64.zip", "other.zip", "obs-beacond-linux-amd64"} {
+	for _, f := range []string{"SHA256SUMS", "obs-beacon-agent_0.1.0_windows_amd64.zip", "obs-beacon-agent_0.1.0_windows_arm64.zip", "other.zip", "obs-beacond-linux-amd64"} {
 		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +33,7 @@ func TestInstallPS1(t *testing.T) {
 		t.Fatal("not the script")
 	}
 	for f, want := range map[string]int{
-		"obs-beacon-agent_0.1.0_windows_amd64.zip": 200, "SHA256SUMS": 200,
+		"obs-beacon-agent_0.1.0_windows_amd64.zip": 200, "obs-beacon-agent_0.1.0_windows_arm64.zip": 200, "SHA256SUMS": 200,
 		"other.zip": 404, "obs-beacond-linux-amd64": 404,
 	} {
 		r := httptest.NewRequest("GET", "/agent-packages/"+f, nil)

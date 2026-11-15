@@ -164,6 +164,15 @@ modification time changes.
 - **Places** of kind `file`, "host1:/etc/letsencrypt/live/shop/cert.pem".
   A certificate only in files is judged at 7 days, not 21: a file no
   port serves may be nobody's. Its alert says "no port serves it".
+- **Windows** (2026-11-15): a Windows agent has no helper and no
+  files to glob; it reads the machine's certificate stores itself,
+  read-only, every ten minutes (`cert_stores`; absent, `My` and
+  `WebHosting`, where IIS, RDP gateways, SQL Server and most services
+  keep theirs). A CA's certificate without names is left out, as in
+  files. Places are of kind `store`, at the path PowerShell takes:
+  "win1:Cert:\LocalMachine\My\6B76…AC0C" (the thumbprint), and they're
+  judged as files are. Run on Windows Server 2025 as the service's own
+  account: no extra rights needed.
 - **Renewed but not reloaded** (decision 4): a port serving a
   certificate when its host has a file with a newer one for the same
   names, an hour after the file changed and after the port was tried

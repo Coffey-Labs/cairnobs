@@ -123,7 +123,7 @@ The same box has a **Windows** line, for PowerShell as Administrator:
 & ([scriptblock]::Create((irm https://monitor.example.org/install.ps1))) -Join cobsj1_…
 ```
 
-`install.ps1` fetches `obs-beacon-agent_<version>_windows_amd64.zip` from
+`install.ps1` fetches `obs-beacon-agent_<version>_windows_<amd64|arm64>.zip` from
 the same agent packages (put it in `join.packages_dir` beside the Linux
 packages), checks it against `SHA256SUMS`, runs `obs-beacon-agent.exe
 service install`, joins and starts the service. By hand, from the zip:

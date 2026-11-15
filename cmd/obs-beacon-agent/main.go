@@ -72,6 +72,11 @@ type config struct {
 	// the inventory (step 3): absent, certfiles.Defaults; [] reads none.
 	// Only the certificates come back, never a key.
 	CertFiles *[]string `yaml:"cert_files"`
+	// CertStores are the machine's certificate stores a Windows agent
+	// reads for the inventory (LocalMachine\<name>): absent,
+	// certfiles.StoreDefaults (My, WebHosting); [] reads none. Only the
+	// certificates, never a key. Ignored elsewhere.
+	CertStores *[]string `yaml:"cert_stores"`
 	// CertReload lists the units obs-beacond may ask this agent to reload
 	// when one serves an older certificate than its renewed file
 	// (docs/cert-rotation.md). The root helper reads it from this file
@@ -358,6 +363,10 @@ func run(ctx context.Context, cfg *config) error {
 				}
 			}
 		}()
+	}
+
+	if a.files == nil {
+		a.files = watchCertStores(ctx, cfg.CertStores)
 	}
 
 	log.Printf("obs-beacon-agent %s: host %s, reporting to %s every %s", version.Version, cfg.Host, cfg.Server, cfg.Interval)

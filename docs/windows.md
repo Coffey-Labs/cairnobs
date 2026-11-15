@@ -3,7 +3,7 @@
 Status: decided 2026-11-14 (Decisions, at the end): every question went
 the recommended way. Built: steps 1–4 under Plan (2026-11-14), and run on
 a Windows Server 2025 evaluation VM (decision 5) the same day; what that
-turned up was fixed in #10. The items under Later wait until someone asks.
+turned up was fixed in #10. Steps 5–6 built 2026-11-15; 7–8 next.
 
 John, 2026-11-12: "will need windows agent as well". Plenty of the fleets
 Cairn OBS is for have Windows servers beside the Linux ones (domain
@@ -58,7 +58,7 @@ channel (not needed).
 
 ## Install
 
-A zip per architecture in the release (`obs-beacon-agent_<v>_windows_amd64.zip`:
+A zip per architecture in the release (`obs-beacon-agent_<v>_windows_amd64.zip`, `_windows_arm64.zip`:
 the exe, agent.yaml.example, the licence files), checked against
 SHA256SUMS as the Linux packages are. The exe installs itself:
 
@@ -112,10 +112,23 @@ Windows calls need Windows. Options, with what each costs:
    the existing scan of listening ports.
 4. **install.ps1 and join tokens** from the Hosts page.
 
-Later, when someone asks: the event log (errors in System and
-Application as warnings, with the source), the machine's certificate
-store (LocalMachine\My into the certificate inventory, like
-`cert_files`), Hyper-V VMs (like libvirt), an MSI, arm64.
+Then, from John's "work it out make it sexy and relavant" (2026-11-15):
+
+5. **The machine's certificate stores** into the certificate inventory
+   (built 2026-11-15): `My` and `WebHosting` by default (`cert_stores`),
+   read-only as the service's own account, places of kind `store` at
+   `Cert:\LocalMachine\My\<thumbprint>`. With the port scan, an IIS or
+   RDP binding still serving the old certificate after a renewal shows as
+   "renewed but not reloaded", as on Linux.
+6. **arm64** (built 2026-11-15): a `windows_arm64` zip beside the amd64
+   one; install.ps1 picks by the machine's architecture.
+7. **The event log**: errors and criticals in System and Application,
+   grouped by source, on the host's page.
+8. **Hyper-V VMs**, like libvirt's, so a Windows hypervisor's guests
+   link to their hosts.
+
+An MSI waits for the code-signing decision (Signing): unsigned, it adds
+little over the zip and install.ps1.
 
 ## Questions
 

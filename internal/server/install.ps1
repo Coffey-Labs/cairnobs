@@ -18,7 +18,10 @@ function Say([string]$m) { Write-Host "obs-beacon install: $m" }
 if (-not $Join) { throw 'run it with -Join <token>: Hosts, Add host in the web interface makes one' }
 $me = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'run it in PowerShell as Administrator' }
-if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw "no agent for $env:PROCESSOR_ARCHITECTURE yet" }
+# The machine's architecture, also from a 32-bit PowerShell (which says x86).
+$cpu = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+$arch = @{ AMD64 = 'amd64'; ARM64 = 'arm64' }[$cpu]
+if (-not $arch) { throw "no agent for $cpu" }
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $exe = Join-Path $env:ProgramFiles 'Cairn OBS\obs-beacon-agent.exe'
@@ -26,7 +29,7 @@ if (Test-Path $exe) {
   Say "obs-beacon-agent is installed already: $(& $exe -version)"
 } else {
   if (-not $Packages) { throw "this server doesn't say where agent packages are (join.packages_dir or join.packages_url in obs-beacond.yaml). Install the agent from its zip by hand (README.txt in it), then: obs-beacon-agent.exe join <token>" }
-  $file = "obs-beacon-agent_$($Version.TrimStart('v'))_windows_amd64.zip"
+  $file = "obs-beacon-agent_$($Version.TrimStart('v'))_windows_$arch.zip"
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ('obs-beacon-' + [guid]::NewGuid())
   New-Item -ItemType Directory -Path $tmp | Out-Null
   try {

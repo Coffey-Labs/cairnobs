@@ -29,7 +29,7 @@ const (
 
 // CertInvPlace is where a certificate was seen.
 type CertInvPlace struct {
-	Kind  string `json:"kind"`  // "host", "file", "vault", "check", "cloudflare", "cluster", "akamai"
+	Kind  string `json:"kind"`  // "host", "file", "store", "vault", "check", "cloudflare", "cluster", "akamai"
 	Where string `json:"where"` // "vault-prod (obs-beacond) · pki_int", "shop from web1"
 	Href  string `json:"href"`
 	Host  string `json:"host,omitempty"` // a host's place: which host
@@ -234,7 +234,11 @@ func (srv *Server) certificates(now time.Time) []*CertInv {
 		}
 		newest := map[string]report.CertFile{} // by the names it's for
 		for _, f := range h.files.List {
-			add(f.Cert, "", CertInvPlace{Kind: "file", Where: h.name + ":" + f.Path, Href: "/hosts/" + h.name, Host: h.name})
+			kind := "file"
+			if strings.HasPrefix(f.Path, certfiles.StorePrefix) {
+				kind = "store" // a Windows host's certificate store
+			}
+			add(f.Cert, "", CertInvPlace{Kind: kind, Where: h.name + ":" + f.Path, Href: "/hosts/" + h.name, Host: h.name})
 			k := namesKey(f.Cert)
 			if o, ok := newest[k]; !ok || f.Cert.NotAfter.After(o.Cert.NotAfter) {
 				newest[k] = f
@@ -369,9 +373,17 @@ func namesKey(c report.Cert) string {
 	return strings.Join(c.Names, ",")
 }
 
-// fileOnly says a certificate was found only in files: judged at 7 days,
-// not 21 (a file no port serves may be nobody's).
-func fileOnly(c *CertInv) bool { return len(c.Kinds) == 1 && c.Kinds[0] == "file" }
+// fileOnly says a certificate was found only in files or a Windows
+// certificate store: judged at 7 days, not 21 (one no port serves may be
+// nobody's).
+func fileOnly(c *CertInv) bool {
+	for _, k := range c.Kinds {
+		if k != "file" && k != "store" {
+			return false
+		}
+	}
+	return len(c.Kinds) > 0
+}
 
 // certOfRecord is a `cert` record's certificate, from its facts.
 func certOfRecord(r report.Workload) report.Cert {
