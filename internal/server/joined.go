@@ -12,6 +12,7 @@ package server
 // both kinds count everywhere an agent name does. A name can't be in both.
 
 import (
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -400,17 +401,26 @@ func (srv *Server) handleJoinCreate(w http.ResponseWriter, r *http.Request) {
 	tok := jointoken.Token{Server: srv.joinAgentURL(r), CAFingerprint: srv.atls.ca.Fingerprint(), Secret: secret}.Encode()
 	srv.audit(srv.who(r), "made a join command", fmt.Sprintf("for %s %s, good until %s", what, req.Name, t.Expires.UTC().Format("15:04 UTC")))
 	command := fmt.Sprintf("curl -fsSL %s/install.sh | sudo sh -s -- --join %s", srv.publicBase(r), tok)
+	// Windows: PowerShell as Administrator (docs/windows.md). The script
+	// is fetched and run with the token as its argument, which keeps the
+	// token out of the address, as on Linux.
+	windows := fmt.Sprintf("& ([scriptblock]::Create((irm %s/install.ps1))) -Join %s", srv.publicBase(r), tok)
 	if req.Cluster {
 		// The token goes in a header, not the address: addresses end up
 		// in proxies' and servers' logs.
 		command = fmt.Sprintf("curl -fsSL -H 'Authorization: Bearer %s' %s/cluster.yaml | kubectl apply -f -", tok, srv.publicBase(r))
+		windows = ""
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"name":    req.Name,
 		"token":   tok,
 		"command": command,
 		"expires": t.Expires,
-	})
+	}
+	if windows != "" {
+		out["windows_command"] = windows
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (srv *Server) handleJoinCancel(w http.ResponseWriter, r *http.Request) {
@@ -555,7 +565,8 @@ func (srv *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 func (srv *Server) handleAgentPackage(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
 	if srv.cfg.Join.PackagesDir == "" || name != path.Base(name) || strings.HasPrefix(name, ".") ||
-		!(name == "SHA256SUMS" || name == "SHA256SUMS.minisig" || strings.HasSuffix(name, ".deb") || strings.HasSuffix(name, ".rpm")) {
+		!(name == "SHA256SUMS" || name == "SHA256SUMS.minisig" || strings.HasSuffix(name, ".deb") || strings.HasSuffix(name, ".rpm") ||
+			strings.HasSuffix(name, "_windows_amd64.zip")) {
 		http.NotFound(w, r)
 		return
 	}
@@ -569,6 +580,22 @@ func (srv *Server) handleAgentPackage(w http.ResponseWriter, r *http.Request) {
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// psQuote quotes for PowerShell: single quotes, a quote doubled.
+func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+
+// installPS1 is the Windows install script, for `& ([scriptblock]::Create((irm
+// .../install.ps1))) -Join <token>` in PowerShell as Administrator.
+//
+//go:embed install.ps1
+var installPS1 string
+
+func (srv *Server) handleInstallPS1(w http.ResponseWriter, r *http.Request) {
+	s := strings.NewReplacer("@VERSION@", psQuote(version.Version), "@PACKAGES@", psQuote(srv.packagesBase(r))).Replace(installPS1)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(s))
+}
 
 const installScript = `#!/bin/sh
 # Cairn OBS: install obs-beacon-agent on this host and join it to the

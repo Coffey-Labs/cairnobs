@@ -213,10 +213,11 @@ type agent struct {
 	actionsWant bool                  // obs-beacond has actions waiting (X-Beacon-Actions)
 	results     []report.ActionResult // what came of actions taken, for the next report
 
-	certs   *tlsscan.Scanner // nil when cert_scan is off
-	files   *certfiles.Watch // nil when cert_files is []
-	mapAcc  *report.Map      // map samples since the last one sent, merged
-	mapSent time.Time        // when a map sample last went with a report
+	certs     *tlsscan.Scanner                           // nil when cert_scan is off
+	files     *certfiles.Watch                           // nil when cert_files is []
+	sampleMap func(context.Context) (*report.Map, error) // nil: no map sample here
+	mapAcc    *report.Map                                // map samples since the last one sent, merged
+	mapSent   time.Time                                  // when a map sample last went with a report
 
 	scan     *report.Backups // the backup scan last read, and its file's time
 	scanTime time.Time
@@ -296,7 +297,17 @@ func run(ctx context.Context, cfg *config) error {
 		}
 	}
 
-	if a.docker != nil && (cfg.Map == nil || *cfg.Map) && (cfg.CertScan == nil || *cfg.CertScan) {
+	// The map sample: through the root helper on Linux, the agent's own
+	// on Windows (localMap). The certificate scan takes its ports from it.
+	if cfg.Map == nil || *cfg.Map {
+		switch {
+		case a.docker != nil:
+			a.sampleMap = a.docker.Map
+		case localMap != nil:
+			a.sampleMap = localMap
+		}
+	}
+	if a.sampleMap != nil && (cfg.CertScan == nil || *cfg.CertScan) {
 		a.certs = tlsscan.New(cfg.Host)
 		go func() {
 			t := time.NewTicker(tlsscan.RoundEvery)
@@ -400,24 +411,24 @@ func (a *agent) tick(ctx context.Context, now time.Time) {
 		}
 		r.Machine = a.machine
 		r.VMs = a.readVMs(ctx)
-		if a.cfg.Map == nil || *a.cfg.Map {
-			mctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-			m, err := a.docker.Map(mctx)
-			cancel()
-			if err != nil {
-				a.once("map:"+err.Error(), "map sample: %v", err)
-				m = &report.Map{Error: err.Error()}
-			}
-			if r.Containers != nil {
-				nameContainers(m, r.Containers.List)
-			}
-			if a.certs != nil && m.Error == "" {
-				a.certs.Update(m.Listen, now)
-			}
-			a.mapAcc = netmap.Merge(a.mapAcc, m)
-			if now.Sub(a.mapSent) >= netmap.SendEvery-a.cfg.Interval/2 {
-				r.Map, a.mapAcc, a.mapSent = a.mapAcc, nil, now
-			}
+	}
+	if a.sampleMap != nil {
+		mctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		m, err := a.sampleMap(mctx)
+		cancel()
+		if err != nil {
+			a.once("map:"+err.Error(), "map sample: %v", err)
+			m = &report.Map{Error: err.Error()}
+		}
+		if r.Containers != nil {
+			nameContainers(m, r.Containers.List)
+		}
+		if a.certs != nil && len(m.Listen) > 0 {
+			a.certs.Update(m.Listen, now)
+		}
+		a.mapAcc = netmap.Merge(a.mapAcc, m)
+		if now.Sub(a.mapSent) >= netmap.SendEvery-a.cfg.Interval/2 {
+			r.Map, a.mapAcc, a.mapSent = a.mapAcc, nil, now
 		}
 	}
 	if len(a.units) > 0 {

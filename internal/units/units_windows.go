@@ -112,19 +112,41 @@ func processStart(pid uint32) time.Time {
 // Running lists the services running now, as units ("W32Time.service"),
 // leaving out the per-user instances that come and go with logins.
 func Running(context.Context) ([]string, error) {
-	scm, err := openSCM()
+	var names []string
+	err := eachRunning(func(name string, _ uint32) { names = append(names, Name(name)) })
 	if err != nil {
 		return nil, err
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// ByProcess maps each running service's process to the service, for the
+// map's owners: where one process runs several (an svchost shared by a
+// group), the first by name.
+func ByProcess() (map[uint32]string, error) {
+	out := map[uint32]string{}
+	err := eachRunning(func(name string, pid uint32) {
+		if old, ok := out[pid]; pid != 0 && (!ok || name < old) {
+			out[pid] = name
+		}
+	})
+	return out, err
+}
+
+func eachRunning(f func(name string, pid uint32)) error {
+	scm, err := openSCM()
+	if err != nil {
+		return err
 	}
 	defer windows.CloseServiceHandle(scm)
 	var need, count, resume uint32
 	buf := make([]byte, 64<<10)
-	var names []string
 	for {
 		err := windows.EnumServicesStatusEx(scm, windows.SC_ENUM_PROCESS_INFO, windows.SERVICE_WIN32, windows.SERVICE_ACTIVE,
 			&buf[0], uint32(len(buf)), &need, &count, &resume, nil)
 		if err != nil && !errors.Is(err, windows.ERROR_MORE_DATA) {
-			return nil, fmt.Errorf("listing services: %w", err)
+			return fmt.Errorf("listing services: %w", err)
 		}
 		if count > 0 {
 			list := unsafe.Slice((*windows.ENUM_SERVICE_STATUS_PROCESS)(unsafe.Pointer(&buf[0])), count)
@@ -133,16 +155,14 @@ func Running(context.Context) ([]string, error) {
 				if s.ServiceStatusProcess.ServiceType&perUser != 0 || s.ServiceStatusProcess.CurrentState != scmRunning {
 					continue
 				}
-				names = append(names, Name(windows.UTF16PtrToString(s.ServiceName)))
+				f(windows.UTF16PtrToString(s.ServiceName), s.ServiceStatusProcess.ProcessId)
 			}
 		}
 		if err == nil {
-			break
+			return nil
 		}
 		if int(need) > len(buf) {
 			buf = make([]byte, need)
 		}
 	}
-	slices.Sort(names)
-	return names, nil
 }

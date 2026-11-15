@@ -115,6 +115,31 @@ With neither, or with the agent installed already, it skips to joining;
 Removing a host in **Configure › Hosts** revokes its certificate at once. Uninstall the
 agent there with the package manager.
 
+### Windows hosts
+
+The same box has a **Windows** line, for PowerShell as Administrator:
+
+```powershell
+& ([scriptblock]::Create((irm https://monitor.example.org/install.ps1))) -Join cobsj1_…
+```
+
+`install.ps1` fetches `obs-beacon-agent_<version>_windows_amd64.zip` from
+the same agent packages (put it in `join.packages_dir` beside the Linux
+packages), checks it against `SHA256SUMS`, runs `obs-beacon-agent.exe
+service install`, joins and starts the service. By hand, from the zip:
+`.\obs-beacon-agent.exe service install`, then `& "C:\Program Files\Cairn
+OBS\obs-beacon-agent.exe" join <token>` and `Start-Service obs-beacon-agent`.
+
+The service runs as its own account, `NT SERVICE\obs-beacon-agent`, with no
+administrator rights and no helper; its config and state are in
+`C:\ProgramData\obs-beacon`, which only it, SYSTEM and Administrators may
+open, and it logs to the Application event log. It reports the host, the
+Windows services named for it (as units: `units: [W32Time]` in
+expected.yaml) and the map sample; no containers or VMs. Running `service
+install` from a newer zip upgrades it; `service uninstall` removes it and
+keeps ProgramData. Windows Server 2016 and later, and Windows 10 and 11,
+on amd64 (docs/windows.md).
+
 ### Hosts in the config file
 
 Agents can also be listed in `obs-beacond.yaml` (`agents`), which suits

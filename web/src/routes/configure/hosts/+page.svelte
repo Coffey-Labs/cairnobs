@@ -10,7 +10,7 @@
 
 	type Agent = { name: string; source: 'config' | 'joined'; workstation: boolean; added?: string; added_by?: string; cert_until?: string; status: Severity | ''; word: string };
 	type Pending = { id: string; name: string; workstation: boolean; cluster: boolean; created_by: string; created: string; expires: string };
-	type Made = { name: string; command: string; expires: string };
+	type Made = { name: string; command: string; windows_command?: string; expires: string };
 
 	let agents = $state<Agent[]>([]);
 	let total = $state(0);
@@ -81,10 +81,13 @@
 		confirming = null;
 	});
 
+	// Linux or Windows: which install line the box shows.
+	let os = $state<'linux' | 'windows'>('linux');
+	const line = $derived(made ? (os === 'windows' && made.windows_command ? made.windows_command : made.command) : '');
 	async function copy() {
 		if (!made) return;
 		try {
-			await navigator.clipboard.writeText(made.command);
+			await navigator.clipboard.writeText(line);
 			copied = true;
 		} catch {
 			copied = false;
@@ -114,9 +117,15 @@
 
 {#if made}
 	<div class="linkbox" role="status">
-		<b>Run this on {made.name}, as root</b>
+		<b>Run this on {made.name}, {os === 'windows' ? 'in PowerShell as Administrator' : 'as root'}</b>
+		{#if made.windows_command}
+			<div class="seg" role="group" aria-label="The host's system">
+				<button class="chip" class:on={os === 'linux'} aria-pressed={os === 'linux'} onclick={() => { os = 'linux'; copied = false; }}>Linux</button>
+				<button class="chip" class:on={os === 'windows'} aria-pressed={os === 'windows'} onclick={() => { os = 'windows'; copied = false; }}>Windows</button>
+			</div>
+		{/if}
 		<p class="sub">It works once, until {new Date(made.expires).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. It installs obs-beacon-agent, joins it to this server and starts it. {made.name} shows up below when it has joined.</p>
-		<div class="row"><input class="mono" readonly value={made.command} onfocus={(e) => e.currentTarget.select()} aria-label="Install command" /><button class="btn sm" onclick={copy}>{copied ? 'Copied' : 'Copy'}</button><button class="btn sm" onclick={() => (made = null)}>Done</button></div>
+		<div class="row"><input class="mono" readonly value={line} onfocus={(e) => e.currentTarget.select()} aria-label="Install command" /><button class="btn sm" onclick={copy}>{copied ? 'Copied' : 'Copy'}</button><button class="btn sm" onclick={() => (made = null)}>Done</button></div>
 	</div>
 {/if}
 
@@ -209,6 +218,7 @@
 	.badge { margin-left: 8px; padding: 1px 7px; border-radius: 10px; font: 600 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted-fg); border: 1px solid var(--border); }
 	.linkbox { border: 1px solid var(--primary); background: var(--accent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: grid; gap: 6px; }
 	.linkbox .row { display: flex; gap: 8px; }
+	.linkbox .seg { display: flex; gap: 6px; }
 	.linkbox input { flex: 1; min-width: 0; }
 	:global(.panel) .empty { padding: 20px; }
 	@media (max-width: 900px) { .add { grid-template-columns: 1fr; } .acts { white-space: normal; } }

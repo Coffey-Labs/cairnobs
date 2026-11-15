@@ -12,3 +12,6 @@ func runService([]string) error {
 
 func serviceLogging() bool           { return false }
 func runAsService(cfg *config) error { return nil }
+
+// prepareJoin: on Linux the package made the folders.
+func prepareJoin(cfgPath, stateDir string) error { return nil }
