@@ -18,7 +18,7 @@ func testServer(t *testing.T, dev bool) (*Server, string) {
 	t.Helper()
 	tok := NewAgentToken()
 	cfg := &Config{Listen: "127.0.0.1:0", DevSignin: dev, StaleAfter: time.Minute,
-		Agents: []AgentConfig{{Name: "host1", TokenSHA256: HashToken(tok)}, {Name: "host2", TokenSHA256: HashToken(NewAgentToken())}}}
+		Agents: []AgentConfig{{Name: "node1", TokenSHA256: HashToken(tok)}, {Name: "node2", TokenSHA256: HashToken(NewAgentToken())}}}
 	srv, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func post(h http.Handler, path, token string, body []byte, hdr map[string]string
 func TestReportNeedsAKnownToken(t *testing.T) {
 	srv, tok := testServer(t, false)
 	h := srv.Handler()
-	body, _ := json.Marshal(report.Report{V: report.Version, Host: "pretends-to-be-host2", CPU: 12})
+	body, _ := json.Marshal(report.Report{V: report.Version, Host: "pretends-to-be-node2", CPU: 12})
 
 	if rec := post(h, "/api/v1/agent/report", "", body, nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: got %d", rec.Code)
@@ -55,7 +55,7 @@ func TestReportNeedsAKnownToken(t *testing.T) {
 	}
 	// The token decides which host this is, not the body.
 	snap := srv.store.Snapshot()
-	if snap[0].name != "host1" || snap[0].seen.IsZero() || !snap[1].seen.IsZero() {
+	if snap[0].name != "node1" || snap[0].seen.IsZero() || !snap[1].seen.IsZero() {
 		t.Fatalf("report landed on the wrong host: %+v", snap)
 	}
 	old, _ := json.Marshal(report.Report{V: 99})
@@ -153,28 +153,28 @@ func TestDevSigninOnlyOnLoopback(t *testing.T) {
 
 func TestJudge(t *testing.T) {
 	e := &Expected{
-		Hosts: map[string]ExpectedHost{"host2": {
-			Running: []string{"mastodon-*", "inbuxa-demo", "gitea-runner"},
+		Hosts: map[string]ExpectedHost{"node2": {
+			Running: []string{"wiki-*", "inbuxa-demo", "gitea-runner"},
 			Stopped: []StoppedRule{{Match: "cairnobs-demo-*", Note: "paused"}},
 		}},
 		CIJobs: []string{"GITEA-ACTIONS-TASK-*"},
 	}
 	list := []report.Container{
-		{Name: "mastodon-web", State: "running", Health: "healthy"},
-		{Name: "mastodon-db", State: "running"},
+		{Name: "wiki-web", State: "running", Health: "healthy"},
+		{Name: "wiki-db", State: "running"},
 		{Name: "inbuxa-demo", State: "restarting"},
 		{Name: "cairnobs-demo-web", State: "exited"},
 		{Name: "surprise", State: "running"},
 		{Name: "GITEA-ACTIONS-TASK-12_build", State: "running"},
 	}
-	rows, sum := e.Judge("host2", list)
+	rows, sum := e.Judge("node2", list)
 	got := map[string]string{}
 	for _, r := range rows {
 		got[r.Name] = r.Verdict.Severity + "/" + r.Verdict.Word
 	}
 	want := map[string]string{
-		"mastodon-web":      "good/Running",
-		"mastodon-db":       "good/Running",
+		"wiki-web":          "good/Running",
+		"wiki-db":           "good/Running",
 		"inbuxa-demo":       "critical/Restarting",
 		"cairnobs-demo-web": "off/Stopped on purpose",
 		"surprise":          "warning/Not expected",
@@ -234,19 +234,19 @@ func TestExpectedReloadsWhenTheFileChanges(t *testing.T) {
 		_ = os.Chtimes(p, mod, mod)
 	}
 	t0 := time.Now().Add(-time.Hour)
-	write("hosts:\n  host1:\n    running: [a]\n", t0)
+	write("hosts:\n  node1:\n    running: [a]\n", t0)
 	srv, _ := testServer(t, false)
 	srv.cfg.Expected = p
 	srv.expStat = nil
-	if got := srv.currentExpected().Hosts["host1"].Running; len(got) != 1 {
+	if got := srv.currentExpected().Hosts["node1"].Running; len(got) != 1 {
 		t.Fatalf("first load: %v", got)
 	}
-	write("hosts:\n  host1:\n    running: [a, b]\n", t0.Add(time.Minute))
-	if got := srv.currentExpected().Hosts["host1"].Running; len(got) != 2 {
+	write("hosts:\n  node1:\n    running: [a, b]\n", t0.Add(time.Minute))
+	if got := srv.currentExpected().Hosts["node1"].Running; len(got) != 2 {
 		t.Fatalf("after edit: %v", got)
 	}
 	write("hosts: [this is not a map\n", t0.Add(2*time.Minute)) // a bad edit keeps the last good list
-	if got := srv.currentExpected().Hosts["host1"].Running; len(got) != 2 {
+	if got := srv.currentExpected().Hosts["node1"].Running; len(got) != 2 {
 		t.Fatalf("after a bad edit: %v", got)
 	}
 }

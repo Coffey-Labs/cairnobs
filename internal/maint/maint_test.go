@@ -6,7 +6,7 @@ import (
 )
 
 func TestDailyWindowInItsTimezone(t *testing.T) {
-	w := Window{Name: "host1 reboot", Daily: "04:30", Timezone: "Europe/Berlin", Duration: 20 * time.Minute}
+	w := Window{Name: "node1 reboot", Daily: "04:30", Timezone: "Europe/Berlin", Duration: 20 * time.Minute}
 	if err := w.Check(); err != nil {
 		t.Fatal(err)
 	}

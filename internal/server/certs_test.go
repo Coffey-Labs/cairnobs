@@ -51,10 +51,10 @@ func TestCertificates(t *testing.T) {
 	_ = json.Unmarshal(j, &rec) // as stored: numbers come back float64
 	_ = srv.storeWorkloads(serverSource+":vp", report.Workloads{Full: report.FullBegin}, now)
 	_ = srv.storeWorkloads(serverSource+":vp", report.Workloads{Full: report.FullEnd, Records: []report.Workload{rec}}, now)
-	srv.store.Put("host2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shared}), now)
-	srv.store.Put("host3", results(now, report.CheckResult{ID: "site", OK: true, Cert: shared}, report.CheckResult{ID: "mx", OK: true, Cert: weak}), now)
+	srv.store.Put("node2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shared}), now)
+	srv.store.Put("node3", results(now, report.CheckResult{ID: "site", OK: true, Cert: shared}, report.CheckResult{ID: "mx", OK: true, Cert: weak}), now)
 
-	// host1 serves the shop's certificate too, and one of its own.
+	// node1 serves the shop's certificate too, and one of its own.
 	mine := testCert(t, "admin.internal", ec, &ec.PublicKey, 5*24*time.Hour)
 	r := results(now)
 	r.Certs = &report.CertScan{At: now, List: []report.CertSeen{
@@ -62,12 +62,12 @@ func TestCertificates(t *testing.T) {
 		{Addr: "127.0.0.1", Port: 8443, Owner: "admin", How: "tls", Cert: *mine, At: now},
 		{Addr: "127.0.0.1", Port: 25, Owner: "postfix", How: "smtp", Cert: *mine, At: now},
 	}}
-	srv.store.Put("host1", r, now)
-	srv.store.Put("host1", results(now.Add(time.Second)), now.Add(time.Second)) // kept between scans
+	srv.store.Put("node1", r, now)
+	srv.store.Put("node1", results(now.Add(time.Second)), now.Add(time.Second)) // kept between scans
 
 	conds := srv.certConditions(now)
-	if len(conds) != 1 || conds[0].Key != "certinv/"+mine.Fingerprint || conds[0].Severity != "critical" || conds[0].Host != "host1" ||
-		conds[0].Detail != "Served on host1:8443 · admin, host1:25 (smtp STARTTLS) · postfix." {
+	if len(conds) != 1 || conds[0].Key != "certinv/"+mine.Fingerprint || conds[0].Severity != "critical" || conds[0].Host != "node1" ||
+		conds[0].Detail != "Served on node1:8443 · admin, node1:25 (smtp STARTTLS) · postfix." {
 		t.Errorf("conditions: %+v", conds)
 	}
 	rows := srv.certificates(now)
@@ -97,7 +97,7 @@ func TestCertificates(t *testing.T) {
 	if got.Total != 1 || got.Certificates[0].Subject != "shop.example.org" || got.Counts["all"] != 3 || got.Counts["weak"] != 1 {
 		t.Errorf("API: %+v", got)
 	}
-	_ = json.Unmarshal(get(srv.Handler(), "/api/v1/certificates?q=host3", cookie).Body.Bytes(), &got)
+	_ = json.Unmarshal(get(srv.Handler(), "/api/v1/certificates?q=node3", cookie).Body.Bytes(), &got)
 	if got.Total != 2 {
 		t.Errorf("found by place: %+v", got)
 	}
@@ -117,7 +117,7 @@ func TestCertFiles(t *testing.T) {
 	shop := testCert(t, "shop.example.org", ec, &ec.PublicKey, 40*24*time.Hour)
 	shopNew := testCert(t, "shop.example.org", ec, &ec.PublicKey, 90*24*time.Hour)
 
-	srv.store.Put("host2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shop}), now)
+	srv.store.Put("node2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shop}), now)
 	r := results(now)
 	r.Certs = &report.CertScan{At: now, List: []report.CertSeen{
 		{Addr: "127.0.0.1", Port: 8443, Owner: "admin", How: "tls", Cert: *old, At: now},
@@ -129,18 +129,18 @@ func TestCertFiles(t *testing.T) {
 		{Path: "/etc/pki/tls/certs/spare.crt", Mod: now.Add(-48 * time.Hour), Cert: *spare},
 		{Path: "/etc/pki/tls/certs/ending.crt", Mod: now.Add(-48 * time.Hour), Cert: *ending},
 	}}
-	srv.store.Put("host1", r, now)
-	srv.store.Put("host1", results(now.Add(time.Second)), now.Add(time.Second)) // kept between reports
+	srv.store.Put("node1", r, now)
+	srv.store.Put("node1", results(now.Add(time.Second)), now.Add(time.Second)) // kept between reports
 
 	rows := map[string]*CertInv{}
 	for _, c := range srv.certificates(now) {
 		rows[c.Fingerprint] = c
 	}
-	if c := rows[old.Fingerprint]; c == nil || c.Status != "critical" || len(c.NotReloaded) != 1 || c.NotReloaded[0] != "host1:8443 · admin" ||
-		!strings.HasPrefix(c.Renewed, "host1:/etc/letsencrypt/live/admin/cert.pem (ends ") {
+	if c := rows[old.Fingerprint]; c == nil || c.Status != "critical" || len(c.NotReloaded) != 1 || c.NotReloaded[0] != "node1:8443 · admin" ||
+		!strings.HasPrefix(c.Renewed, "node1:/etc/letsencrypt/live/admin/cert.pem (ends ") {
 		t.Errorf("the admin's: %+v", c)
 	}
-	if c := rows[renewed.Fingerprint]; c == nil || c.Status != "good" || len(c.Kinds) != 1 || c.Kinds[0] != "file" || c.Places[0].Where != "host1:/etc/letsencrypt/live/admin/cert.pem" {
+	if c := rows[renewed.Fingerprint]; c == nil || c.Status != "good" || len(c.Kinds) != 1 || c.Kinds[0] != "file" || c.Places[0].Where != "node1:/etc/letsencrypt/live/admin/cert.pem" {
 		t.Errorf("the renewed one: %+v", c)
 	}
 	if c := rows[spare.Fingerprint]; c == nil || c.Status != "good" {
@@ -154,20 +154,20 @@ func TestCertFiles(t *testing.T) {
 	if len(conds) != 3 {
 		t.Errorf("%d conditions: %+v", len(conds), conds)
 	}
-	if c := conds["certinv/"+old.Fingerprint]; c.Severity != "critical" || c.Host != "host1" || !strings.HasSuffix(c.Title, "; renewed but not reloaded") ||
-		!strings.Contains(c.Detail, "but host1:8443 · admin still serves this one: reload the service.") {
+	if c := conds["certinv/"+old.Fingerprint]; c.Severity != "critical" || c.Host != "node1" || !strings.HasSuffix(c.Title, "; renewed but not reloaded") ||
+		!strings.Contains(c.Detail, "but node1:8443 · admin still serves this one: reload the service.") {
 		t.Errorf("the admin's: %+v", c)
 	}
 	if c := conds["certinv/"+shop.Fingerprint]; c.Severity != "warning" || c.Title != "Certificate shop.example.org renewed but not reloaded" {
 		t.Errorf("the shop's, which a check alerts on: %+v", c)
 	}
-	if c := conds["certinv/"+ending.Fingerprint]; c.Severity != "critical" || c.Detail != "In host1:/etc/pki/tls/certs/ending.crt; no port serves it." {
+	if c := conds["certinv/"+ending.Fingerprint]; c.Severity != "critical" || c.Detail != "In node1:/etc/pki/tls/certs/ending.crt; no port serves it." {
 		t.Errorf("a file ending in 3 days: %+v", c)
 	}
 
 	// Just renewed, or not tried since: no warning yet.
 	r.CertFiles.List[0].Mod = now.Add(-30 * time.Minute)
-	srv.store.Put("host1", r, now)
+	srv.store.Put("node1", r, now)
 	if c := srv.certificates(now); slices.ContainsFunc(c, func(c *CertInv) bool { return c.Fingerprint == old.Fingerprint && len(c.NotReloaded) > 0 }) {
 		t.Error("warned within the hour")
 	}
@@ -208,10 +208,10 @@ func TestCertMerge(t *testing.T) {
 	rec := report.Workload{Kind: report.KindCert, ID: "c1", Name: "shop.example.org", Namespace: "shop", State: report.StateDown,
 		Word: "Ends in 5 days", Since: shop.NotBefore, Facts: map[string]any{"names": "shop.example.org", "ends": shop.NotAfter.Format(time.RFC3339),
 			"certificate": "shop-tls", "issued_by": "ClusterIssuer letsencrypt", "served_on": "shop/ingress/shop shop.example.org"}}
-	srv.store.Put("host2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shop}), now)
-	// What host2's agent reads beside it stands in for a cluster agent.
-	_ = srv.storeWorkloads("host2:cluster-a", report.Workloads{Full: report.FullBegin}, now)
-	_ = srv.storeWorkloads("host2:cluster-a", report.Workloads{Full: report.FullEnd, Records: []report.Workload{rec}}, now)
+	srv.store.Put("node2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shop}), now)
+	// What node2's agent reads beside it stands in for a cluster agent.
+	_ = srv.storeWorkloads("node2:cluster-a", report.Workloads{Full: report.FullBegin}, now)
+	_ = srv.storeWorkloads("node2:cluster-a", report.Workloads{Full: report.FullEnd, Records: []report.Workload{rec}}, now)
 
 	rows := srv.certificates(now)
 	if len(rows) != 1 || rows[0].PlaceCount != 2 || strings.Join(rows[0].Kinds, ",") != "check,cluster" || rows[0].Fingerprint != shop.Fingerprint {
@@ -239,20 +239,20 @@ func TestCertWrong(t *testing.T) {
 	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	admin := testCert(t, "admin.internal", ec, &ec.PublicKey, 200*24*time.Hour)
 	shop := testCert(t, "shop.example.org", ec, &ec.PublicKey, 200*24*time.Hour)
-	srv.store.Put("host2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shop}), now)
+	srv.store.Put("node2", results(now, report.CheckResult{ID: "site", OK: true, Cert: shop}), now)
 	r := results(now)
 	r.Certs = &report.CertScan{At: now, List: []report.CertSeen{
 		{Addr: "127.0.0.1", Port: 8443, Owner: "admin", How: "tls", Cert: *admin, At: now, Wrong: []string{"self-signed where a CA-signed certificate was"}},
 		{Addr: "127.0.0.1", Port: 443, Owner: "nginx", How: "tls", Cert: *shop, At: now, Wrong: []string{"sent without its intermediate certificate"}},
 	}}
-	srv.store.Put("host1", r, now)
+	srv.store.Put("node1", r, now)
 
 	conds := map[string]Condition{}
 	for _, c := range srv.certConditions(now) {
 		conds[c.Key] = c
 	}
 	if c := conds["certinv/"+admin.Fingerprint]; c.Severity != "warning" || c.Title != "Certificate admin.internal served wrong" ||
-		c.Detail != "Served on host1:8443 · admin. Served wrong: host1:8443 · admin: self-signed where a CA-signed certificate was." {
+		c.Detail != "Served on node1:8443 · admin. Served wrong: node1:8443 · admin: self-signed where a CA-signed certificate was." {
 		t.Errorf("its own: %+v", c)
 	}
 	if c := conds["certinv/"+shop.Fingerprint]; c.Severity != "warning" || c.Title != "Certificate shop.example.org served wrong" {

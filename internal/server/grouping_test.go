@@ -15,10 +15,10 @@ const groupTopology = `services:
   - {id: webmail, name: Webmail, tier: public, needs: [inbuxa], checks: [webmail], containers: ["*/ihasmail"]}
   - {id: mail, name: Mail, tier: public, needs: [inbuxa], checks: [smtp-25, imap-993]}
   - {id: site, name: Websites, tier: public, needs: [nginx], checks: [site]}
-  - {id: nginx, name: nginx, tier: apps, needs: [host1, host2], units: ["*/nginx"]}
+  - {id: nginx, name: nginx, tier: apps, needs: [node1, node2], units: ["*/nginx"]}
   - {id: inbuxa, name: inbuxa server, tier: apps, needs: [patroni], units: ["*/inbuxa"]}
   - {id: patroni, name: PostgreSQL, tier: data, needs: [etcd], units: ["*/patroni"]}
-  - {id: etcd, name: etcd, tier: data, needs: [host1, host2], units: ["*/etcd"]}
+  - {id: etcd, name: etcd, tier: data, needs: [node1, node2], units: ["*/etcd"]}
 `
 
 func groupServer(t *testing.T) *Server {
@@ -37,17 +37,17 @@ func groupServer(t *testing.T) *Server {
 func never(string) bool { return false }
 
 var (
-	pgDown   = Condition{Key: "unit/host1/patroni.service", Severity: "critical", Title: "patroni.service on host1: failed", Detail: "systemd reports it failed (failed).", Host: "host1"}
-	smtpDown = Condition{Key: "check/smtp-25", Severity: "critical", Title: "SMTP is down", Detail: "Failing from host1, host2."}
+	pgDown   = Condition{Key: "unit/node1/patroni.service", Severity: "critical", Title: "patroni.service on node1: failed", Detail: "systemd reports it failed (failed).", Host: "node1"}
+	smtpDown = Condition{Key: "check/smtp-25", Severity: "critical", Title: "SMTP is down", Detail: "Failing from node1, node2."}
 	imapDown = Condition{Key: "check/imap-993", Severity: "critical", Title: "IMAP is down"}
-	webmail  = Condition{Key: "container/host2/ihasmail", Severity: "warning", Title: "ihasmail on host2: unhealthy", Host: "host2"}
+	webmail  = Condition{Key: "container/node2/ihasmail", Severity: "warning", Title: "ihasmail on node2: unhealthy", Host: "node2"}
 	siteSlow = Condition{Key: "check/site", Severity: "warning", Title: "Websites down"}
 )
 
 func TestOneIncidentPerRootCause(t *testing.T) {
 	srv := groupServer(t)
 	got := srv.groupConditions([]Condition{smtpDown, webmail, pgDown, imapDown, siteSlow}, never)
-	if keys(got) != "critical:unit/host1/patroni.service warning:check/site" {
+	if keys(got) != "critical:unit/node1/patroni.service warning:check/site" {
 		t.Fatalf("got %s", keys(got))
 	}
 	pg := got[0]
@@ -58,7 +58,7 @@ func TestOneIncidentPerRootCause(t *testing.T) {
 
 func TestRootTakesTheWorstSeverity(t *testing.T) {
 	srv := groupServer(t)
-	etcdWarn := Condition{Key: "unit/host2/etcd.service", Severity: "warning", Title: "etcd.service on host2: starting", Host: "host2"}
+	etcdWarn := Condition{Key: "unit/node2/etcd.service", Severity: "warning", Title: "etcd.service on node2: starting", Host: "node2"}
 	got := srv.groupConditions([]Condition{etcdWarn, smtpDown}, never)
 	if len(got) != 1 || got[0].Key != etcdWarn.Key || got[0].Severity != "critical" {
 		t.Fatalf("got %+v", got)
@@ -69,18 +69,18 @@ func TestAlreadyToldStaysOnItsOwn(t *testing.T) {
 	srv := groupServer(t)
 	told := func(k string) bool { return k == smtpDown.Key }
 	got := srv.groupConditions([]Condition{smtpDown, pgDown, imapDown}, told)
-	if keys(got) != "critical:check/smtp-25 critical:unit/host1/patroni.service" || got[1].Affected != "Mail" {
+	if keys(got) != "critical:check/smtp-25 critical:unit/node1/patroni.service" || got[1].Affected != "Mail" {
 		t.Fatalf("got %s %+v", keys(got), got)
 	}
 }
 
 func TestHostDownExplainsItsServices(t *testing.T) {
 	srv := groupServer(t)
-	silent := Condition{Key: "silent/host1", Severity: "critical", Title: "host1 has gone silent", Host: "host1"}
-	nginx := Condition{Key: "unit/host2/nginx.service", Severity: "critical", Title: "nginx on host2: failed", Host: "host2"}
-	// nginx needs host1 (and host2): host1 being silent is the deeper failure.
+	silent := Condition{Key: "silent/node1", Severity: "critical", Title: "node1 has gone silent", Host: "node1"}
+	nginx := Condition{Key: "unit/node2/nginx.service", Severity: "critical", Title: "nginx on node2: failed", Host: "node2"}
+	// nginx needs node1 (and node2): node1 being silent is the deeper failure.
 	got := srv.groupConditions([]Condition{nginx, siteSlow, silent}, never)
-	if keys(got) != "critical:silent/host1" || got[0].Affected != "nginx, Websites" {
+	if keys(got) != "critical:silent/node1" || got[0].Affected != "nginx, Websites" {
 		t.Fatalf("got %s %+v", keys(got), got)
 	}
 }
@@ -110,10 +110,10 @@ func TestGroupedIncidentEndToEnd(t *testing.T) {
 
 func TestHostWarningIsNotACause(t *testing.T) {
 	srv := groupServer(t)
-	disk := Condition{Key: "disk/host1//", Severity: "warning", Title: "host1 / is 85% full", Host: "host1"}
-	nginx := Condition{Key: "unit/host2/nginx.service", Severity: "critical", Title: "nginx on host2: failed", Host: "host2"}
+	disk := Condition{Key: "disk/node1//", Severity: "warning", Title: "node1 / is 85% full", Host: "node1"}
+	nginx := Condition{Key: "unit/node2/nginx.service", Severity: "critical", Title: "nginx on node2: failed", Host: "node2"}
 	got := srv.groupConditions([]Condition{disk, nginx, siteSlow}, never)
-	if keys(got) != "warning:disk/host1// critical:unit/host2/nginx.service" || got[1].Affected != "Websites" {
+	if keys(got) != "warning:disk/node1// critical:unit/node2/nginx.service" || got[1].Affected != "Websites" {
 		t.Fatalf("got %s %+v", keys(got), got)
 	}
 }
@@ -124,17 +124,17 @@ func TestHostWarningIsNotACause(t *testing.T) {
 func TestGroupingFromLearnedEdges(t *testing.T) {
 	srv, _ := testServer(t, false)
 	now := time.Now()
-	srv.store.Put("host1", report.Report{V: report.Version, Map: &report.Map{
+	srv.store.Put("node1", report.Report{V: report.Version, Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "eth1", Kind: "vlan", Addrs: []string{"10.0.0.1/24"}, Up: true}},
 		Listen:     []report.Listener{{Owner: "unit:webmail.service", Proto: "tcp", Addr: "*", Port: 443}},
 		Conns:      []report.Conn{{Owner: "unit:webmail.service", Dir: "out", Remote: "10.0.0.2", Port: 5432, Count: 2}},
 	}}, now)
-	srv.store.Put("host2", report.Report{V: report.Version, Map: &report.Map{
+	srv.store.Put("node2", report.Report{V: report.Version, Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "eth1", Kind: "vlan", Addrs: []string{"10.0.0.2/24"}, Up: true}},
 		Listen:     []report.Listener{{Owner: "unit:postgresql.service", Proto: "tcp", Addr: "*", Port: 5432}},
 	}}, now)
-	web := Condition{Key: "unit/host1/webmail.service", Severity: "warning", Title: "webmail.service on host1: failed", Host: "host1"}
-	pg := Condition{Key: "unit/host2/postgresql.service", Severity: "critical", Title: "postgresql.service on host2: failed", Host: "host2"}
+	web := Condition{Key: "unit/node1/webmail.service", Severity: "warning", Title: "webmail.service on node1: failed", Host: "node1"}
+	pg := Condition{Key: "unit/node2/postgresql.service", Severity: "critical", Title: "postgresql.service on node2: failed", Host: "node2"}
 	group := func(firing func(string) bool) []Condition {
 		t.Helper()
 		srv.maps.graph = nil

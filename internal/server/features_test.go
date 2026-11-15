@@ -27,7 +27,7 @@ func TestFeaturesAndSettingsSummary(t *testing.T) {
 
 	// A host that reports Docker turns Containers on; a check turns Checks on.
 	now := time.Now()
-	srv.store.Put("host1", report.Report{V: report.Version, Time: now, Containers: &report.Containers{}}, now)
+	srv.store.Put("node1", report.Report{V: report.Version, Time: now, Containers: &report.Containers{}}, now)
 	if rec := sendCookie(h, "PUT", "/api/v1/settings/checks/site", c, `{"name":"Site","kind":"http","target":"https://example.org/"}`); rec.Code != 200 {
 		t.Fatalf("check: %d %s", rec.Code, rec.Body)
 	}

@@ -28,7 +28,7 @@ checks:
     every: 5m
     severity: warning
 
-  - id: ping-host1
-    name: host1 over the private network
+  - id: ping-node1
+    name: node1 over the private network
     ping: 10.0.0.1
-    from: [host2, host3]      # default: every agent
+    from: [node2, node3]      # default: every agent

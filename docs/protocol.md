@@ -175,7 +175,7 @@ every request carries the token, as before this change.
 {
   "v": 1,
   "agent": "0.1.0",
-  "host": "host2",
+  "host": "node2",
   "time": "2026-10-15T18:42:10Z",
   "interval_s": 15,
   "kernel": "6.12.48+deb13-amd64",
@@ -191,7 +191,7 @@ every request carries the token, as before this change.
   "net": { "rx_bps": 14500000, "tx_bps": 21000000 },
   "containers": {
     "list": [
-      { "id": "3f2a…", "name": "mastodon-web", "image": "ghcr.io/…/mastodon:v4.5.2", "project": "mastodon",
+      { "id": "3f2a…", "name": "wiki-web", "image": "ghcr.io/…/wiki:v4.5.2", "project": "wiki",
         "state": "running", "status": "Up 3 hours (healthy)", "health": "healthy", "created": 1792000000 }
     ]
   }

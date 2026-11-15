@@ -45,9 +45,9 @@ func TestCloudflareConditions(t *testing.T) {
 		},
 		Pools: []cloudflare.Pool{
 			{Name: "web", Enabled: true, Healthy: true, Origins: []cloudflare.Origin{
-				{Name: "host1", Enabled: true, Healthy: true},
-				{Name: "host2", Enabled: true, Healthy: false, Reason: "TCP connection failed (seen from ENAM)"},
-				{Name: "host3", Enabled: false, Healthy: false},
+				{Name: "node1", Enabled: true, Healthy: true},
+				{Name: "node2", Enabled: true, Healthy: false, Reason: "TCP connection failed (seen from ENAM)"},
+				{Name: "node3", Enabled: false, Healthy: false},
 			}},
 			{Name: "mail", Enabled: true, Healthy: false},
 			{Name: "old", Enabled: false, Healthy: false},
@@ -55,7 +55,7 @@ func TestCloudflareConditions(t *testing.T) {
 		Status: cloudflare.Status{Indicator: "major", Description: "Partial System Outage"},
 	})
 	got := keys(srv.cloudflareConditions(now))
-	want := "warning:cloudflare/origin/web/host2 critical:cloudflare/pool/mail " +
+	want := "warning:cloudflare/origin/web/node2 critical:cloudflare/pool/mail " +
 		"warning:cloudflare/ssl/example.test warning:cloudflare/cert/example.test/example.test " +
 		"critical:cloudflare/cert/ihasvpn.org/ihasvpn.org warning:cloudflare/cert/tenant.example.com/tenant.example.com"
 	if got != want {

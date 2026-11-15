@@ -26,7 +26,7 @@ func stateServer(t *testing.T, dir string, dev bool) *Server {
 	}
 	cfg := &Config{Listen: "127.0.0.1:0", DevSignin: dev, StaleAfter: time.Minute,
 		Database: statetest.Database(t, dir), DataDir: dir, StateKeyFile: key,
-		Agents: []AgentConfig{{Name: "host1", TokenSHA256: HashToken(NewAgentToken())}}}
+		Agents: []AgentConfig{{Name: "node1", TokenSHA256: HashToken(NewAgentToken())}}}
 	srv, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

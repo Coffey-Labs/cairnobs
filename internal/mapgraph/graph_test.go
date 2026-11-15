@@ -16,7 +16,7 @@ var t0 = time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
 func key(n int) string { return fmt.Sprintf("key-%02d-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", n) }
 
 // A world like ours: three hosts meshed over WireGuard, a desk machine on
-// its own tunnel to host3, nginx taking the Internet, webmail behind it in
+// its own tunnel to node3, nginx taking the Internet, webmail behind it in
 // a compose project, Patroni on all three, and a declared "mail" service.
 func world() ([]Host, Corrections) {
 	wg := func(self int, addr string, peers ...int) (report.Interface, report.WGDevice) {
@@ -31,7 +31,7 @@ func world() ([]Host, Corrections) {
 	host := func(n int, extra *report.Map) Host {
 		i, d := wg(n, fmt.Sprintf("10.20.0.%d/24", n), slices.DeleteFunc([]int{1, 2, 3}, func(p int) bool { return p == n })...)
 		if n == 3 {
-			d.Peers = append(d.Peers, report.WGPeer{PublicKey: key(9), Handshake: t0.Add(-10 * time.Minute)}) // bench, quiet
+			d.Peers = append(d.Peers, report.WGPeer{PublicKey: key(9), Handshake: t0.Add(-10 * time.Minute)}) // desk, quiet
 			d.Peers = append(d.Peers, report.WGPeer{PublicKey: key(77), Handshake: t0})                       // someone's laptop
 		}
 		m := &report.Map{
@@ -47,7 +47,7 @@ func world() ([]Host, Corrections) {
 			m.Listen = append(m.Listen, extra.Listen...)
 			m.Conns = append(m.Conns, extra.Conns...)
 		}
-		return Host{Name: fmt.Sprintf("host%d", n), Map: m}
+		return Host{Name: fmt.Sprintf("node%d", n), Map: m}
 	}
 	h1 := host(1, &report.Map{Listen: []report.Listener{{Owner: "container:stalwart", Proto: "tcp", Addr: "*", Port: 993}},
 		Conns: []report.Conn{{Owner: "container:stalwart", Dir: "in", Port: 993, Count: 12}}})
@@ -69,36 +69,36 @@ func world() ([]Host, Corrections) {
 	h2.Containers = []report.Container{{ID: "b1", Name: "webmail", Image: "registry.example.org/mail/webmail:3", Project: "webmail", State: "running",
 		Ports: []report.PortMap{{Public: 8080, Private: 80, Proto: "tcp"}}, IPs: []string{"172.18.0.2"}}}
 	h3 := host(3, nil)
-	bench := Host{Name: "bench", Workstation: true, Map: &report.Map{
+	desk := Host{Name: "desk", Workstation: true, Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "eno1", Kind: "physical", Addrs: []string{"192.168.50.63/24"}, Up: true},
-			{Name: "wg-bench", Kind: "wireguard", Addrs: []string{"10.78.0.2/24"}, Up: true}},
-		WireGuard: []report.WGDevice{{Name: "wg-bench", PublicKey: key(9), Peers: []report.WGPeer{{PublicKey: key(3), Handshake: t0.Add(-10 * time.Minute)}}}},
+			{Name: "wg-desk", Kind: "wireguard", Addrs: []string{"10.31.0.2/24"}, Up: true}},
+		WireGuard: []report.WGDevice{{Name: "wg-desk", PublicKey: key(9), Peers: []report.WGPeer{{PublicKey: key(3), Handshake: t0.Add(-10 * time.Minute)}}}},
 	}}
-	cor := Corrections{SiteName: "Helsinki", SiteHosts: []string{"host1", "host2", "host3"}, Roles: map[string]string{"host1": "mail"},
-		Services: []Declared{{ID: "mail", Name: "Mail", Containers: []string{"host1/stalwart*"}, Needs: []string{"unit:patroni", "host1"}},
+	cor := Corrections{SiteName: "Lisbon", SiteHosts: []string{"node1", "node2", "node3"}, Roles: map[string]string{"node1": "mail"},
+		Services: []Declared{{ID: "mail", Name: "Mail", Containers: []string{"node1/stalwart*"}, Needs: []string{"unit:patroni", "node1"}},
 			{ID: "cloudflare", Name: "Cloudflare", Tier: "edge"}}}
-	return []Host{h1, h2, h3, bench}, cor
+	return []Host{h1, h2, h3, desk}, cor
 }
 
 func TestBuildWorld(t *testing.T) {
 	hosts, cor := world()
 	g := Build(hosts, cor, t0)
 
-	if len(g.Sites) != 1 || g.Sites[0].Name != "Helsinki" || !g.Sites[0].Mesh || !slices.Equal(g.Sites[0].Hosts, []string{"host1", "host2", "host3"}) {
+	if len(g.Sites) != 1 || g.Sites[0].Name != "Lisbon" || !g.Sites[0].Mesh || !slices.Equal(g.Sites[0].Hosts, []string{"node1", "node2", "node3"}) {
 		t.Errorf("sites = %+v", g.Sites)
 	}
 	node := map[string]HostNode{}
 	for _, n := range g.Hosts {
 		node[n.Name] = n
 	}
-	if b := node["bench"]; b.Site != "" || b.Via != "host3" {
-		t.Errorf("bench = %+v, want remote via host3", b)
+	if b := node["desk"]; b.Site != "" || b.Via != "node3" {
+		t.Errorf("desk = %+v, want remote via node3", b)
 	}
-	if n := node["host3"]; n.Outside != 1 {
-		t.Errorf("host3 outside peers = %d, want 1 (the laptop)", n.Outside)
+	if n := node["node3"]; n.Outside != 1 {
+		t.Errorf("node3 outside peers = %d, want 1 (the laptop)", n.Outside)
 	}
-	if n := node["host2"]; !slices.Equal(n.Internet, []int{443}) {
-		t.Errorf("host2 internet = %v, want [443] (ssh knocks aren't a way in)", n.Internet)
+	if n := node["node2"]; !slices.Equal(n.Internet, []int{443}) {
+		t.Errorf("node2 internet = %v, want [443] (ssh knocks aren't a way in)", n.Internet)
 	}
 
 	var wgUp, wgDown, traffic []string
@@ -113,10 +113,10 @@ func TestBuildWorld(t *testing.T) {
 			wgDown = append(wgDown, s)
 		}
 	}
-	if !slices.Equal(wgUp, []string{"host1-host2", "host1-host3", "host2-host3"}) || !slices.Equal(wgDown, []string{"bench-host3"}) {
+	if !slices.Equal(wgUp, []string{"node1-node2", "node1-node3", "node2-node3"}) || !slices.Equal(wgDown, []string{"desk-node3"}) {
 		t.Errorf("wireguard up %v, down %v", wgUp, wgDown)
 	}
-	if !slices.Equal(traffic, []string{"host1-host2[5432]"}) {
+	if !slices.Equal(traffic, []string{"node1-node2[5432]"}) {
 		t.Errorf("traffic = %v", traffic)
 	}
 
@@ -280,11 +280,11 @@ func TestCorrectionsFromThePage(t *testing.T) {
 func TestResolveSkipsContainerListeners(t *testing.T) {
 	inside := report.Listener{Owner: "container:gitea-db", Proto: "tcp", Addr: "*", Port: 5432, Inside: true}
 	patroni := report.Listener{Owner: "unit:patroni.service", Proto: "tcp", Addr: "*", Port: 5432}
-	h1 := Host{Name: "host1", Map: &report.Map{
+	h1 := Host{Name: "node1", Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "wg0", Kind: "wireguard", Addrs: []string{"10.20.0.1/24"}, Up: true}},
 		Listen:     []report.Listener{inside, patroni},
 	}, Containers: []report.Container{{ID: "c1", Name: "gitea-db", Image: "postgres:17", State: "running", IPs: []string{"172.18.0.3"}}}}
-	h2 := Host{Name: "host2", Map: &report.Map{
+	h2 := Host{Name: "node2", Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "wg0", Kind: "wireguard", Addrs: []string{"10.20.0.2/24"}, Up: true}},
 		Listen:     []report.Listener{{Owner: "unit:haproxy.service", Proto: "tcp", Addr: "*", Port: 5000}},
 		Conns:      []report.Conn{{Owner: "unit:haproxy.service", Dir: "out", Remote: "10.20.0.1", Port: 5432, Count: 2}},
@@ -304,7 +304,7 @@ func TestResolveSkipsContainerListeners(t *testing.T) {
 // Discourse's container talks to its own Redis over its own loopback; the
 // host's own Redis on the same port isn't what it reaches.
 func TestContainerLoopbackStaysInside(t *testing.T) {
-	h := Host{Name: "host2", Map: &report.Map{
+	h := Host{Name: "node2", Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "wg0", Kind: "wireguard", Addrs: []string{"10.20.0.2/24"}, Up: true}},
 		Listen: []report.Listener{
 			{Owner: "unit:redis-server.service", Proto: "tcp", Addr: "127.0.0.1", Port: 6379},

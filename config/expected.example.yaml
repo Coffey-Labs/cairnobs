@@ -5,9 +5,9 @@
 # first deployed, then kept up to date in this repo.
 
 hosts:
-  host2:
+  node2:
     running:
-      - mastodon-*
+      - wiki-*
       - discourse
       - inbuxa-admin
       - inbuxa-demo

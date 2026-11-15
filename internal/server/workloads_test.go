@@ -17,14 +17,14 @@ import (
 	"github.com/cairnobs/cairnobs/internal/state"
 )
 
-// clusterCopies is two copies with a host agent (host1) and a cluster
+// clusterCopies is two copies with a host agent (node1) and a cluster
 // agent (prod), and their tokens.
 func clusterCopies(t *testing.T) (a, b *Server, hostTok, clusterTok string) {
 	t.Helper()
 	hostTok, clusterTok = NewAgentToken(), NewAgentToken()
 	a, b = twoCopies(t, func(c *Config) {
 		c.DevSignin = true
-		c.Agents = []AgentConfig{{Name: "host1", TokenSHA256: HashToken(hostTok)}, {Name: "prod", TokenSHA256: HashToken(clusterTok), Cluster: true}}
+		c.Agents = []AgentConfig{{Name: "node1", TokenSHA256: HashToken(hostTok)}, {Name: "prod", TokenSHA256: HashToken(clusterTok), Cluster: true}}
 	})
 	return a, b, hostTok, clusterTok
 }
@@ -117,7 +117,7 @@ func TestClusterAgentsAreNotHosts(t *testing.T) {
 	for _, s := range a.workloadSnapshot() {
 		names = append(names, s.name)
 	}
-	if strings.Join(names, " ") != "host1 prod" {
+	if strings.Join(names, " ") != "node1 prod" {
 		t.Fatalf("sources %v", names)
 	}
 	rep, _ := json.Marshal(report.Report{V: report.Version})
@@ -138,7 +138,7 @@ func TestClusterAgentsAreNotHosts(t *testing.T) {
 		t.Fatalf("a record with no name: %d", rec.Code)
 	}
 	hosts, _ := a.view(time.Now())
-	if len(hosts) != 1 || hosts[0].Name != "host1" {
+	if len(hosts) != 1 || hosts[0].Name != "node1" {
 		t.Fatalf("hosts: %+v", hosts)
 	}
 }
@@ -320,22 +320,22 @@ func TestProxmoxCluster(t *testing.T) {
 	now := time.Now()
 	var pve *ClusterView
 	for _, v := range a.clusterViews(now, nil) {
-		if v.Name == "host1" {
+		if v.Name == "node1" {
 			pve = &v
 		}
 	}
 	if pve == nil || pve.Title != "prod-pve" || pve.Version != "Proxmox VE 8.4.1" || pve.Nodes != 1 || pve.Status != "good" {
 		t.Fatalf("on Clusters: %+v", pve)
 	}
-	if c := find(a.workloadConditions(now), "vm/host1//100 (db)"); c == nil || c.Severity != "warning" {
+	if c := find(a.workloadConditions(now), "vm/node1//100 (db)"); c == nil || c.Severity != "warning" {
 		t.Fatalf("VM in HA error: %+v", c)
 	}
 	batch("", self(report.StateDown, "Not quorate: 1 of 3 nodes online"))
 	conds := a.workloadConditions(now)
-	if got := keysOf(conds); got != "critical:cluster/host1/silent" {
+	if got := keysOf(conds); got != "critical:cluster/node1/silent" {
 		t.Fatalf("not quorate: %s", got)
 	}
-	if conds[0].Title != "Cluster prod-pve (host1): not quorate: 1 of 3 nodes online" {
+	if conds[0].Title != "Cluster prod-pve (node1): not quorate: 1 of 3 nodes online" {
 		t.Errorf("not quorate: %q", conds[0].Title)
 	}
 }
@@ -367,19 +367,19 @@ func TestNamedSources(t *testing.T) {
 	}
 	for i, s := range []*Server{a, b} {
 		m := cards(s)
-		v, ok := m["host1:vcsa-01.example.org"]
-		if !ok || v.Title != "vcsa-01.example.org" || v.ReadBy != "host1" || v.Workloads != 1 {
+		v, ok := m["node1:vcsa-01.example.org"]
+		if !ok || v.Title != "vcsa-01.example.org" || v.ReadBy != "node1" || v.Workloads != 1 {
 			t.Errorf("copy %d: the vCenter %+v", i, v)
 		}
-		if _, ok := m["host1:pc-01"]; !ok {
+		if _, ok := m["node1:pc-01"]; !ok {
 			t.Errorf("copy %d: no Prism Central: %v", i, m)
 		}
-		if v := m["host1"]; v.Title != "prod-pve" || v.ReadBy != "host1" {
+		if v := m["node1"]; v.Title != "prod-pve" || v.ReadBy != "node1" {
 			t.Errorf("copy %d: the unnamed one %+v", i, v)
 		}
 	}
 	report1 := func(sources []string) {
-		body, _ := json.Marshal(report.Report{V: report.Version, Host: "host1", Time: time.Now(), Sources: sources})
+		body, _ := json.Marshal(report.Report{V: report.Version, Host: "node1", Time: time.Now(), Sources: sources})
 		if rec := post(a.Handler(), "/api/v1/agent/report", hostTok, body, nil); rec.Code != http.StatusNoContent {
 			t.Fatalf("report: %d %s", rec.Code, rec.Body)
 		}
@@ -391,15 +391,15 @@ func TestNamedSources(t *testing.T) {
 	report1([]string{"pc-01"})
 	for i, s := range []*Server{a, b} {
 		m := cards(s)
-		_, pc := m["host1:pc-01"]
-		_, vc := m["host1:vcsa-01.example.org"]
-		_, bare := m["host1"]
+		_, pc := m["node1:pc-01"]
+		_, vc := m["node1:vcsa-01.example.org"]
+		_, bare := m["node1"]
 		if !pc || vc || bare {
 			t.Errorf("copy %d after reading only pc-01: %v", i, m)
 		}
 	}
 	report1([]string{})
-	if _, ok := cards(a)["host1:pc-01"]; ok {
+	if _, ok := cards(a)["node1:pc-01"]; ok {
 		t.Error("pc-01 kept after the agent read nothing")
 	}
 }
@@ -420,11 +420,11 @@ func TestFlashArraySource(t *testing.T) {
 	now := time.Now()
 	var fa *ClusterView
 	for _, v := range a.clusterViews(now, nil) {
-		if v.Name == "host1:fa-prod-01" {
+		if v.Name == "node1:fa-prod-01" {
 			fa = &v
 		}
 	}
-	if fa == nil || fa.Version != "Purity//FA 6.7.3" || fa.Title != "fa-prod-01" || fa.ReadBy != "host1" || fa.Nodes != 2 || fa.NodesReady != 1 || len(fa.Parts) != 2 {
+	if fa == nil || fa.Version != "Purity//FA 6.7.3" || fa.Title != "fa-prod-01" || fa.ReadBy != "node1" || fa.Nodes != 2 || fa.NodesReady != 1 || len(fa.Parts) != 2 {
 		t.Fatalf("on Clusters: %+v", fa)
 	}
 	titles := map[string]string{}
@@ -432,9 +432,9 @@ func TestFlashArraySource(t *testing.T) {
 		titles[c.Key] = c.Title
 	}
 	for key, want := range map[string]string{
-		"cluster/host1:fa-prod-01/cluster":             "Array fa-prod-01 (host1): alert from Purity: Drive failure",
-		"node/host1:fa-prod-01/CT1":                    "Controller CT1 in fa-prod-01 (host1) is down",
-		"cluster/host1:fa-prod-01/connection/fa-dr-01": "Replication to fa-dr-01 in fa-prod-01 (host1): not connected (trying)",
+		"cluster/node1:fa-prod-01/cluster":             "Array fa-prod-01 (node1): alert from Purity: Drive failure",
+		"node/node1:fa-prod-01/CT1":                    "Controller CT1 in fa-prod-01 (node1) is down",
+		"cluster/node1:fa-prod-01/connection/fa-dr-01": "Replication to fa-dr-01 in fa-prod-01 (node1): not connected (trying)",
 	} {
 		if titles[key] != want {
 			t.Errorf("%s: %q, want %q (all: %v)", key, titles[key], want, titles)
@@ -455,7 +455,7 @@ func TestIBMiSource(t *testing.T) {
 	now := time.Now()
 	var p *ClusterView
 	for _, v := range a.clusterViews(now, nil) {
-		if v.Name == "host1:prod1" {
+		if v.Name == "node1:prod1" {
 			p = &v
 		}
 	}
@@ -467,7 +467,7 @@ func TestIBMiSource(t *testing.T) {
 	for _, c := range a.workloadConditions(now) {
 		titles[c.Key] = c.Title
 	}
-	if got, want := titles["cluster/host1:prod1/asp/1"], "The system ASP in PROD1 (host1): 92% used, past IBM i's threshold of 90%"; got != want {
+	if got, want := titles["cluster/node1:prod1/asp/1"], "The system ASP in PROD1 (node1): 92% used, past IBM i's threshold of 90%"; got != want {
 		t.Errorf("%q, want %q (all: %v)", got, want, titles)
 	}
 	if partTitle("asp/PRODIASP") != "Independent ASP PRODIASP" || partTitle("asp/2") != "User ASP 2" {
@@ -491,20 +491,20 @@ func TestHMCSource(t *testing.T) {
 	for _, v := range a.clusterViews(now, nil) {
 		views[v.Name] = v
 	}
-	h := views["host1:hmc1"]
+	h := views["node1:hmc1"]
 	if h.Noun != "HMC" || h.NodeNoun != "Server" || h.Nodes != 2 || h.NodesReady != 1 || h.Workloads != 8 {
 		t.Errorf("HMC on Clusters: %+v", h)
 	}
-	ps := views["host1:prod1"].Partition.Server
-	if ps == nil || ps.Name != "p10-a" || ps.HMC != "host1:hmc1" || ps.Partition != "PROD1 (p10-a)" || ps.State != report.StateOK ||
-		ps.Href != "/workloads?source=host1%3Ahmc1&q=PROD1+%28p10-a%29" {
+	ps := views["node1:prod1"].Partition.Server
+	if ps == nil || ps.Name != "p10-a" || ps.HMC != "node1:hmc1" || ps.Partition != "PROD1 (p10-a)" || ps.State != report.StateOK ||
+		ps.Href != "/workloads?source=node1%3Ahmc1&q=PROD1+%28p10-a%29" {
 		t.Errorf("PROD1's server: %+v", ps)
 	}
 	var titles []string
 	for _, c := range a.workloadConditions(now) {
 		titles = append(titles, c.Severity+" "+c.Title)
 	}
-	if got := strings.Join(titles, "; "); got != "critical Server p10-b in hmc1 (host1) is down" {
+	if got := strings.Join(titles, "; "); got != "critical Server p10-b in hmc1 (node1) is down" {
 		t.Errorf("conditions: %s", got)
 	}
 }
@@ -514,7 +514,7 @@ func TestHMCSource(t *testing.T) {
 // (docs/ibmi.md, step 2).
 func TestIBMiExpectedSubsystems(t *testing.T) {
 	a, _, hostTok, _ := clusterCopies(t)
-	a.expected = &Expected{Clusters: map[string]ExpectedCluster{"host1:prod1": {Subsystems: []string{"QINTER", "qbatch", "ORDLIB/ORDERS"}}}}
+	a.expected = &Expected{Clusters: map[string]ExpectedCluster{"node1:prod1": {Subsystems: []string{"QINTER", "qbatch", "ORDLIB/ORDERS"}}}}
 	snap := &ibmi.Snapshot{Name: "prod1", Release: "7.5", System: ibmi.System{PartitionName: "PROD1"},
 		Subsys: []ibmi.Subsystem{{Library: "QSYS", Name: "QINTER", Status: "ACTIVE", Jobs: 41}, {Library: "QSYS", Name: "QBATCH", Status: "INACTIVE"},
 			{Library: "QSYS", Name: "QSPL", Status: "INACTIVE"}, {Library: "QSYS", Name: "QUSRWRK", Status: "ACTIVE", Jobs: 9}},
@@ -526,8 +526,8 @@ func TestIBMiExpectedSubsystems(t *testing.T) {
 		titles[c.Key] = c.Severity + " " + c.Title
 	}
 	for key, want := range map[string]string{
-		"cluster/host1:prod1/subsystem/QBATCH": "critical Subsystem QBATCH in PROD1 (host1): inactive, and expected.yaml says it should be active",
-		"cluster/host1:prod1/subsystem/ORDERS": "critical Subsystem ORDERS in PROD1 (host1): not on the partition, or its profile may not use the subsystem's description (*USE)",
+		"cluster/node1:prod1/subsystem/QBATCH": "critical Subsystem QBATCH in PROD1 (node1): inactive, and expected.yaml says it should be active",
+		"cluster/node1:prod1/subsystem/ORDERS": "critical Subsystem ORDERS in PROD1 (node1): not on the partition, or its profile may not use the subsystem's description (*USE)",
 	} {
 		if titles[key] != want {
 			t.Errorf("%s: %q, want %q", key, titles[key], want)
@@ -537,7 +537,7 @@ func TestIBMiExpectedSubsystems(t *testing.T) {
 		t.Errorf("conditions: %v", titles)
 	}
 	for _, v := range a.clusterViews(now, nil) {
-		if v.Name != "host1:prod1" {
+		if v.Name != "node1:prod1" {
 			continue
 		}
 		var names []string
@@ -551,7 +551,7 @@ func TestIBMiExpectedSubsystems(t *testing.T) {
 			t.Errorf("counts %+v", p)
 		}
 	}
-	if _, err := parseExpected([]byte("clusters:\n  host1:prod1:\n    subsystems: [\"QINTER;\"]\n")); err == nil {
+	if _, err := parseExpected([]byte("clusters:\n  node1:prod1:\n    subsystems: [\"QINTER;\"]\n")); err == nil {
 		t.Error("a bad subsystem name was taken")
 	}
 }
@@ -575,7 +575,7 @@ func TestFlashBladeSource(t *testing.T) {
 	now := time.Now()
 	var fb *ClusterView
 	for _, v := range a.clusterViews(now, nil) {
-		if v.Name == "host1:fb-prod-01" {
+		if v.Name == "node1:fb-prod-01" {
 			fb = &v
 		}
 	}
@@ -586,7 +586,7 @@ func TestFlashBladeSource(t *testing.T) {
 	for _, c := range a.workloadConditions(now) {
 		conds[c.Key] = c
 	}
-	if c := conds["node/host1:fb-prod-01/CH1.FB7"]; c.Title != "Blade CH1.FB7 in fb-prod-01 (host1) is down" {
+	if c := conds["node/node1:fb-prod-01/CH1.FB7"]; c.Title != "Blade CH1.FB7 in fb-prod-01 (node1) is down" {
 		t.Errorf("blade: %q", c.Title)
 	}
 	byPVC, _ := volumeLinks(a.clusterSnaps())
@@ -618,9 +618,9 @@ func TestPVCVolumeLink(t *testing.T) {
 		details[c.Key] = c.Detail
 	}
 	for key, want := range map[string]string{
-		"pvc/prod/shop/data-db-0":                   "Its array side: volume prod-pod::k8s-" + pv + " on fa-prod-01 (host1): alert from Purity: Volume space exceeded.",
-		"pvc/host1:fa-prod-01//prod-pod::k8s-" + pv: "Used by PVC data-db-0 in shop (prod).",
-		"cluster/host1:fa-prod-01/cluster":          "Its volumes hold 1 PVC, in prod.",
+		"pvc/prod/shop/data-db-0":                   "Its array side: volume prod-pod::k8s-" + pv + " on fa-prod-01 (node1): alert from Purity: Volume space exceeded.",
+		"pvc/node1:fa-prod-01//prod-pod::k8s-" + pv: "Used by PVC data-db-0 in shop (prod).",
+		"cluster/node1:fa-prod-01/cluster":          "Its volumes hold 1 PVC, in prod.",
 	} {
 		if !strings.Contains(details[key], want) {
 			t.Errorf("%s: %q, want it to hold %q (all: %v)", key, details[key], want, details)
@@ -633,7 +633,7 @@ func TestPVCVolumeLink(t *testing.T) {
 	for _, r := range got.Workloads {
 		switch r.Name {
 		case "data-db-0":
-			if len(r.Volumes) != 1 || r.Volumes[0].Source != "host1:fa-prod-01" || r.Volumes[0].Array != "fa-prod-01 (host1)" {
+			if len(r.Volumes) != 1 || r.Volumes[0].Source != "node1:fa-prod-01" || r.Volumes[0].Array != "fa-prod-01 (node1)" {
 				t.Errorf("the PVC's link %+v", r.Volumes)
 			}
 			links++

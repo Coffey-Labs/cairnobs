@@ -15,7 +15,7 @@ func mailServer(t *testing.T, s mailmon.Snapshot) *Server {
 	pf := filepath.Join(t.TempDir(), "pw")
 	_ = os.WriteFile(pf, []byte("x"), 0o600)
 	w, err := mailmon.New(mailmon.Config{Account: "monitor@example.test", PasswordFile: pf, Server: "mail.example.test",
-		ClientID: "cairn-obs", RedirectURL: "https://obs.example.test/cb", Host: "host1"})
+		ClientID: "cairn-obs", RedirectURL: "https://obs.example.test/cb", Host: "node1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestMailConditions(t *testing.T) {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
 		}
 		for _, c := range conds {
-			if c.Host != "host1" || c.Href != "/mail" {
+			if c.Host != "node1" || c.Href != "/mail" {
 				t.Errorf("%s: %s has host %q href %q; the maintenance window must hold it", tc.name, c.Key, c.Host, c.Href)
 			}
 		}

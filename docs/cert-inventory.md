@@ -136,7 +136,7 @@ modification time changes.
   while it was seen in the last two days.
 - **Alerts** (decision 3): one per certificate found on hosts, keyed
   `certinv/<fingerprint>`, "Certificate admin.internal ends in 5 days
-  (…)", detail "Served on host1:8443 · admin, host1:25 (smtp
+  (…)", detail "Served on node1:8443 · admin, node1:25 (smtp
   STARTTLS) · postfix." A certificate a Vault, a site check or
   Cloudflare also has alerts there, not here (decision 5). On one host
   only, a maintenance window on that host holds it.
@@ -161,7 +161,7 @@ modification time changes.
   are never read, and a file of CAs alone (a bundle) gives back nothing.
   `**` is any number of directories (eight at most) and `{a,b}` either;
   5,000 files and 1 MiB a file at most.
-- **Places** of kind `file`, "host1:/etc/letsencrypt/live/shop/cert.pem".
+- **Places** of kind `file`, "node1:/etc/letsencrypt/live/shop/cert.pem".
   A certificate only in files is judged at 7 days, not 21: a file no
   port serves may be nobody's. Its alert says "no port serves it".
 - **Windows** (2026-11-15): a Windows agent has no helper and no
@@ -242,7 +242,7 @@ nothing fetched), and sent as `wrong` with each port's certificate:
 - **Weak** keys and SHA-1 were already judged (step 1).
 
 On a host, a warning on the certificate's own alert ("…; served wrong",
-detail "Served wrong: host1:443 · nginx: sent without its intermediate
+detail "Served wrong: node1:443 · nginx: sent without its intermediate
 certificate."), or an alert of its own for a certificate a check or
 Vault has. In a cluster, the record is a warning at least, its word
 ending "; served wrong: <place>: <what>". On the page: "Served wrong".

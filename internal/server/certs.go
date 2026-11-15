@@ -47,12 +47,12 @@ type CertInv struct {
 	PlaceCount int            `json:"place_count"`
 	Kinds      []string       `json:"kinds"`
 	// NotReloaded are the ports still serving it though a renewed one is
-	// in the file on the same host (decision 4): "host1:443 · nginx".
+	// in the file on the same host (decision 4): "node1:443 · nginx".
 	NotReloaded []string `json:"not_reloaded,omitempty"`
 	// Renewed is that renewed one: its file and end.
 	Renewed string `json:"renewed,omitempty"`
 	// Wrong is what's wrong with how it's served, by place (step 5):
-	// "host1:443 · nginx: sent without its intermediate certificate".
+	// "node1:443 · nginx: sent without its intermediate certificate".
 	Wrong []string `json:"wrong,omitempty"`
 	// Reloads are the reloads an admin may ask for: a not-reloaded port
 	// whose host's cert_reload lists a unit for the renewed file

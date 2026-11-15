@@ -101,7 +101,7 @@ func TestCopiesShareLiveState(t *testing.T) {
 	tok := NewAgentToken()
 	a, b := twoCopies(t, func(c *Config) {
 		c.DevSignin = true
-		c.Agents = []AgentConfig{{Name: "host1", TokenSHA256: HashToken(tok)}}
+		c.Agents = []AgentConfig{{Name: "node1", TokenSHA256: HashToken(tok)}}
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -113,22 +113,22 @@ func TestCopiesShareLiveState(t *testing.T) {
 	}
 
 	// A report taken by a reaches b.
-	body, _ := json.Marshal(report.Report{V: report.Version, Host: "host1", CPU: 42})
+	body, _ := json.Marshal(report.Report{V: report.Version, Host: "node1", CPU: 42})
 	if rec := post(a.AgentHandler(), "/api/v1/agent/report", tok, body, nil); rec.Code != 204 {
 		t.Fatalf("report: %d %s", rec.Code, rec.Body)
 	}
-	eventually(t, "b has host1's report", func() bool { return !b.store.Seen("host1").IsZero() })
+	eventually(t, "b has node1's report", func() bool { return !b.store.Seen("node1").IsZero() })
 	for _, h := range b.store.Snapshot() {
-		if h.name == "host1" && (h.last.CPU != 42 || len(h.cpu) != 1) {
-			t.Fatalf("b's host1: %+v", h)
+		if h.name == "node1" && (h.last.CPU != 42 || len(h.cpu) != 1) {
+			t.Fatalf("b's node1: %+v", h)
 		}
 	}
 	// A queued one adds to b's sparkline only.
-	body, _ = json.Marshal(report.Report{V: report.Version, Host: "host1", CPU: 7})
+	body, _ = json.Marshal(report.Report{V: report.Version, Host: "node1", CPU: 7})
 	post(a.AgentHandler(), "/api/v1/agent/report", tok, body, map[string]string{"X-Beacon-Queued": "1"})
 	eventually(t, "b has the queued point", func() bool {
 		for _, h := range b.store.Snapshot() {
-			if h.name == "host1" && len(h.cpu) == 2 && h.last.CPU == 42 {
+			if h.name == "node1" && len(h.cpu) == 2 && h.last.CPU == 42 {
 				return true
 			}
 		}
@@ -145,7 +145,7 @@ func TestCopiesShareLiveState(t *testing.T) {
 
 	// A maintenance window saved on a is in force on b.
 	c = devCookie(t, a.Handler())
-	if rec := sendCookie(a.Handler(), "PUT", "/api/v1/settings/maintenance/w1", c, `{"hosts":["host1"],"daily":"04:30","timezone":"UTC","duration_s":600}`); rec.Code != 200 {
+	if rec := sendCookie(a.Handler(), "PUT", "/api/v1/settings/maintenance/w1", c, `{"hosts":["node1"],"daily":"04:30","timezone":"UTC","duration_s":600}`); rec.Code != 200 {
 		t.Fatalf("window: %d %s", rec.Code, rec.Body)
 	}
 	eventually(t, "b has the window", func() bool { return len(b.windows()) == 1 })

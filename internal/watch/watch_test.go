@@ -24,7 +24,7 @@ func (s *spy) Send(_ context.Context, n notify.Notice) error {
 
 func watch(t0 time.Time, publicUp *bool) (*Watch, *spy) {
 	s := &spy{}
-	w := &Watch{cfg: Config{After: 3 * time.Minute, PublicURL: "https://beacon.test/healthz"}, host: "host1", chans: []notify.Channel{s}, lastOK: t0}
+	w := &Watch{cfg: Config{After: 3 * time.Minute, PublicURL: "https://beacon.test/healthz"}, host: "node1", chans: []notify.Channel{s}, lastOK: t0}
 	w.probe = func(context.Context) error {
 		if *publicUp {
 			return nil
@@ -45,7 +45,7 @@ func TestBeaconDownAndBack(t *testing.T) {
 	}
 	w.Failed(ctx, t0.Add(4*time.Minute))
 	w.Failed(ctx, t0.Add(5*time.Minute)) // once, not every report
-	if len(s.got) != 1 || s.got[0].Kind != "firing" || s.got[0].Severity != "critical" || !strings.Contains(s.got[0].Detail, "host1 hasn't reached obs-beacond for 4 min, and https://beacon.test/healthz doesn't answer either (connection refused)") {
+	if len(s.got) != 1 || s.got[0].Kind != "firing" || s.got[0].Severity != "critical" || !strings.Contains(s.got[0].Detail, "node1 hasn't reached obs-beacond for 4 min, and https://beacon.test/healthz doesn't answer either (connection refused)") {
 		t.Fatalf("down: %+v", s.got)
 	}
 	w.Reported(ctx, t0.Add(20*time.Minute))
@@ -67,10 +67,10 @@ func TestOnlyThisHostsLinkIsQuiet(t *testing.T) {
 }
 
 func TestNeedsURLAndChannel(t *testing.T) {
-	if _, err := New(Config{}, "host1", time.Now()); err == nil {
+	if _, err := New(Config{}, "node1", time.Now()); err == nil {
 		t.Fatal("no public_url accepted")
 	}
-	if _, err := New(Config{PublicURL: "https://beacon.test/healthz"}, "host1", time.Now()); err == nil {
+	if _, err := New(Config{PublicURL: "https://beacon.test/healthz"}, "node1", time.Now()); err == nil {
 		t.Fatal("no channels accepted")
 	}
 }
@@ -78,7 +78,7 @@ func TestNeedsURLAndChannel(t *testing.T) {
 func TestQuietDuringBeaconHostsReboot(t *testing.T) {
 	ctx := context.Background()
 	up := false
-	win := maint.Window{Name: "host3 reboot", Daily: "05:30", Timezone: "Europe/Berlin", Duration: 20 * time.Minute}
+	win := maint.Window{Name: "node3 reboot", Daily: "05:30", Timezone: "Europe/Berlin", Duration: 20 * time.Minute}
 	if err := win.Check(); err != nil {
 		t.Fatal(err)
 	}

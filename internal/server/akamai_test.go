@@ -42,10 +42,10 @@ func TestAkamaiConditions(t *testing.T) {
 		{Name: "fresh.akadns.net", Propagation: "PENDING", Since: now.Add(-5 * time.Minute)},
 		{Name: "denied.akadns.net", Propagation: "DENIED", Message: "Validation failed."},
 	}})
-	// Braavos's server is host7's address.
+	// Braavos's server is node7's address.
 	r := results(now)
 	r.Map = &report.Map{Interfaces: []report.Interface{{Name: "eth0", Addrs: []string{"198.51.100.10/24"}}}}
-	srv.store.Put("host7", r, now)
+	srv.store.Put("node7", r, now)
 
 	got := srv.akamaiConditions(now)
 	want := "warning:akamai/server/www.example.akadns.net/198.51.100.10 warning:akamai/server/legacy.example.akadns.net/192.0.2.30 " +
@@ -53,7 +53,7 @@ func TestAkamaiConditions(t *testing.T) {
 	if keys(got) != want {
 		t.Fatalf("conditions\n got  %s\n want %s", keys(got), want)
 	}
-	if got[0].Host != "host7" || got[1].Host != "" || got[2].Detail != "Every datacenter's servers are failing GTM's liveness tests: Winterfell (192.0.2.30)." ||
+	if got[0].Host != "node7" || got[1].Host != "" || got[2].Detail != "Every datacenter's servers are failing GTM's liveness tests: Winterfell (192.0.2.30)." ||
 		got[3].Title != "A change to pending.akadns.net has been propagating for 45 minutes" {
 		t.Errorf("%+v", got)
 	}
@@ -63,7 +63,7 @@ func TestAkamaiConditions(t *testing.T) {
 
 	h := srv.Handler()
 	cookie := post(h, "/auth/dev", "", nil, map[string]string{"X-Beacon": "1"}).Result().Cookies()[0]
-	if rec := get(h, "/api/v1/akamai", cookie); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"hosts":{"198.51.100.10":"host7"}`) {
+	if rec := get(h, "/api/v1/akamai", cookie); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"hosts":{"198.51.100.10":"node7"}`) {
 		t.Errorf("API: %d %s", rec.Code, rec.Body)
 	}
 }

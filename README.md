@@ -7,6 +7,10 @@ runs the alerts and serves the web interface. Licensed AGPLv3; the
 third-party code inside the binaries and its licenses are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). **Private until launch.**
 
+The documentation for people installing it is at
+<https://docs.cairnobs.org/>. To report a security problem, see
+[SECURITY.md](SECURITY.md). The notes below are for working on the code.
+
 - [docs/install.md](docs/install.md): install the packages, make a release
 - [docs/kubernetes.md](docs/kubernetes.md): the server on OpenShift, OKD or Kubernetes
 - [docs/container.md](docs/container.md): the server in one container, with Docker or Podman

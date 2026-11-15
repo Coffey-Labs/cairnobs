@@ -136,7 +136,7 @@ func TestSigninReturnStaysOnBeacon(t *testing.T) {
 			t.Errorf("safeReturn(%q) = %q", bad, got)
 		}
 	}
-	if got := safeReturn("/hosts/host2"); got != "/hosts/host2" {
+	if got := safeReturn("/hosts/node2"); got != "/hosts/node2" {
 		t.Errorf("good path rewritten to %q", got)
 	}
 }

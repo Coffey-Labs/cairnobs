@@ -35,8 +35,8 @@ func lineKeys(v *MapView) string {
 	return strings.Join(ls, ", ")
 }
 
-// Two hosts on one private network: nginx on host1 takes the Internet and
-// talks to PostgreSQL on host2. The maps draw themselves from that.
+// Two hosts on one private network: nginx on node1 takes the Internet and
+// talks to PostgreSQL on node2. The maps draw themselves from that.
 func TestMapsFromReports(t *testing.T) {
 	srv, _ := testServer(t, false)
 	now := time.Now()
@@ -50,12 +50,12 @@ func TestMapsFromReports(t *testing.T) {
 		Interfaces: []report.Interface{{Name: "eth1", Kind: "vlan", Addrs: []string{"10.0.0.2/24"}, Up: true}},
 		Listen:     []report.Listener{{Owner: "unit:postgresql.service", Proto: "tcp", Addr: "*", Port: 5432}},
 	}}
-	srv.store.Put("host1", h1, now)
-	srv.store.Put("host2", h2, now)
+	srv.store.Put("node1", h1, now)
+	srv.store.Put("node2", h2, now)
 	// The next report carries no map: the last one stays.
-	srv.store.Put("host1", report.Report{V: report.Version}, now.Add(15*time.Second))
+	srv.store.Put("node1", report.Report{V: report.Version}, now.Add(15*time.Second))
 	if mp := srv.store.Snapshot()[0].mp; mp == nil || len(mp.Conns) != 2 {
-		t.Fatalf("host1's map was dropped: %+v", mp)
+		t.Fatalf("node1's map was dropped: %+v", mp)
 	}
 	now = now.Add(20 * time.Second)
 
@@ -73,14 +73,14 @@ func TestMapsFromReports(t *testing.T) {
 		t.Errorf("mapped %d of %d", v.Mapped, v.Hosts)
 	}
 	v, _ = srv.networkView("site:10.0.0.0/24", now)
-	if got := boxIDs(v); got != "internet host:host1 host:host2" {
+	if got := boxIDs(v); got != "internet host:node1 host:node2" {
 		t.Errorf("site boxes: %s", got)
 	}
-	if got := lineKeys(v); got != "host:host1>host:host2 traffic, internet>host:host1 internet" {
+	if got := lineKeys(v); got != "host:node1>host:node2 traffic, internet>host:node1 internet" {
 		t.Errorf("site lines: %s", got)
 	}
-	v, _ = srv.networkView("host:host2", now)
-	if got := boxIDs(v); got != "host:host2 host:host1" || len(v.Crumbs) != 2 {
+	v, _ = srv.networkView("host:node2", now)
+	if got := boxIDs(v); got != "host:node2 host:node1" || len(v.Crumbs) != 2 {
 		t.Errorf("host view: %s, crumbs %v", got, v.Crumbs)
 	}
 	if _, ok := srv.networkView("site:nowhere", now); ok {
@@ -108,7 +108,7 @@ func TestMapsFromReports(t *testing.T) {
 		t.Errorf("after three hours: %s", got)
 	}
 	// Not seen for two weeks, once nginx stops: fading, then gone.
-	srv.store.Put("host1", report.Report{V: report.Version, Map: &report.Map{
+	srv.store.Put("node1", report.Report{V: report.Version, Map: &report.Map{
 		Interfaces: h1.Map.Interfaces, Listen: h1.Map.Listen}}, now.Add(time.Hour))
 	srv.maps.graph = nil
 	later := now.Add(16 * 24 * time.Hour)
@@ -125,11 +125,11 @@ func TestMapsFromReports(t *testing.T) {
 
 	// Finding things.
 	rec := httptest.NewRecorder()
-	srv.handleMapFind(rec, httptest.NewRequest("GET", "/api/v1/map/find?q=host2", nil))
+	srv.handleMapFind(rec, httptest.NewRequest("GET", "/api/v1/map/find?q=node2", nil))
 	var found struct{ Found []MapFound }
 	_ = json.Unmarshal(rec.Body.Bytes(), &found)
-	if len(found.Found) != 1 || found.Found[0].Focus != "host:host2" || found.Found[0].Where != "10.0.0.0/24" {
-		t.Errorf("find host2: %s", rec.Body)
+	if len(found.Found) != 1 || found.Found[0].Focus != "host:node2" || found.Found[0].Where != "10.0.0.0/24" {
+		t.Errorf("find node2: %s", rec.Body)
 	}
 	rec = httptest.NewRecorder()
 	srv.handleMapFind(rec, httptest.NewRequest("GET", "/api/v1/map/find?q=postgres", nil))
@@ -235,7 +235,7 @@ func TestMapCorrections(t *testing.T) {
 		}
 	}
 	now := time.Now()
-	srv.store.Put("host1", report.Report{V: report.Version, Map: &report.Map{
+	srv.store.Put("node1", report.Report{V: report.Version, Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "eth0", Kind: "physical", Addrs: []string{"10.0.0.1/24"}, Up: true}},
 		Listen: []report.Listener{{Owner: "unit:nginx.service", Proto: "tcp", Addr: "*", Port: 443},
 			{Owner: "unit:postgresql.service", Proto: "tcp", Addr: "127.0.0.1", Port: 5432}},
@@ -288,11 +288,11 @@ func TestMapCorrections(t *testing.T) {
 	if got := lineKeys(view("svc:outside:payments")); !strings.Contains(got, "svc:unit:nginx>svc:outside:payments needs/seen") {
 		t.Errorf("outside: %s", got)
 	}
-	fix(MapFixReq{Op: "move", Host: "host1", Owner: "unit:nginx.service", Name: "Front door"})
+	fix(MapFixReq{Op: "move", Host: "node1", Owner: "unit:nginx.service", Name: "Front door"})
 	if got := boxIDs(view("")); !strings.Contains(got, "svc:page:front-door") || strings.Contains(got, "svc:unit:nginx") {
 		t.Errorf("moved: %s", got)
 	}
-	fix(MapFixReq{Op: "move", Host: "host1", Owner: "unit:nginx.service"})
+	fix(MapFixReq{Op: "move", Host: "node1", Owner: "unit:nginx.service"})
 	fix(MapFixReq{Op: "merge", ID: "unit:nginx", Into: "unit:postgresql"})
 	if v := view(""); boxIDs(v) != "svc:unit:postgresql svc:outside:payments" || v.Boxes[0].Count != 2 { // the two as one, and Payments
 		t.Errorf("merged: %s %+v", boxIDs(v), v.Boxes)
@@ -335,7 +335,7 @@ func TestMapCorrections(t *testing.T) {
 	plain, _ := testServer(t, true)
 	ph := plain.Handler()
 	c := post(ph, "/auth/dev", "", nil, map[string]string{"X-Beacon": "1"}).Result().Cookies()[0]
-	req := httptest.NewRequest("POST", "/api/v1/map/corrections", strings.NewReader(`{"op":"hide","id":"host:host1"}`))
+	req := httptest.NewRequest("POST", "/api/v1/map/corrections", strings.NewReader(`{"op":"hide","id":"host:node1"}`))
 	req.AddCookie(c)
 	req.Header.Set("X-Beacon", "1")
 	rec := httptest.NewRecorder()
@@ -357,7 +357,7 @@ func TestClusterOnTheServiceMap(t *testing.T) {
 			Facts: map[string]any{"hosts": "shop.example.org", "backends": "web:80", "tls": true}})
 	sendBatch(t, a, clusterTok, report.Workloads{Full: "begin", Records: recs})
 	sendBatch(t, a, clusterTok, report.Workloads{Full: "end"})
-	a.store.Put("host1", report.Report{V: report.Version, Map: &report.Map{
+	a.store.Put("node1", report.Report{V: report.Version, Map: &report.Map{
 		Interfaces: []report.Interface{{Name: "eth1", Kind: "vlan", Addrs: []string{"10.0.0.1/24"}, Up: true}},
 		Listen:     []report.Listener{{Owner: "unit:nginx.service", Proto: "tcp", Addr: "*", Port: 443}},
 		Conns:      []report.Conn{{Owner: "unit:nginx.service", Dir: "out", Remote: "10.96.0.10", Port: 80, Count: 3}},

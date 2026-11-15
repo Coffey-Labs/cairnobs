@@ -90,8 +90,8 @@ the repo has MINISIGN_SECRET_KEY) say the files are ours.
 Unit tests for the parts that are plain Go run on Linux as now; the
 Windows calls need Windows. Options, with what each costs:
 
-- A **Windows Server 2025 evaluation** VM on bench (free for 180 days,
-  renewable by reinstalling): installs QEMU/libvirt on bench and downloads
+- A **Windows Server 2025 evaluation** VM on a development workstation (free for 180 days,
+  renewable by reinstalling): installs QEMU/libvirt on a development workstation and downloads
   the ~6 GB ISO from Microsoft. Also gives a real libvirt host for the
   libvirt reader, which has only been tested against fakes.
 - **GitHub Actions** Windows runners: free minutes, but the private code
@@ -171,7 +171,7 @@ little over the zip and install.ps1.
    (b) An MSI first.
 4. **Signing.** (a) Unsigned while private; decide on a certificate
    before launch. (b) Buy Azure Artifact Signing now ($9.99/month).
-5. **Testing.** (a) A Windows Server 2025 evaluation VM on bench
+5. **Testing.** (a) A Windows Server 2025 evaluation VM on a development workstation
    (installs QEMU/libvirt there, ~6 GB download, nothing billed).
    (b) GitHub Actions Windows runners (private code on GitHub). (c) Cross-
    build and unit tests only until launch.
@@ -190,5 +190,5 @@ John, 2026-11-14: "go with you recommendations".
 3. **Zip + `service install` + install.ps1**; an MSI later.
 4. **Unsigned while private**; a code-signing certificate is decided
    before launch.
-5. **A Windows Server 2025 evaluation VM on bench** (QEMU/libvirt there,
+5. **A Windows Server 2025 evaluation VM on a development workstation** (QEMU/libvirt there,
    the ISO from Microsoft; nothing billed).
