@@ -23,6 +23,7 @@ type hostState struct {
 	mapAt    time.Time
 	certs    *report.CertScan  // what its ports served (sent on a change, and half-hourly)
 	files    *report.CertFiles // what its certificate files hold (the same)
+	events   *report.Events    // a Windows host's event log (the same, hourly)
 }
 
 // Store holds the latest report and short history for each agent.
@@ -92,6 +93,10 @@ func (h *hostState) keepMap(at time.Time) {
 	if h.last.CertFiles != nil {
 		h.files = h.last.CertFiles
 		h.last.CertFiles = nil
+	}
+	if h.last.Events != nil {
+		h.events = h.last.Events
+		h.last.Events = nil
 	}
 }
 

@@ -50,6 +50,7 @@ import (
 	"github.com/cairnobs/cairnobs/internal/version"
 	"github.com/cairnobs/cairnobs/internal/vsphere"
 	"github.com/cairnobs/cairnobs/internal/watch"
+	"github.com/cairnobs/cairnobs/internal/winevent"
 )
 
 type config struct {
@@ -77,6 +78,10 @@ type config struct {
 	// certfiles.StoreDefaults (My, WebHosting); [] reads none. Only the
 	// certificates, never a key. Ignored elsewhere.
 	CertStores *[]string `yaml:"cert_stores"`
+	// EventLog: false stops a Windows agent reading the errors and
+	// criticals in System and Application (docs/windows.md, step 7).
+	// Default true. Ignored elsewhere.
+	EventLog *bool `yaml:"event_log"`
 	// CertReload lists the units obs-beacond may ask this agent to reload
 	// when one serves an older certificate than its renewed file
 	// (docs/cert-rotation.md). The root helper reads it from this file
@@ -229,6 +234,7 @@ type agent struct {
 
 	certs     *tlsscan.Scanner                           // nil when cert_scan is off
 	files     *certfiles.Watch                           // nil when cert_files is []
+	events    *winevent.Watch                            // Windows' event log; nil elsewhere or when event_log is false
 	sampleMap func(context.Context) (*report.Map, error) // nil: no map sample here
 	mapAcc    *report.Map                                // map samples since the last one sent, merged
 	mapSent   time.Time                                  // when a map sample last went with a report
@@ -368,6 +374,9 @@ func run(ctx context.Context, cfg *config) error {
 	if a.files == nil {
 		a.files = watchCertStores(ctx, cfg.CertStores)
 	}
+	if cfg.EventLog == nil || *cfg.EventLog {
+		a.events = watchEvents(ctx)
+	}
 
 	log.Printf("obs-beacon-agent %s: host %s, reporting to %s every %s", version.Version, cfg.Host, cfg.Server, cfg.Interval)
 	// The first sample only primes the CPU and network counters.
@@ -469,6 +478,9 @@ func (a *agent) tick(ctx context.Context, now time.Time) {
 	}
 	if a.files != nil {
 		r.CertFiles = a.files.Report(now)
+	}
+	if a.events != nil {
+		r.Events = a.events.Report(now)
 	}
 	r.Checks = a.checks.Results()
 	r.Backups = a.backupScan()

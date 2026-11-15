@@ -19,3 +19,8 @@ interval: 15s
 # (LocalMachine\<name>), read-only: certificates only, never a key.
 # Absent: My (Personal) and WebHosting. [] reads none.
 # cert_stores: [My, WebHosting, "Remote Desktop"]
+
+# The errors and criticals in the System and Application logs over the
+# last day, grouped, on the host's page; a critical event in the last
+# hour (an unexpected restart, a failing disk) is a warning.
+# event_log: false

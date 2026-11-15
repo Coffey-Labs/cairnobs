@@ -70,6 +70,9 @@ type Report struct {
 	// CertFiles is what the host's certificate files hold (step 3 of
 	// docs/cert-inventory.md), sent like Certs.
 	CertFiles *CertFiles `json:"cert_files,omitempty"`
+	// Events is what a Windows host's event log said lately (docs/windows.md,
+	// step 7): sent on a change, and hourly.
+	Events *Events `json:"events,omitempty"`
 
 	// Reloads are the units this agent may reload when they serve an old
 	// certificate (agent.yaml cert_reload, docs/cert-rotation.md), so
@@ -217,6 +220,27 @@ type CertFile struct {
 	Mod   time.Time `json:"mod"` // the file's modification time
 	Cert  Cert      `json:"cert"`
 	Chain int       `json:"chain"` // more certificates in the file
+}
+
+// Events is the errors and criticals in a Windows host's System and
+// Application logs over the last day, grouped by log, source and event ID.
+type Events struct {
+	At    time.Time    `json:"at"`
+	Since time.Time    `json:"since"` // the window's start
+	List  []EventGroup `json:"list"`
+	Error string       `json:"error,omitempty"` // a log it couldn't read
+}
+
+// EventGroup is one log, source and event ID's events in the window.
+type EventGroup struct {
+	Log     string    `json:"log"`    // System, Application
+	Source  string    `json:"source"` // the provider: Microsoft-Windows-Kernel-Power, MSSQLSERVER
+	ID      uint32    `json:"id"`
+	Level   string    `json:"level"` // critical or error
+	Count   int       `json:"count"`
+	First   time.Time `json:"first"`
+	Last    time.Time `json:"last"`
+	Message string    `json:"message,omitempty"` // the latest one's, shortened
 }
 
 // Mem is in bytes.
