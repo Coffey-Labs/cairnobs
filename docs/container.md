@@ -1,6 +1,6 @@
 # The server in one container (Docker or Podman)
 
-The `obs-beacond` image (kubernetes.md, Build the image) also runs on its
+The `obs-beacond` image (kubernetes.md, The image) also runs on its
 own, with Docker or Podman, on any Linux host. That's one copy on SQLite in
 a volume: the simplest install after the packages. For several copies and
 no gap during upgrades, run it on PostgreSQL instead (kubernetes.md, More
@@ -45,7 +45,7 @@ docker run -d --name obs-beacond --restart unless-stopped \
   -v /etc/obs-beacon/obs-beacond.yaml:/etc/obs-beacon/obs-beacond.yaml:ro \
   -v /etc/obs-beacon/state.key:/etc/obs-beacon/key/state.key:ro \
   --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  registry.example.org/ops/obs-beacond:0.1.0
+  ghcr.io/coffey-labs/cairnobs:0.1.0
 docker logs obs-beacond 2>&1 | grep -A2 'first admin'
 ```
 
@@ -63,7 +63,7 @@ doesn't carry agent packages, so set `join.packages_url`.
 ## Upgrade
 
 ```sh
-docker pull registry.example.org/ops/obs-beacond:0.2.0   # or load it
+docker pull ghcr.io/coffey-labs/cairnobs:0.2.0
 docker stop -t 30 obs-beacond && docker rm obs-beacond
 docker run -d --name obs-beacond ...the same line, the new tag...
 ```

@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 Coffey Labs LLC
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The public copies of a release, on GitHub. Gitea is the source of truth:
+# its .gitea/workflows/release.yml builds every file and makes the Release
+# there. Gitea push-mirrors the tag here, and this workflow waits for that
+# Release, checks it (the minisign signature on SHA256SUMS, then every file
+# against SHA256SUMS), and from the same files makes:
+#
+#   - the GitHub Release, with the same notes and files (PR and issue
+#     numbers become links to Gitea, where they are), and
+#   - the server image, ghcr.io/coffey-labs/cairnobs:<version>, for
+#     linux/amd64 and arm64, with scripts/build-image.sh; a final release
+#     also moves :latest. The image holds the binaries that were checked.
+#
+# Gitea doesn't run this file: it reads .gitea/workflows. Here every job
+# waits on the organization variable BUILD_ON=github, as in the other
+# mirrored repositories. Run it by hand with a tag to publish one again.
+#
+# Every `uses:` is pinned to a full commit SHA with its release in the
+# comment.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to publish again, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GITEA_URL: ${{ vars.GITEA_URL }}
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+      # The release key's public half, as docs/install.md prints it.
+      MINISIGN_PUBLIC_KEY: RWTkUAZH2N3bJSX65If0MZANPBxw9mxjByMWuMkIuEBrUiAB1+7XZupZ
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Wait for Gitea's Release, download it and check it
+        run: |
+          set -euo pipefail
+          case "$TAG" in v[0-9]*) ;; *) echo "$TAG is not a release tag" >&2; exit 1;; esac
+          sudo apt-get -qq update >/dev/null && sudo apt-get -qq install -y --no-install-recommends minisign >/dev/null
+          # Gitea's release job runs make check and builds everything first;
+          # a draft isn't visible from here, so wait for the Release itself.
+          api="$GITEA_URL/api/v1/repos/$GITHUB_REPOSITORY/releases/tags/$TAG"
+          code=0
+          for _ in $(seq 1 90); do
+            code="$(curl -sS -o rel.json -w '%{http_code}' "$api" || true)"
+            [ "$code" = 200 ] && [ "$(jq -r .draft rel.json)" = false ] && break
+            sleep 20
+          done
+          [ "$code" = 200 ] || { echo "no Release for $TAG on Gitea after 30 minutes" >&2; exit 1; }
+          mkdir dist
+          while IFS=$'\t' read -r name url; do
+            curl -fsSL --retry 3 -o "dist/$name" "$url"
+          done < <(jq -r '.assets[] | [.name, .browser_download_url] | @tsv' rel.json)
+          [ -s dist/SHA256SUMS.minisig ] || { echo "$TAG's SHA256SUMS isn't signed" >&2; exit 1; }
+          minisign -Vm dist/SHA256SUMS -P "$MINISIGN_PUBLIC_KEY"
+          (cd dist && sha256sum --strict -c SHA256SUMS)
+          [ "$(ls dist | wc -l)" = "$(( $(wc -l < dist/SHA256SUMS) + 2 ))" ] \
+            || { echo "dist has files SHA256SUMS doesn't list" >&2; ls dist >&2; exit 1; }
+      - name: GitHub Release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub already has a Release for $TAG"; exit 0
+          fi
+          export BASE="$(jq -r '.html_url | sub("/releases/tag/.*$"; "")' rel.json)"
+          jq -r '.body // ""' rel.json | perl -pe 's{(?<![\w/&\[])#(\d+)\b}{[#$1]($ENV{BASE}/pulls/$1)}g' > notes.md
+          printf '\n\n_A copy of [the release on Gitea](%s), where the code lives; report issues [there](%s/issues)._\n' \
+            "$(jq -r .html_url rel.json)" "$BASE" >> notes.md
+          if [ "$(jq -r .prerelease rel.json)" = true ]; then kind=--prerelease; else kind=--latest; fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$(jq -r '.name // env.TAG' rel.json)" \
+            --notes-file notes.md "$kind" dist/*
+      - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+      - name: The image on GHCR
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${TAG#v}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          scripts/build-image.sh "$TAG" dist "$image"
+          if [[ "$TAG" != *-* ]]; then
+            docker buildx imagetools create --tag "$image:latest" "$image:$version"
+          fi
+          docker buildx imagetools inspect "$image:$version"
+          docker logout ghcr.io

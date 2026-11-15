@@ -9,7 +9,8 @@
 # With IMAGE (e.g. registry.example.org/ops/obs-beacond) it pushes
 # IMAGE:VERSION. Needs docker buildx.
 #
-# Private until launch: push only to private registries.
+# Each release's image is published as ghcr.io/coffey-labs/cairnobs by
+# .github/workflows/release.yml; this script is how it's built.
 set -euo pipefail
 TAG="${1:?usage: build-image.sh TAG DIST [IMAGE]}"
 DIST="${2:?usage: build-image.sh TAG DIST [IMAGE]}"

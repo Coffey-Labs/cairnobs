@@ -5,7 +5,7 @@ services, with maps, metrics, alerts and reports. `obs-beacon-agent` runs
 on each host and reports to `obs-beacond`, which judges the reports,
 runs the alerts and serves the web interface. Licensed AGPLv3; the
 third-party code inside the binaries and its licenses are in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). **Private until launch.**
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The documentation for people installing it is at
 <https://docs.cairnobs.org/>. To report a security problem, see
