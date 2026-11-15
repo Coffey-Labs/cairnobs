@@ -1,7 +1,7 @@
 # Windows agent: design note
 
-Status: proposed 2026-11-14; questions at the end, my recommendation
-first in each.
+Status: decided 2026-11-14 (Decisions, at the end): every question went
+the recommended way.
 
 John, 2026-11-12: "will need windows agent as well". Plenty of the fleets
 Cairn OBS is for have Windows servers beside the Linux ones (domain
@@ -134,3 +134,16 @@ store (LocalMachine\My into the certificate inventory, like
 IBM i (John, 2026-11-12) is a separate note: no Go agent there; the idea
 so far is reading it agentlessly through IBM's Mapepire server with a
 read-only profile.
+
+## Decisions
+
+John, 2026-11-14: "go with you recommendations".
+
+1. **The service's own virtual account**, no admin, no helper.
+2. **Steps 1–4** under Plan; the event log, certificate store, Hyper-V,
+   an MSI and arm64 later.
+3. **Zip + `service install` + install.ps1**; an MSI later.
+4. **Unsigned while private**; a code-signing certificate is decided
+   before launch.
+5. **A Windows Server 2025 evaluation VM on bench** (QEMU/libvirt there,
+   the ISO from Microsoft; nothing billed).
