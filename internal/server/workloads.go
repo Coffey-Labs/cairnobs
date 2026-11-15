@@ -674,7 +674,7 @@ func (srv *Server) judgeSource(s wsnap, now time.Time, firing func(key string) b
 	return conds
 }
 
-// judgeHostVMs judges a host's libvirt VMs. When the host is silent its
+// judgeHostVMs judges a host's own VMs (libvirt, or Hyper-V on Windows). When the host is silent its
 // own condition says so, and only what had already fired stays beside it.
 func judgeHostVMs(s wsnap, silent bool, now time.Time, firing func(key string) bool, ad adoption) []Condition {
 	var conds []Condition
@@ -684,8 +684,12 @@ func judgeHostVMs(s wsnap, silent bool, now time.Time, firing func(key string) b
 		}
 	}
 	if s.vmErr != "" && !silent {
+		detail := s.vmErr + ". libvirt is running but its read-only socket didn't answer the helper."
+		if strings.Contains(s.vmErr, "Hyper-V") { // a Windows agent's own words (docs/windows.md, step 8)
+			detail = s.vmErr + ". Add the agent's account to Hyper-V Administrators, or set hyperv: false in its agent.yaml."
+		}
 		conds = append(conds, Condition{Key: "vms/" + s.name, Severity: "warning", Title: s.name + ": can't read its VMs",
-			Detail: s.vmErr + ". libvirt is running but its read-only socket didn't answer the helper.", Host: s.name, Href: "/hosts/" + s.name})
+			Detail: detail, Host: s.name, Href: "/hosts/" + s.name})
 	}
 	return conds
 }

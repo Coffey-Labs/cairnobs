@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -78,6 +79,10 @@ type config struct {
 	// certfiles.StoreDefaults (My, WebHosting); [] reads none. Only the
 	// certificates, never a key. Ignored elsewhere.
 	CertStores *[]string `yaml:"cert_stores"`
+	// HyperV: false stops a Windows agent reading the host's Hyper-V VMs
+	// (docs/windows.md, step 8). Default true; nothing is read, and
+	// nothing said, where Hyper-V isn't installed. Ignored elsewhere.
+	HyperV *bool `yaml:"hyperv"`
 	// EventLog: false stops a Windows agent reading the errors and
 	// criticals in System and Application (docs/windows.md, step 7).
 	// Default true. Ignored elsewhere.
@@ -234,6 +239,7 @@ type agent struct {
 
 	certs     *tlsscan.Scanner                           // nil when cert_scan is off
 	files     *certfiles.Watch                           // nil when cert_files is []
+	hyperV    bool                                       // read Hyper-V's VMs (Windows)
 	events    *winevent.Watch                            // Windows' event log; nil elsewhere or when event_log is false
 	sampleMap func(context.Context) (*report.Map, error) // nil: no map sample here
 	mapAcc    *report.Map                                // map samples since the last one sent, merged
@@ -270,7 +276,13 @@ func (a *agent) readVMs(ctx context.Context) *report.VMs {
 	for _, d := range doms {
 		a.vmPrev[d.UUID] = d
 	}
-	// libvirt doesn't say since when: it's when this agent first saw it so.
+	a.stampSince(recs)
+	return &report.VMs{List: recs, Usage: use}
+}
+
+// stampSince sets each VM record's Since: the hypervisor doesn't say since
+// when, so it's when this agent first saw it so.
+func (a *agent) stampSince(recs []report.Workload) {
 	now := time.Now().UTC().Truncate(time.Second)
 	since := make(map[string]vmSeen, len(recs))
 	for i, r := range recs {
@@ -281,7 +293,6 @@ func (a *agent) readVMs(ctx context.Context) *report.VMs {
 		since[r.ID], recs[i].Since = s, s.since
 	}
 	a.vmSince = since
-	return &report.VMs{List: recs, Usage: use}
 }
 
 // run reports until ctx ends.
@@ -374,6 +385,7 @@ func run(ctx context.Context, cfg *config) error {
 	if a.files == nil {
 		a.files = watchCertStores(ctx, cfg.CertStores)
 	}
+	a.hyperV = runtime.GOOS == "windows" && (cfg.HyperV == nil || *cfg.HyperV)
 	if cfg.EventLog == nil || *cfg.EventLog {
 		a.events = watchEvents(ctx)
 	}
@@ -438,6 +450,8 @@ func (a *agent) tick(ctx context.Context, now time.Time) {
 		}
 		r.Machine = a.machine
 		r.VMs = a.readVMs(ctx)
+	} else if a.hyperV {
+		r.VMs = a.readHyperV() // Windows: Hyper-V's VMs, read by the agent itself
 	}
 	if a.sampleMap != nil {
 		mctx, cancel := context.WithTimeout(ctx, 8*time.Second)
