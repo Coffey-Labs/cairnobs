@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -269,5 +270,52 @@ func TestCorrectionsFromThePage(t *testing.T) {
 	g := Build(hosts, Corrections{Hidden: map[string]bool{"host:b": true}}, time.Now())
 	if len(g.Hosts) != 1 || g.Hosts[0].Name != "a" {
 		t.Errorf("hidden host still drawn: %+v", g.Hosts)
+	}
+}
+
+// A container's own Postgres listens on 5432 inside its namespace, as does
+// Patroni on the host: a connection to the host's address on 5432 reaches
+// Patroni, whichever the agent listed first (ours on prod, 2026-11-14:
+// "Patroni needs Git" from Gitea's own database).
+func TestResolveSkipsContainerListeners(t *testing.T) {
+	inside := report.Listener{Owner: "container:gitea-db", Proto: "tcp", Addr: "*", Port: 5432, Inside: true}
+	patroni := report.Listener{Owner: "unit:patroni.service", Proto: "tcp", Addr: "*", Port: 5432}
+	h1 := Host{Name: "host1", Map: &report.Map{
+		Interfaces: []report.Interface{{Name: "wg0", Kind: "wireguard", Addrs: []string{"10.20.0.1/24"}, Up: true}},
+		Listen:     []report.Listener{inside, patroni},
+	}, Containers: []report.Container{{ID: "c1", Name: "gitea-db", Image: "postgres:17", State: "running", IPs: []string{"172.18.0.3"}}}}
+	h2 := Host{Name: "host2", Map: &report.Map{
+		Interfaces: []report.Interface{{Name: "wg0", Kind: "wireguard", Addrs: []string{"10.20.0.2/24"}, Up: true}},
+		Listen:     []report.Listener{{Owner: "unit:haproxy.service", Proto: "tcp", Addr: "*", Port: 5000}},
+		Conns:      []report.Conn{{Owner: "unit:haproxy.service", Dir: "out", Remote: "10.20.0.1", Port: 5432, Count: 2}},
+	}}
+	g := Build([]Host{h1, h2}, Corrections{}, t0)
+	var to []string
+	for _, e := range g.Edges {
+		if e.Port == 5432 {
+			to = append(to, e.To)
+		}
+	}
+	if len(to) != 1 || !strings.Contains(to[0], "patroni") {
+		t.Errorf("edges on 5432 go to %v, want Patroni alone", to)
+	}
+}
+
+// Discourse's container talks to its own Redis over its own loopback; the
+// host's own Redis on the same port isn't what it reaches.
+func TestContainerLoopbackStaysInside(t *testing.T) {
+	h := Host{Name: "host2", Map: &report.Map{
+		Interfaces: []report.Interface{{Name: "wg0", Kind: "wireguard", Addrs: []string{"10.20.0.2/24"}, Up: true}},
+		Listen: []report.Listener{
+			{Owner: "unit:redis-server.service", Proto: "tcp", Addr: "127.0.0.1", Port: 6379},
+			{Owner: "container:app", Proto: "tcp", Addr: "*", Port: 6379, Inside: true},
+			{Owner: "container:app", Proto: "tcp", Addr: "*", Port: 80, Inside: true},
+		},
+		Conns: []report.Conn{{Owner: "container:app", Dir: "out", Remote: "127.0.0.1", Port: 6379, Count: 3, Inside: true}},
+	}, Containers: []report.Container{
+		{ID: "a", Name: "app", Image: "local_discourse/app", State: "running"},
+	}}
+	if g := Build([]Host{h}, Corrections{}, t0); len(g.Edges) != 0 {
+		t.Errorf("edges %+v, want none", g.Edges)
 	}
 }

@@ -155,8 +155,10 @@ var cgnat = netip.MustParsePrefix("100.64.0.0/10")
 // a report carries. owner maps a socket inode to what holds it ("" when
 // nothing does). Sockets from every network namespace may be passed
 // together, as long as each namespace's are tagged with its own ns key so
-// that a listener only matches connections in its own namespace.
-func Shrink(socks []NSSocket, owner func(inode uint64) string) (listen []report.Listener, conns []report.Conn, cut bool) {
+// that a listener only matches connections in its own namespace. hostNS
+// is the host's own namespace: listeners in any other are marked Inside
+// (0: not known, none are).
+func Shrink(socks []NSSocket, hostNS uint64, owner func(inode uint64) string) (listen []report.Listener, conns []report.Conn, cut bool) {
 	type lkey struct {
 		ns    uint64
 		proto string
@@ -174,7 +176,8 @@ func Shrink(socks []NSSocket, owner func(inode uint64) string) (listen []report.
 		if !s.Local.Addr().IsUnspecified() {
 			addr = s.Local.Addr().String()
 		}
-		l := report.Listener{Owner: owner(s.Inode), Proto: s.Proto, Addr: addr, Port: int(s.Local.Port())}
+		l := report.Listener{Owner: owner(s.Inode), Proto: s.Proto, Addr: addr, Port: int(s.Local.Port()),
+			Inside: hostNS != 0 && s.NS != hostNS}
 		if !lseen[l] {
 			lseen[l] = true
 			listen = append(listen, l)
@@ -189,15 +192,25 @@ func Shrink(socks []NSSocket, owner func(inode uint64) string) (listen []report.
 		return false
 	}
 
+	// Both ends of a connection inside the host: one namespace to another
+	// (a service in a namespace of its own, with its own public address,
+	// reaching the host's mesh address), or loopback.
+	type pair struct{ local, remote netip.AddrPort }
+	ends := map[pair]bool{}
+	for _, s := range socks {
+		if s.Proto == "tcp" && s.State == stEstablished {
+			ends[pair{s.Local, s.Remote}] = true
+		}
+	}
 	counts := map[report.Conn]int{}
 	for _, s := range socks {
 		if s.Proto != "tcp" || s.State != stEstablished {
 			continue
 		}
 		remote := s.Remote.Addr()
-		c := report.Conn{Owner: owner(s.Inode)}
+		c := report.Conn{Owner: owner(s.Inode), Inside: hostNS != 0 && s.NS != hostNS}
 		if isListening(s) {
-			if remote.IsLoopback() {
+			if remote.IsLoopback() || ends[pair{s.Remote, s.Local}] {
 				continue // its other end is counted going out
 			}
 			c.Dir, c.Port = "in", int(s.Local.Port())

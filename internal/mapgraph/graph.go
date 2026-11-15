@@ -377,7 +377,9 @@ func (b *builder) resolve(from string, remote netip.Addr, port int) (target, boo
 	owner := ""
 	if h.Map != nil {
 		for _, l := range h.Map.Listen {
-			if l.Port == port && l.Proto == "tcp" {
+			// A container's own listener isn't at the host's address:
+			// Postgres inside a container doesn't answer host:5432.
+			if l.Port == port && l.Proto == "tcp" && !l.Inside {
 				owner = l.Owner
 				if !isPlumbing(owner) {
 					break
@@ -413,6 +415,9 @@ func (b *builder) connections() {
 			remote, err := netip.ParseAddr(c.Remote)
 			if err != nil || isPlumbing(c.Owner) {
 				continue
+			}
+			if c.Inside && remote.IsLoopback() {
+				continue // within its own namespace: a container talking to itself
 			}
 			t, ours := b.resolve(h.Name, remote, c.Port)
 			if !ours && len(b.k8sAddr[netip.AddrPortFrom(remote, uint16(c.Port))]) > 0 {

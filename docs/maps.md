@@ -372,7 +372,19 @@ One PR each, in order:
    kept. obs-beacond now drops a record
    kind it doesn't know instead of refusing the batch (protocol.md).
 8. **Our own hosts:** side-by-side on prod, then the hand-written file cut
-   down to corrections.
+   down to corrections. So far: prod moved to Cairn OBS (0.1.0-rc.2,
+   2026-11-14) and the two maps compared. Every declared service and
+   host was found with its parts; the network map matched the drawn one.
+   Three discovery mistakes, all from sockets in network namespaces
+   other than the host's: a container's own listener (Gitea's Postgres
+   on 5432) taken for the host's (Patroni), so "Patroni needs Git"; a
+   container's own loopback (Discourse to its Redis) taken for the
+   host's; and a service in a namespace of its own with a public address
+   (inbuxa's mail namespace) reaching the host's mesh address counted as
+   the Internet coming in. Listeners and connections now say when
+   they're `inside` a namespace of their own, the server matches only
+   the host's own listeners to its addresses, and a connection whose
+   both ends are on the host is counted once, going out.
 
 Between this and the cluster watcher's step 4 (KubeVirt), the order is
 John's call (question 6).
