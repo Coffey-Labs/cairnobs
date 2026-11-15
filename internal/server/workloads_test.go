@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cairnobs/cairnobs/internal/ibmi"
 	"github.com/cairnobs/cairnobs/internal/report"
 	"github.com/cairnobs/cairnobs/internal/state"
 )
@@ -437,6 +438,39 @@ func TestFlashArraySource(t *testing.T) {
 		if titles[key] != want {
 			t.Errorf("%s: %q, want %q (all: %v)", key, titles[key], want, titles)
 		}
+	}
+}
+
+// An IBM i partition read by a host agent: said as a partition, its ASPs
+// as its parts, its numbers in place of nodes (docs/ibmi.md).
+func TestIBMiSource(t *testing.T) {
+	a, _, hostTok, _ := clusterCopies(t)
+	cpu := 37.5
+	snap := &ibmi.Snapshot{Name: "prod1", Release: "7.5", TR: 6, CPUPct: &cpu,
+		System: ibmi.System{PartitionName: "PROD1", MachineType: "9105", MachineModel: "42A", Capacity: 2, SystemASPUsed: 92.1, ActiveJobs: 612, Jobs: 18204},
+		ASPs: []ibmi.ASP{{Number: 1, State: "NONE", Present: "ALL", TotalMB: 1000, FreeMB: 79, Threshold: 90},
+			{Number: 33, Name: "PRODIASP", State: "AVAILABLE", Present: "ALL", TotalMB: 1000, FreeMB: 500, Threshold: 90}}}
+	sendBatch(t, a, hostTok, report.Workloads{Source: "prod1", Records: ibmi.Records(snap), Usage: ibmi.Usage(snap)})
+	now := time.Now()
+	var p *ClusterView
+	for _, v := range a.clusterViews(now, nil) {
+		if v.Name == "host1:prod1" {
+			p = &v
+		}
+	}
+	if p == nil || p.Noun != "Partition" || p.Version != "IBM i 7.5 TR6" || p.Title != "PROD1" || p.Partition == nil ||
+		*p.Partition.CPUPct != 37.5 || p.Partition.SystemASPPct != 92.1 || p.Partition.ActiveJobs != 612 || p.Partition.Model != "9105-42A" || len(p.Parts) != 2 {
+		t.Fatalf("on Clusters: %+v %+v", p, p.Partition)
+	}
+	titles := map[string]string{}
+	for _, c := range a.workloadConditions(now) {
+		titles[c.Key] = c.Title
+	}
+	if got, want := titles["cluster/host1:prod1/asp/1"], "The system ASP in PROD1 (host1): 92% used, past IBM i's threshold of 90%"; got != want {
+		t.Errorf("%q, want %q (all: %v)", got, want, titles)
+	}
+	if partTitle("asp/PRODIASP") != "Independent ASP PRODIASP" || partTitle("asp/2") != "User ASP 2" {
+		t.Error(partTitle("asp/PRODIASP"), partTitle("asp/2"))
 	}
 }
 

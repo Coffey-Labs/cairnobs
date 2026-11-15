@@ -506,6 +506,14 @@ func partTitle(name string) string {
 		return upperFirst(n) + " replication"
 	case "license":
 		return "Its license"
+	case "asp": // an IBM i partition's (docs/ibmi.md)
+		switch {
+		case n == "1":
+			return "The system ASP"
+		case strings.Trim(n, "0123456789") == "":
+			return "User ASP " + n
+		}
+		return "Independent ASP " + n
 	}
 	return name
 }
@@ -520,6 +528,8 @@ func (s wsnap) noun() string {
 		return d
 	case strings.HasPrefix(d, "Purity"):
 		return "Array"
+	case d == ibmiDistribution:
+		return "Partition"
 	}
 	return "Cluster"
 }
@@ -1026,6 +1036,43 @@ type ClusterView struct {
 	// its nodes are ("Node", "Controller", "Host").
 	Noun     string `json:"noun"`
 	NodeNoun string `json:"node_noun"`
+	// Partition is an IBM i partition's own numbers (docs/ibmi.md).
+	Partition *PartitionView `json:"partition,omitempty"`
+}
+
+// ibmiDistribution is what an IBM i partition's own record says it is
+// (ibmi.Distribution, said again here to keep the reader out of obs-beacond).
+const ibmiDistribution = "IBM i"
+
+// PartitionView is what the Clusters page shows of an IBM i partition in
+// place of nodes: its CPU over the last minute, its system ASP and jobs.
+type PartitionView struct {
+	CPUPct        *float64 `json:"cpu_pct,omitempty"`
+	SystemASPPct  float64  `json:"system_asp_pct"`
+	ActiveJobs    int      `json:"active_jobs"`
+	Jobs          int      `json:"jobs"`
+	Model         string   `json:"model,omitempty"`
+	ProcessingCap float64  `json:"processing_units,omitempty"`
+}
+
+// partitionView reads a partition's own record's facts.
+func partitionView(r report.Workload) *PartitionView {
+	f := func(k string) float64 {
+		switch v := r.Facts[k].(type) {
+		case float64:
+			return v
+		case int:
+			return float64(v)
+		}
+		return 0
+	}
+	p := &PartitionView{SystemASPPct: f("system_asp_used_pct"), ActiveJobs: int(f("active_jobs")), Jobs: int(f("jobs")), ProcessingCap: f("processing_units")}
+	if _, ok := r.Facts["cpu_pct"]; ok {
+		c := f("cpu_pct")
+		p.CPUPct = &c
+	}
+	p.Model, _ = r.Facts["model"].(string)
+	return p
 }
 
 // ClusterPart is one of a cluster's own parts as the Clusters page shows it.
@@ -1098,6 +1145,9 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 				if r.ID == report.ClusterSelf {
 					if v.Usage = s.usageOf(r.ID, now); v.Usage != nil {
 						v.History = historyKey(r)
+					}
+					if r.Facts["distribution"] == ibmiDistribution {
+						v.Partition = partitionView(r)
 					}
 				}
 			case report.KindNode:

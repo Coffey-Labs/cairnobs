@@ -172,6 +172,7 @@ func run(args []string) {
 	vsphereVMs := fs.Int("vsphere", 0, "this many VMs in a vCenter read by fleet-0080's agent (0: none)")
 	ntnxVMs := fs.Int("nutanix", 0, "this many VMs in a Prism Central read by fleet-0100's agent (0: none)")
 	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by fleet-0040's agent (0: none)")
+	ibmiN := fs.Int("ibmi", 0, "this many IBM i partitions (up to 4), all read by fleet-0041's agent (0: none)")
 	akamaiDir := fs.String("akamai", "", "serve a fake Akamai account on loopback, and write its .edgerc and the akamai: section for obs-beacond.yaml to this directory's akamai.yaml (\"\": none)")
 	chanDir := fs.String("channels", "", "catch alerts on loopback as ntfy, Discord, PagerDuty, a webhook and an email relay, and write their secrets and the alerts: and reports: sections for obs-beacond.yaml to this directory's channels.yaml (\"\": none)")
 	mailDir := fs.String("mail", "", "serve a fake mail server on loopback, and write its password and the mail: section for obs-beacond.yaml to this directory's mail.yaml (\"\": none)")
@@ -404,6 +405,17 @@ func run(args []string) {
 			}()
 		}
 		log.Printf("fleet: %d Pure arrays (%v), read by %s", n, pureArrays[:n], a.host)
+	}
+	if n := min(*ibmiN, len(ibmiPartitions)); n > 0 && len(agents) > ibmiHost {
+		a := agents[ibmiHost]
+		for k := range n {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				runCluster(ctx, newIBMi(a.host, a.token, k), client, pick, batches, nil)
+			}()
+		}
+		log.Printf("fleet: %d IBM i partitions (%v), read by %s", n, ibmiPartitions[:n], a.host)
 	}
 	if *ui > 0 && len(agents) > 0 {
 		wg.Add(1)
@@ -656,6 +668,8 @@ func newHost(i int, name string, containers int, interval time.Duration) *host {
 		h.r.Sources = []string{prismCentral}
 	case pureHost:
 		h.r.Sources = pureArrays // what its pure: section lists, read or not
+	case ibmiHost:
+		h.r.Sources = ibmiPartitions
 	}
 	list := make([]report.Container, containers)
 	for c := range list {

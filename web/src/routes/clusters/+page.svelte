@@ -4,6 +4,7 @@
 	import Status from '$lib/Status.svelte';
 	import ArrayIO from '$lib/ArrayIO.svelte';
 	import VaultLeases from '$lib/VaultLeases.svelte';
+	import PartitionCPU from '$lib/PartitionCPU.svelte';
 	import { get, SignedOut, type Cluster, type ClusterNode } from '$lib/api';
 	import { live } from '$lib/live.svelte';
 	import { ago } from '$lib/format';
@@ -66,13 +67,26 @@
 					{/if}
 				</ul>
 			{/if}
+			{#if c.partition}
+				{@const p = c.partition}
+				{@const cpu = c.usage ? (c.usage.cpu_pct ?? 0) : p.cpu_pct}
+				<div class="nums">
+					<div><b>{cpu != null ? Math.round(cpu) + '%' : '–'}</b><span>CPU, last minute{#if p.processing_units}{' '}of {p.processing_units} processing units{/if}</span></div>
+					<div><b class:hot={p.system_asp_pct >= 90}>{Math.round(p.system_asp_pct)}%</b><span>system ASP used</span></div>
+					<a href={href(c.name, { show: 'problems' })} class:bad={c.problems > 0}><b>{c.problems}</b><span>{c.problems === 1 ? 'problem' : 'problems'}</span></a>
+				</div>
+				<p class="sub pline">{p.active_jobs.toLocaleString('en-US')} jobs active of {p.jobs.toLocaleString('en-US')} in the system{#if p.model} · Power {p.model}{/if}</p>
+				{#if c.history}<PartitionCPU source={c.name} history={c.history} />{/if}
+			{:else}
 			<div class="nums">
 				<a href={href(c.name, { kind: 'node' })}><b>{c.nodes_ready}<small>/{c.nodes}</small></b><span>{(c.node_noun || 'Node').toLowerCase()}s ready</span></a>
 				<a href={href(c.name, {})}><b>{c.workloads}</b><span>{c.noun === 'Array' ? 'volumes' : c.noun === 'Vault' || c.noun === 'OpenBao' ? 'certificates' : 'workloads'}</span></a>
 				<a href={href(c.name, { show: 'problems' })} class:bad={c.problems > 0}><b>{c.problems}</b><span>{c.problems === 1 ? 'problem' : 'problems'}</span></a>
 			</div>
+			{/if}
 			{#if c.usage?.io && c.history}<ArrayIO source={c.name} history={c.history} io={c.usage.io} />{/if}
 			{#if c.usage?.leases != null && c.history}<VaultLeases source={c.name} history={c.history} leases={c.usage.leases} />{/if}
+			{#if kinds.some(([k]) => n(c, k))}
 			<table class="tbl kt">
 				<thead><tr><th>Kind</th><th>All</th>{#each sevs as [, w]}<th>{w}</th>{/each}</tr></thead>
 				<tbody>
@@ -89,6 +103,7 @@
 					{/each}
 				</tbody>
 			</table>
+			{/if}
 			{#if c.node_list.length}
 				<div class="nodes" aria-label="Nodes, the ones that need a look first">
 					{#each c.node_list as nd (nd.name)}
@@ -105,7 +120,9 @@
 <style>
 	.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 	.nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-	.nums a { display: flex; flex-direction: column; color: var(--foreground); }
+	.nums a, .nums > div { display: flex; flex-direction: column; color: var(--foreground); }
+	.nums b.hot { color: var(--warning); }
+	.pline { margin: -6px 0 14px; font-size: 12px; }
 	.nums b { font: 600 26px var(--mono); }
 	.nums small { font-size: 14px; color: var(--muted-fg); }
 	.nums span { color: var(--muted-fg); font-size: 12px; }

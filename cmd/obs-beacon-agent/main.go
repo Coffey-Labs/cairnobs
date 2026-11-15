@@ -37,6 +37,7 @@ import (
 	"github.com/cairnobs/cairnobs/internal/collect"
 	"github.com/cairnobs/cairnobs/internal/docker"
 	"github.com/cairnobs/cairnobs/internal/fetch"
+	"github.com/cairnobs/cairnobs/internal/ibmi"
 	"github.com/cairnobs/cairnobs/internal/libvirt"
 	"github.com/cairnobs/cairnobs/internal/netmap"
 	"github.com/cairnobs/cairnobs/internal/nutanix"
@@ -88,6 +89,9 @@ type config struct {
 	// Pure is the FlashArrays and FlashBlades this host reads
 	// (docs/pure.md): any number.
 	Pure []purerest.Config `yaml:"pure"`
+	// IBMi is the IBM i partitions this host reads through Mapepire
+	// (docs/ibmi.md): any number.
+	IBMi []ibmi.Config `yaml:"ibmi"`
 }
 
 func main() {
