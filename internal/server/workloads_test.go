@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cairnobs/cairnobs/internal/hmc"
 	"github.com/cairnobs/cairnobs/internal/ibmi"
 	"github.com/cairnobs/cairnobs/internal/report"
 	"github.com/cairnobs/cairnobs/internal/state"
@@ -471,6 +472,40 @@ func TestIBMiSource(t *testing.T) {
 	}
 	if partTitle("asp/PRODIASP") != "Independent ASP PRODIASP" || partTitle("asp/2") != "User ASP 2" {
 		t.Error(partTitle("asp/PRODIASP"), partTitle("asp/2"))
+	}
+}
+
+// An HMC read by a host agent: its Power servers are servers, and an IBM i
+// partition read through Mapepire finds the server it runs on by serial
+// and partition number (docs/ibmi.md, step 4).
+func TestHMCSource(t *testing.T) {
+	a, _, hostTok, _ := clusterCopies(t)
+	b := hmc.NewFakeServer("p10-b", "78ABC34", 2)
+	b.State = "no connection"
+	hs := &hmc.Snapshot{Name: "hmc1.example.org", Console: "hmc1", Servers: []hmc.Server{hmc.NewFakeServer("p10-a", "78abc12", 1), b}}
+	sendBatch(t, a, hostTok, report.Workloads{Source: "hmc1", Records: hmc.Records(hs)})
+	snap := &ibmi.Snapshot{Name: "prod1", Release: "7.5", System: ibmi.System{PartitionName: "PROD1", PartitionID: 3, Serial: "78ABC12"}}
+	sendBatch(t, a, hostTok, report.Workloads{Source: "prod1", Records: ibmi.Records(snap)})
+	now := time.Now()
+	views := map[string]ClusterView{}
+	for _, v := range a.clusterViews(now, nil) {
+		views[v.Name] = v
+	}
+	h := views["host1:hmc1"]
+	if h.Noun != "HMC" || h.NodeNoun != "Server" || h.Nodes != 2 || h.NodesReady != 1 || h.Workloads != 8 {
+		t.Errorf("HMC on Clusters: %+v", h)
+	}
+	ps := views["host1:prod1"].Partition.Server
+	if ps == nil || ps.Name != "p10-a" || ps.HMC != "host1:hmc1" || ps.Partition != "PROD1 (p10-a)" || ps.State != report.StateOK ||
+		ps.Href != "/workloads?source=host1%3Ahmc1&q=PROD1+%28p10-a%29" {
+		t.Errorf("PROD1's server: %+v", ps)
+	}
+	var titles []string
+	for _, c := range a.workloadConditions(now) {
+		titles = append(titles, c.Severity+" "+c.Title)
+	}
+	if got := strings.Join(titles, "; "); got != "critical Server p10-b in hmc1 (host1) is down" {
+		t.Errorf("conditions: %s", got)
 	}
 }
 

@@ -37,6 +37,7 @@ import (
 	"github.com/cairnobs/cairnobs/internal/collect"
 	"github.com/cairnobs/cairnobs/internal/docker"
 	"github.com/cairnobs/cairnobs/internal/fetch"
+	"github.com/cairnobs/cairnobs/internal/hmc"
 	"github.com/cairnobs/cairnobs/internal/ibmi"
 	"github.com/cairnobs/cairnobs/internal/libvirt"
 	"github.com/cairnobs/cairnobs/internal/netmap"
@@ -92,6 +93,10 @@ type config struct {
 	// IBMi is the IBM i partitions this host reads through Mapepire
 	// (docs/ibmi.md): any number.
 	IBMi []ibmi.Config `yaml:"ibmi"`
+	// HMC is the IBM Hardware Management Consoles this host reads: their
+	// Power servers and partitions, as an hmcviewer user (docs/ibmi.md,
+	// step 4). Any number; one of a redundant pair is enough.
+	HMC []hmc.Config `yaml:"hmc"`
 }
 
 func main() {

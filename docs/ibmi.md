@@ -1,7 +1,7 @@
 # IBM i: design note
 
-Status: decided 2026-11-14 (Decisions, at the end); steps 1 to 3
-built; 4, the HMC, next.
+Status: decided 2026-11-14 (Decisions, at the end); all four steps
+built. Not yet tried against a real partition or HMC (decision 5).
 
 John, 2026-11-12: "is there anything we can do for iseries?" Yes. The
 shops Cairn OBS is aimed at often still run their core business on IBM i
@@ -46,8 +46,8 @@ long (MSGW, waiting jobs).
 Later, when asked: the history log (`HISTORY_LOG_INFO`), PTF currency
 (`GROUP_PTF_CURRENCY`, which asks IBM, so off by default), expiring
 certificates in the Digital Certificate Manager store (needs more
-authority than the rest), and the Power servers themselves through the
-HMC (below).
+authority than the rest). The Power servers themselves are read through
+the HMC (below).
 
 ## How to reach it
 
@@ -144,13 +144,61 @@ first read is in; its CPU from the second.
 ## The Power servers: the HMC
 
 IBM i (and AIX, and Linux on Power) partitions run on Power servers
-managed by an HMC (Hardware Management Console). Its REST API (port
-12443, a read-only `hmcviewer` user) is to Power what vCenter is to
-VMware: every server, its state, every partition on it and whether it's
-running, processor and memory pools, serviceable events. Read like
-vSphere (cluster-watcher.md), it would put the Power servers and all
-their partitions (IBM i, AIX and Linux) on the VMs pages, and link each
-IBM i partition to the server it runs on. A separate step; question 4.
+managed by an HMC (Hardware Management Console). Its REST API is to
+Power what vCenter is to VMware, and it's read the same way
+(cluster-watcher.md): a host agent with an `hmc:` section reads it every
+minute, and the HMC is a source of its own on Clusters, "HMC hmc1 · read
+by mgmt1".
+
+**What's read**, all GETs with `group=None` (which leaves out the large
+storage and network mappings): the console's name, every managed system,
+and each one's partitions and Virtual I/O Servers. The one call that
+isn't a GET is the logon, a PUT of the user and password that the API
+answers with a session. The agent keeps that session between reads, as
+an HMC limits how many there are, logs on again when the HMC says it
+lapsed, and logs off when it stops.
+
+| HMC | Becomes |
+|---|---|
+| the console (`ManagementConsole`) | the source's own record: "API answering", or what couldn't be read |
+| each managed system (`ManagedSystem`): its state, model and serial, processor units and memory installed and free, its attention light | a node, a "Server": down when the HMC has no connection to it or it's in error; degraded when its attention light is on (firmware turns it on with a serviceable event open), when the HMC can't sign in to its service processor, or can't read all of it; stopped in standby or powered off |
+| each partition and VIOS (`LogicalPartition`, `VirtualIOServer`): state, type, OS version, reference code, processors and memory, RMC state, attention light | a VM on the platform pages, on its server, with what runs in it (IBM i, AIX, Linux, VIOS): down in error (with its reference code) or stopped in Open Firmware; stopped when not activated; updating while it starts, stops or moves (Live Partition Mobility). A VIOS is degraded when it isn't activated on a running server, or when the HMC can't reach it over RMC: the partitions it serves have one path less, and moving them needs it |
+
+What the HMC says it judges itself, as vCenter does. Usage isn't read:
+the HMC keeps it in its performance and capacity monitoring, which has to
+be turned on for each server; for later, with the serviceable events'
+own text.
+
+An IBM i partition also read through Mapepire finds its server here: the
+partition's own record has the server's serial and its partition number,
+the HMC's has the same two, and Clusters names the server on the
+partition's card, linked to the partition on the HMC. If the partition's
+number can't be read, the link isn't made.
+
+### Setting it up
+
+On the HMC, as an administrator (hscroot or one like it): a user just
+for this, with the built-in **hmcviewer** task role (it can look at
+everything and change nothing) and remote access through the web
+allowed, which the REST API needs. In the HMC's web console: Users and
+Security, Users and Roles, Manage User Profiles and Access; add the
+user, choose hmcviewer, and under User Properties allow remote access via
+the web. Its password goes alone in the agent's `password_file`.
+
+The REST API listens on 12443 with the HMC's own certificate; the agent
+pins a self-signed one with `fingerprint`:
+`openssl s_client -connect hmc1:12443 </dev/null | openssl x509 -noout -fingerprint -sha256`.
+
+```yaml
+hmc:
+  - url: https://hmc1.example.com
+    username: cairnobs
+    password_file: /etc/obs-beacon/hmc1.password
+    fingerprint: "AB:CD:..."
+```
+
+Where two HMCs manage the same servers (a redundant pair), read one:
+both would list the same servers and partitions.
 
 ## Plan
 
@@ -162,13 +210,19 @@ IBM i partition to the server it runs on. A separate step; question 4.
 2. **Subsystems, disks, interfaces**, with `subsystems:` in
    expected.yaml.
 3. **Jobs and messages**: MSGW, QSYSOPR, job queues.
-4. **The HMC** (if question 4 says so).
+4. **The HMC**: its Power servers and all their partitions, IBM i, AIX,
+   Linux and VIOS; and an IBM i partition linked to its server.
 
 Tested against a fake Mapepire server built from IBM's documented
-results (internal/mapepire's Fake, internal/ibmi's FakePartition), then
-on a real partition (question 5). The demo simulator's `-ibmi 4` adds
-four partitions read by fleet-0041: prod1 past its system ASP threshold,
-ha1 a PowerHA standby with its independent ASP varied off, dev1 on 7.4.
+results (internal/mapepire's Fake, internal/ibmi's FakePartition), and a
+fake HMC built from the answers IBM's own Python library (pypowervm)
+keeps from real HMCs (internal/hmc's Fake); its field names were checked
+against those answers. Then on a real partition and HMC (question 5).
+The demo simulator's `-ibmi 4` adds four partitions read by fleet-0041:
+prod1 past its system ASP threshold, ha1 a PowerHA standby with its
+independent ASP varied off, dev1 on 7.4; and hmc1, their HMC, with the
+server they run on, a DR server with its attention light on and a
+partition stopped in Open Firmware, and an old server in standby.
 
 ## Questions
 
@@ -232,4 +286,12 @@ John, 2026-11-14: "go with your recommendations".
 5. **PUB400.COM for real output, fakes until then.** The sign-up is
    John's, when step 3 is in; until then the tests and the demo simulator
    answer as IBM documents the views.
+
+   Changed 2026-11-15, John: "let's skip it for now". PUB400 doesn't run
+   Mapepire, and calls itself a playground, not for commercial use, so it
+   could only have checked the SQL over SSH. The fakes stand until a
+   shop with IBM i (and an HMC) tries it. Still to check then: Mapepire's
+   timestamps and `TIMESTAMPDIFF` and `NOW() - 1 DAY` in its basic query
+   mode, QSYSOPR's default authority for a `*USER` profile, and on the
+   HMC, that hmcviewer with remote web access is enough for the REST API.
 
