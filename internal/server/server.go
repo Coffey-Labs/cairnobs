@@ -419,7 +419,6 @@ func (srv *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /install.sh", srv.handleInstallScript)
 	mux.HandleFunc("GET /cluster.yaml", srv.handleClusterManifest)
 	mux.HandleFunc("GET /agent-packages/{file}", srv.handleAgentPackage)
-	mux.HandleFunc("GET /api/v1/topology", srv.needSession(srv.handleTopology))
 	mux.HandleFunc("GET /api/v1/map/network", srv.needSession(srv.handleMapNetwork))
 	mux.HandleFunc("GET /api/v1/map/services", srv.needSession(srv.handleMapServices))
 	mux.HandleFunc("GET /api/v1/map/find", srv.needSession(srv.handleMapFind))

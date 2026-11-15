@@ -5,7 +5,6 @@
 	import Icon from '$lib/Icon.svelte';
 	import Panel from '$lib/Panel.svelte';
 	import Status from '$lib/Status.svelte';
-	import HandDrawnServices from '$lib/HandDrawnServices.svelte';
 	import { paths as ICONS } from '$lib/icons';
 	import {
 		get, send, SignedOut,
@@ -22,7 +21,6 @@
 	// needs it, a few steps each way. Admins correct what was found here.
 	let focus = $state(page.url.searchParams.get('focus') ?? '');
 	let steps = $state(Number(page.url.searchParams.get('steps')) || 3);
-	let tab = $state(page.url.searchParams.get('drawn') ? 'drawn' : 'found');
 	let v = $state<MapView | null>(null);
 	let error = $state('');
 	let sel = $state<string | null>(null); // a box id, or "line:<a>|<b>"
@@ -52,9 +50,7 @@
 		const p = new URLSearchParams();
 		if (f) p.set('focus', f);
 		if (f.startsWith('svc:') && n !== 3) p.set('steps', String(n));
-		if (tab === 'drawn') p.set('drawn', '1');
 		try { replaceState('/map/services' + (p.size ? '?' + p : ''), {}); } catch { /* before the router is up */ }
-		if (tab !== 'found') return;
 		void load(f, n);
 		const t = setInterval(() => void load(f, n), 15_000);
 		return () => clearInterval(t);
@@ -169,7 +165,6 @@
 		if (f.map === 'network') void goto('/map/network?focus=' + encodeURIComponent(f.focus));
 		else go(f.focus);
 	}
-	const drawnToo = $derived(!!live.overview?.features?.topology);
 
 	// Corrections, and what's new since this browser last looked.
 	let fixes = $state<MapFixes | null>(null);
@@ -190,7 +185,6 @@
 		try { list = await get<MapFoundList>('/api/v1/map/found' + (looked ? '?since=' + looked : '')); } catch { /* likewise */ }
 	}
 	$effect(() => {
-		if (tab !== 'found') return;
 		void loadFixes();
 		void loadFound();
 		const t = setInterval(() => void loadFound(), 60_000);
@@ -280,301 +274,287 @@
 	</div>
 </div>
 
-{#if drawnToo}
-	<div class="tabs" role="tablist">
-		<button role="tab" class:on={tab === 'found'} aria-selected={tab === 'found'} onclick={() => (tab = 'found')}>Found</button>
-		<button role="tab" class:on={tab === 'drawn'} aria-selected={tab === 'drawn'} onclick={() => (tab = 'drawn')}>Drawn in topology.yaml</button>
+{#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
+
+{#snippet glyph(st: string, x: number, y: number)}
+	<svg {x} {y} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
+{/snippet}
+{#snippet iconLi(st: string)}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
+{/snippet}
+{#snippet edgeRow(l: MapLine, otherId: string)}
+	<li>
+		{@render iconLi(byId.get(otherId)?.status ?? 'off')}
+		<button class="linkish" onclick={() => (sel = otherId)}>{nameOf(otherId)}</button>
+		<span class="muted">{ports(l)} · {l.stage === 'declared' ? 'declared' : l.stage}</span>
+		{#if canFix && isSvc(l.a) && isSvc(l.b) && l.stage !== 'declared'}
+			<button class="mini" disabled={busy} title="Confirm: it's a real dependency" onclick={() => edgeFix(l, 'confirm')}>✓</button>
+			<button class="mini" disabled={busy} title="Not a dependency" onclick={() => edgeFix(l, 'reject')}>✕</button>
+		{/if}
+	</li>
+{/snippet}
+
+<Panel flush>
+	<div class="map-bar">
+		<nav class="crumbs" aria-label="Where you are">
+			{#each v?.crumbs ?? [] as c (c.id)}
+				<button class="crumb" onclick={() => go(c.id)}>{c.name}</button><span class="sep">›</span>
+			{/each}
+			<span class="here">{v?.title ?? '…'}</span>
+		</nav>
+		{#if focus.startsWith('svc:')}
+			<label class="steps">Steps each way
+				<select bind:value={steps}>{#each [1, 2, 3, 4, 5] as n (n)}<option value={n}>{n}</option>{/each}</select>
+			</label>
+		{/if}
+		<div class="find">
+			<input type="search" placeholder="Find a service, host or site" bind:value={typed} aria-label="Find on the maps" />
+			{#if found.length}
+				<ul class="found" role="listbox">
+					{#each found as f (f.map + f.focus)}
+						<li><button role="option" aria-selected="false" onclick={() => pickFound(f)}><span class="k">{f.kind}</span>{f.name}{#if f.where}<span class="muted"> · {f.where}</span>{/if}</button></li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 	</div>
-{/if}
-
-{#if tab === 'drawn'}
-	<HandDrawnServices />
-{:else}
-	{#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
-
-	{#snippet glyph(st: string, x: number, y: number)}
-		<svg {x} {y} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
-	{/snippet}
-	{#snippet iconLi(st: string)}
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
-	{/snippet}
-	{#snippet edgeRow(l: MapLine, otherId: string)}
-		<li>
-			{@render iconLi(byId.get(otherId)?.status ?? 'off')}
-			<button class="linkish" onclick={() => (sel = otherId)}>{nameOf(otherId)}</button>
-			<span class="muted">{ports(l)} · {l.stage === 'declared' ? 'declared' : l.stage}</span>
-			{#if canFix && isSvc(l.a) && isSvc(l.b) && l.stage !== 'declared'}
-				<button class="mini" disabled={busy} title="Confirm: it's a real dependency" onclick={() => edgeFix(l, 'confirm')}>✓</button>
-				<button class="mini" disabled={busy} title="Not a dependency" onclick={() => edgeFix(l, 'reject')}>✕</button>
+	<div class="map-wrap">
+		<div class="map-canvas" bind:clientWidth={cw}>
+			{#if !v || !lay}
+				<p class="empty">Loading…</p>
+			{:else if v.boxes.length === 0}
+				<div class="none">
+					<h2>No services found yet</h2>
+					<p>A service is a compose project, a systemd unit that listens on a port, or containers from one image. They show up once the agents send map samples (once a minute, through the root helper), and what each needs follows as they talk to each other.</p>
+				</div>
+			{:else}
+				<svg viewBox="0 0 {lay.width} {lay.height}" role="img" aria-label="Service map: {v.title}">
+					<defs>
+						<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+							<path d="M0 0L10 5L0 10z" fill="context-stroke" />
+						</marker>
+					</defs>
+					{#each lay.bands as b (b.label + b.y)}
+						<rect class="region off" x="16" y={b.y - 10} width={lay.width - 32} height={b.h + 22} rx="14" />
+						<text class="region-l" x="32" y={b.y + 8}>{b.label}</text>
+					{/each}
+					{#each v.lines as l (lineKey(l))}
+						{@const moving = flows(l)}
+						<path class="lnk" d={path(l)} stroke={stroke(l)} stroke-width={l.stage === 'declared' || l.stage === 'steady' ? 2 : 1.5}
+							stroke-dasharray={dash(l)} opacity={moving ? opacity(l) * 0.45 : opacity(l)} marker-end="url(#arr)" />
+						{#if moving}<path class="flow" d={path(l)} stroke={stroke(l)} stroke-width="2.5" opacity={opacity(l)} />{/if}
+						<path class="hit" d={path(l)} role="button" tabindex="-1" aria-label={lineTitle(l)}
+							onclick={() => (sel = lineKey(l))} onkeydown={(e) => e.key === 'Enter' && (sel = lineKey(l))}
+							onmouseenter={() => (hover = lineKey(l))} onmouseleave={() => (hover = null)}><title>{lineTitle(l)}</title></path>
+					{/each}
+					{#each v.boxes as b (b.id)}
+						{@const p = lay.pos[b.id] as Pos}
+						<g class="node {b.kind.replace(':', '-')}" class:sel={shown === b.id} class:out={detail(b).source === 'outside'} role="button" tabindex="0" aria-label="{b.name}: {b.status}"
+							onclick={() => (sel = b.id)} ondblclick={() => open(b)} onkeydown={(e) => key(e, b)}
+							onmouseenter={() => (hover = b.id)} onmouseleave={() => (hover = null)} onfocus={() => (hover = b.id)} onblur={() => (hover = null)}>
+							<rect class="box" x={p.x - p.w / 2} y={p.y - p.h / 2} width={p.w} height={p.h} rx="10" />
+							{@render glyph(b.status, p.x - p.w / 2 + 11, p.y - p.h / 2 + 10)}
+							<text x={p.x - p.w / 2 + 32} y={p.y - p.h / 2 + 22}>{b.name.length > 22 ? b.name.slice(0, 21) + '…' : b.name}</text>
+							{#if b.kind === 'group'}
+								<text class="s" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 41}>{b.count} services</text>
+								{#if b.problems?.length}<text class="s bad" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 59}>{b.problems.slice(0, 2).join(', ')}</text>{/if}
+							{:else}
+								<text class="s" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 41}>{(b.sub ?? '').length > 30 ? b.sub!.slice(0, 29) + '…' : b.sub}</text>
+								<text class="m" x={p.x - p.w / 2 + 12} y={p.y + p.h / 2 - 10}>{detail(b).kind ?? ''}{b.count && b.count > 1 ? ` · ${b.count} parts` : ''}{b.ports?.length ? ` · in ${b.ports.slice(0, 3).map((x) => ':' + x).join(' ')}` : ''}</text>
+							{/if}
+						</g>
+					{/each}
+				</svg>
+				{#if v.cut}<p class="cut">More than fits: some boxes are left out. Open a group or use Find.</p>{/if}
+				<div class="map-legend">
+					{#each LEGEND as c (c)}<span><i class="ln" style="border-color:{CARRIES_COLOR[c]}"></i>{CARRIES_WORD[c]}</span>{/each}
+					<span><i class="ln" style="border-color:var(--warning)"></i>needs something in trouble</span>
+					<span><i class="ln"></i>declared or steady, flowing</span>
+					<span><i class="ln dash"></i>seen so far</span>
+					<span><i class="ln dot"></i>fading</span>
+					<span>an arrow points at what's needed</span>
+					<span>{v.mapped} of {v.hosts} hosts mapped · {ago(v.built)}</span>
+				</div>
 			{/if}
-		</li>
-	{/snippet}
+		</div>
 
-	<Panel flush>
-		<div class="map-bar">
-			<nav class="crumbs" aria-label="Where you are">
-				{#each v?.crumbs ?? [] as c (c.id)}
-					<button class="crumb" onclick={() => go(c.id)}>{c.name}</button><span class="sep">›</span>
-				{/each}
-				<span class="here">{v?.title ?? '…'}</span>
-			</nav>
-			{#if focus.startsWith('svc:')}
-				<label class="steps">Steps each way
-					<select bind:value={steps}>{#each [1, 2, 3, 4, 5] as n (n)}<option value={n}>{n}</option>{/each}</select>
-				</label>
-			{/if}
-			<div class="find">
-				<input type="search" placeholder="Find a service, host or site" bind:value={typed} aria-label="Find on the maps" />
-				{#if found.length}
-					<ul class="found" role="listbox">
-						{#each found as f (f.map + f.focus)}
-							<li><button role="option" aria-selected="false" onclick={() => pickFound(f)}><span class="k">{f.kind}</span>{f.name}{#if f.where}<span class="muted"> · {f.where}</span>{/if}</button></li>
+		<aside class="map-panel" aria-live="polite">
+			{#if fixError}<p class="err">{fixError}</p>{/if}
+			{#if sel}<button class="back linkish" onclick={() => (sel = null)}>← {v?.level === 'service' ? v.title : 'Back to the list'}</button>{/if}
+			{#if selLine}
+				{@const l = selLine}
+				<p class="kind">Dependency</p>
+				<h2>{nameOf(l.a)} needs {nameOf(l.b)}</h2>
+				<dl class="kv">
+					{#if ports(l)}<dt>Port</dt><dd class="mono">{ports(l)}</dd>{/if}
+					<dt>How we know</dt><dd>{STAGE_WORD[l.stage ?? ''] ?? '—'}{l.count && l.count > 1 ? ` · ${l.count} edges` : ''}</dd>
+				</dl>
+				<p class="muted">{l.stage === 'seen'
+					? 'Seen in its connections, but not yet in three separate hours in a week. Until then it doesn’t group alerts.'
+					: l.stage === 'steady' ? 'Seen in three separate hours within a week. Steady edges will group alerts under one incident (maps step 6).'
+					: l.stage === 'fading' ? 'Not seen for two weeks. It goes at 30 days unless it’s confirmed.'
+					: 'Declared: in topology.yaml, or confirmed here.'}</p>
+				{#if canFix && isSvc(l.a) && isSvc(l.b)}
+					<div class="acts">
+						{#if l.stage !== 'declared'}<button class="btn sm" disabled={busy} onclick={() => edgeFix(l, 'confirm')}>Confirm</button>{/if}
+						<button class="btn sm ghost" disabled={busy} onclick={() => edgeFix(l, 'reject')}>Not a dependency</button>
+					</div>
+				{/if}
+			{:else if selected}
+				{@const b = selected}
+				{@const d = detail(b)}
+				<p class="kind">{b.kind === 'group' ? 'Group' : (SOURCE_WORD[d.source ?? ''] ?? 'Service')}{b.kind.startsWith('elsewhere') ? ' · outside this view' : ''}</p>
+				<h2>{b.name}</h2>
+				<div class="mt6"><Status s={b.status} word={b.sub} /></div>
+				{#if b.kind === 'group'}
+					<p class="muted">{b.count} services. Open it to see them.</p>
+					<div class="acts"><button class="btn sm" onclick={() => open(b)}>Open <Icon name="arrow" size={14} /></button></div>
+				{:else}
+					<dl class="kv">
+						{#if d.kind}<dt>Looks like</dt><dd>{d.kind}</dd>{/if}
+						<dt>Found as</dt><dd class="mono">{svcId(b.id)}</dd>
+						{#if b.tier}<dt>Tier</dt><dd>{b.tier}</dd>{/if}
+						{#if d.ports?.length}<dt>Listens on</dt><dd class="mono">{d.ports.map((x) => ':' + x).join(' ')}</dd>{/if}
+						{#if b.ports?.length}<dt>From the Internet</dt><dd class="mono">{b.ports.map((x) => ':' + x).join(' ')}</dd>{/if}
+					</dl>
+					{#if needs(b.id).length}
+						<h3>Needs</h3>
+						<ul>{#each needs(b.id) as l (lineKey(l))}{@render edgeRow(l, l.b)}{/each}</ul>
+					{/if}
+					{#if neededBy(b.id).length}
+						<h3>Needed by</h3>
+						<ul>{#each neededBy(b.id) as l (lineKey(l))}{@render edgeRow(l, l.a)}{/each}</ul>
+					{/if}
+					{#if d.parts?.length}
+						<h3>Parts{d.parts.length < (b.count ?? 0) ? ` (first ${d.parts.length} of ${b.count})` : ''}</h3>
+						<ul>
+							{#each allParts ? d.parts : d.parts.slice(0, 8) as pt (pt.host + pt.owner)}
+								{@const k = pt.host + ' ' + pt.owner}
+								<li>
+									{#if pt.owner.startsWith('k8s:')}
+										<a href={k8sLink(pt.host, pt.owner)}>{pt.host}</a><span class="muted mono">{pt.owner.slice(4)}</span>
+									{:else}
+										<a href="/hosts/{pt.host}">{pt.host}</a><span class="muted mono">{pt.owner.replace(/^(container|unit|process):/, '')}</span>
+									{/if}
+									{#if canFix}<button class="mini" title="Move it to another service" onclick={() => { moving = moving === k ? null : k; moveTo = ''; }}>⇄</button>{/if}
+								</li>
+								{#if moving === k}
+									<li class="form">
+										<input placeholder="Service it belongs to (a new name makes one)" bind:value={moveTo} />
+										<button class="btn sm" disabled={busy || !moveTo.trim()} onclick={async () => {
+											const hit = v?.boxes.find((x) => x.name === moveTo.trim() && isSvc(x.id));
+											if (await fix(hit ? { op: 'move', host: pt.host, owner: pt.owner, into: svcId(hit.id) } : { op: 'move', host: pt.host, owner: pt.owner, name: moveTo.trim() })) moving = null;
+										}}>Move</button>
+									</li>
+								{/if}
+							{/each}
+						</ul>
+						{#if d.parts.length > 8 && !allParts}<button class="linkish more" onclick={() => (allParts = true)}>{d.parts.length < (b.count ?? 0) ? `Show the first ${d.parts.length}` : `Show all ${d.parts.length}`}</button>{/if}
+					{/if}
+					{#if d.outside?.length}
+						<h3>Reaches outside</h3>
+						<ul>
+							{#each d.outside as o (o)}
+								<li><span class="mono">{o}</span>
+									{#if canFix}<button class="mini wide" onclick={() => (outsideForm = { name: '', addrs: o, neededBy: svcId(b.id) })}>Name it</button>{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<div class="acts">
+						{#if b.id !== focus}<button class="btn sm" onclick={() => open(b)}>Focus on it <Icon name="arrow" size={14} /></button>{/if}
+					</div>
+					{#if canFix}
+						<h3>Correct it</h3>
+						<div class="fixes">
+							<label>Name<span class="row"><input bind:value={rename} /><button class="btn sm ghost" disabled={busy || !rename.trim() || rename === b.name} onclick={() => fix({ op: 'name', id: svcId(b.id), name: rename })}>Rename</button></span></label>
+							<label>Tier<span class="row">
+								<select bind:value={tier}><option value="">Worked out ({b.tier})</option><option value="edge">Edge</option><option value="apps">Apps</option><option value="data">Data</option></select>
+								<button class="btn sm ghost" disabled={busy} onclick={() => fix({ op: 'tier', id: svcId(b.id), tier })}>Set</button></span></label>
+							<label>Merge into another service<input placeholder="Find a service" bind:value={mergeQ} /></label>
+							{#if mergeHits.length}
+								<ul class="hits">{#each mergeHits as h (h.focus)}<li><button class="linkish" disabled={busy} onclick={async () => { if (await fix({ op: 'merge', id: svcId(b.id), into: svcId(h.focus) })) { sel = null; mergeQ = ''; } }}>{h.name}</button><span class="muted">{h.where ?? ''}</span></li>{/each}</ul>
+							{/if}
+							<button class="btn sm ghost" disabled={busy} onclick={async () => { if (await fix({ op: 'hide', id: svcId(b.id) })) sel = null; }}>Hide from the maps</button>
+						</div>
+					{/if}
+				{/if}
+			{:else if v}
+				<h2>{v.title}</h2>
+				{#if newServices.length || newEdges.length}
+					<h3>Found since you last looked</h3>
+					<ul>
+						{#each newServices as s (s.id)}
+							<li class="new">
+								<span class="tag">new</span>
+								<span class="what"><button class="linkish" onclick={() => (byId.has('svc:' + s.id) ? (sel = 'svc:' + s.id) : go('svc:' + s.id))}>{s.name}</button>
+									<small>{s.hosts.slice(0, 2).join(', ')}{s.hosts.length > 2 ? ' …' : ''} · since {fmtDay(s.first_seen)}</small></span>
+								<button class="mini" title="Looks right" onclick={() => dismiss('svc:' + s.id)}>✓</button>
+								{#if canFix}<button class="mini" title="Hide from the maps" disabled={busy} onclick={() => fix({ op: 'hide', id: s.id })}>✕</button>{/if}
+							</li>
+						{/each}
+						{#each newEdges as e (e.from + e.to + e.port)}
+							<li class="new">
+								<span class="tag">needs</span>
+								<span class="what">{e.from_name} → {e.to_name}{e.port ? ' :' + e.port : ''}
+									<small>{e.stage} · since {fmtDay(e.first_seen)}</small></span>
+								{#if canFix}
+									<button class="mini" title="Confirm" disabled={busy} onclick={() => fix({ op: 'edge', from: e.from, to: e.to, port: e.port, verdict: 'confirm' })}>✓</button>
+									<button class="mini" title="Not a dependency" disabled={busy} onclick={() => fix({ op: 'edge', from: e.from, to: e.to, port: e.port, verdict: 'reject' })}>✕</button>
+								{:else}
+									<button class="mini" title="Seen it" onclick={() => dismiss(`edge:${e.from}|${e.to}|${e.port}`)}>✓</button>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+					{#if (list?.service_count ?? 0) + (list?.edge_count ?? 0) > newServices.length + newEdges.length}
+						<p class="muted">{(list?.service_count ?? 0) + (list?.edge_count ?? 0)} new in all; the newest are listed.</p>
+					{/if}
+					<div class="acts"><button class="btn sm ghost" onclick={markSeen}>Mark all as seen</button></div>
+				{:else if list}
+					<p class="muted">Nothing new since {looked ? 'you last looked' : 'last week'}.</p>
+				{/if}
+				{#if trouble.length}
+					<h3>Need a look</h3>
+					<ul>
+						{#each trouble.slice(0, 20) as b (b.id)}
+							<li>{@render iconLi(b.status)}<button class="linkish" onclick={() => (sel = b.id)}>{b.name}</button><span class="muted">{b.sub ?? ''}</span></li>
 						{/each}
 					</ul>
 				{/if}
-			</div>
-		</div>
-		<div class="map-wrap">
-			<div class="map-canvas" bind:clientWidth={cw}>
-				{#if !v || !lay}
-					<p class="empty">Loading…</p>
-				{:else if v.boxes.length === 0}
-					<div class="none">
-						<h2>No services found yet</h2>
-						<p>A service is a compose project, a systemd unit that listens on a port, or containers from one image. They show up once the agents send map samples (once a minute, through the root helper), and what each needs follows as they talk to each other.</p>
-					</div>
-				{:else}
-					<svg viewBox="0 0 {lay.width} {lay.height}" role="img" aria-label="Service map: {v.title}">
-						<defs>
-							<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-								<path d="M0 0L10 5L0 10z" fill="context-stroke" />
-							</marker>
-						</defs>
-						{#each lay.bands as b (b.label + b.y)}
-							<rect class="region off" x="16" y={b.y - 10} width={lay.width - 32} height={b.h + 22} rx="14" />
-							<text class="region-l" x="32" y={b.y + 8}>{b.label}</text>
+				{#if fixes?.items?.length}
+					<h3>Corrections ({fixes.items.length})</h3>
+					<ul>
+						{#each fixes.items as it (JSON.stringify(it.undo))}
+							<li><span>{it.text}</span>{#if canFix}<button class="mini wide" disabled={busy} onclick={() => fix(it.undo)}>Undo</button>{/if}</li>
 						{/each}
-						{#each v.lines as l (lineKey(l))}
-							{@const moving = flows(l)}
-							<path class="lnk" d={path(l)} stroke={stroke(l)} stroke-width={l.stage === 'declared' || l.stage === 'steady' ? 2 : 1.5}
-								stroke-dasharray={dash(l)} opacity={moving ? opacity(l) * 0.45 : opacity(l)} marker-end="url(#arr)" />
-							{#if moving}<path class="flow" d={path(l)} stroke={stroke(l)} stroke-width="2.5" opacity={opacity(l)} />{/if}
-							<path class="hit" d={path(l)} role="button" tabindex="-1" aria-label={lineTitle(l)}
-								onclick={() => (sel = lineKey(l))} onkeydown={(e) => e.key === 'Enter' && (sel = lineKey(l))}
-								onmouseenter={() => (hover = lineKey(l))} onmouseleave={() => (hover = null)}><title>{lineTitle(l)}</title></path>
-						{/each}
-						{#each v.boxes as b (b.id)}
-							{@const p = lay.pos[b.id] as Pos}
-							<g class="node {b.kind.replace(':', '-')}" class:sel={shown === b.id} class:out={detail(b).source === 'outside'} role="button" tabindex="0" aria-label="{b.name}: {b.status}"
-								onclick={() => (sel = b.id)} ondblclick={() => open(b)} onkeydown={(e) => key(e, b)}
-								onmouseenter={() => (hover = b.id)} onmouseleave={() => (hover = null)} onfocus={() => (hover = b.id)} onblur={() => (hover = null)}>
-								<rect class="box" x={p.x - p.w / 2} y={p.y - p.h / 2} width={p.w} height={p.h} rx="10" />
-								{@render glyph(b.status, p.x - p.w / 2 + 11, p.y - p.h / 2 + 10)}
-								<text x={p.x - p.w / 2 + 32} y={p.y - p.h / 2 + 22}>{b.name.length > 22 ? b.name.slice(0, 21) + '…' : b.name}</text>
-								{#if b.kind === 'group'}
-									<text class="s" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 41}>{b.count} services</text>
-									{#if b.problems?.length}<text class="s bad" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 59}>{b.problems.slice(0, 2).join(', ')}</text>{/if}
-								{:else}
-									<text class="s" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 41}>{(b.sub ?? '').length > 30 ? b.sub!.slice(0, 29) + '…' : b.sub}</text>
-									<text class="m" x={p.x - p.w / 2 + 12} y={p.y + p.h / 2 - 10}>{detail(b).kind ?? ''}{b.count && b.count > 1 ? ` · ${b.count} parts` : ''}{b.ports?.length ? ` · in ${b.ports.slice(0, 3).map((x) => ':' + x).join(' ')}` : ''}</text>
-								{/if}
-							</g>
-						{/each}
-					</svg>
-					{#if v.cut}<p class="cut">More than fits: some boxes are left out. Open a group or use Find.</p>{/if}
-					<div class="map-legend">
-						{#each LEGEND as c (c)}<span><i class="ln" style="border-color:{CARRIES_COLOR[c]}"></i>{CARRIES_WORD[c]}</span>{/each}
-						<span><i class="ln" style="border-color:var(--warning)"></i>needs something in trouble</span>
-						<span><i class="ln"></i>declared or steady, flowing</span>
-						<span><i class="ln dash"></i>seen so far</span>
-						<span><i class="ln dot"></i>fading</span>
-						<span>an arrow points at what's needed</span>
-						<span>{v.mapped} of {v.hosts} hosts mapped · {ago(v.built)}</span>
-					</div>
+					</ul>
+					{#if fixes.updated_by}<p class="muted">Last by {fixes.updated_by}, {ago(fixes.updated ?? '')}.</p>{/if}
 				{/if}
-			</div>
+				{#if canFix}
+					<div class="acts"><button class="btn sm ghost" onclick={() => (outsideForm = { name: '', addrs: '', neededBy: '' })}>Add an outside service</button></div>
+				{/if}
+				<p class="muted">Click a service or a line for its details; double-click or press Enter twice to open it.</p>
+			{/if}
 
-			<aside class="map-panel" aria-live="polite">
-				{#if fixError}<p class="err">{fixError}</p>{/if}
-				{#if sel}<button class="back linkish" onclick={() => (sel = null)}>← {v?.level === 'service' ? v.title : 'Back to the list'}</button>{/if}
-				{#if selLine}
-					{@const l = selLine}
-					<p class="kind">Dependency</p>
-					<h2>{nameOf(l.a)} needs {nameOf(l.b)}</h2>
-					<dl class="kv">
-						{#if ports(l)}<dt>Port</dt><dd class="mono">{ports(l)}</dd>{/if}
-						<dt>How we know</dt><dd>{STAGE_WORD[l.stage ?? ''] ?? '—'}{l.count && l.count > 1 ? ` · ${l.count} edges` : ''}</dd>
-					</dl>
-					<p class="muted">{l.stage === 'seen'
-						? 'Seen in its connections, but not yet in three separate hours in a week. Until then it doesn’t group alerts.'
-						: l.stage === 'steady' ? 'Seen in three separate hours within a week. Steady edges will group alerts under one incident (maps step 6).'
-						: l.stage === 'fading' ? 'Not seen for two weeks. It goes at 30 days unless it’s confirmed.'
-						: 'Declared: in topology.yaml, or confirmed here.'}</p>
-					{#if canFix && isSvc(l.a) && isSvc(l.b)}
-						<div class="acts">
-							{#if l.stage !== 'declared'}<button class="btn sm" disabled={busy} onclick={() => edgeFix(l, 'confirm')}>Confirm</button>{/if}
-							<button class="btn sm ghost" disabled={busy} onclick={() => edgeFix(l, 'reject')}>Not a dependency</button>
-						</div>
-					{/if}
-				{:else if selected}
-					{@const b = selected}
-					{@const d = detail(b)}
-					<p class="kind">{b.kind === 'group' ? 'Group' : (SOURCE_WORD[d.source ?? ''] ?? 'Service')}{b.kind.startsWith('elsewhere') ? ' · outside this view' : ''}</p>
-					<h2>{b.name}</h2>
-					<div class="mt6"><Status s={b.status} word={b.sub} /></div>
-					{#if b.kind === 'group'}
-						<p class="muted">{b.count} services. Open it to see them.</p>
-						<div class="acts"><button class="btn sm" onclick={() => open(b)}>Open <Icon name="arrow" size={14} /></button></div>
-					{:else}
-						<dl class="kv">
-							{#if d.kind}<dt>Looks like</dt><dd>{d.kind}</dd>{/if}
-							<dt>Found as</dt><dd class="mono">{svcId(b.id)}</dd>
-							{#if b.tier}<dt>Tier</dt><dd>{b.tier}</dd>{/if}
-							{#if d.ports?.length}<dt>Listens on</dt><dd class="mono">{d.ports.map((x) => ':' + x).join(' ')}</dd>{/if}
-							{#if b.ports?.length}<dt>From the Internet</dt><dd class="mono">{b.ports.map((x) => ':' + x).join(' ')}</dd>{/if}
-						</dl>
-						{#if needs(b.id).length}
-							<h3>Needs</h3>
-							<ul>{#each needs(b.id) as l (lineKey(l))}{@render edgeRow(l, l.b)}{/each}</ul>
-						{/if}
-						{#if neededBy(b.id).length}
-							<h3>Needed by</h3>
-							<ul>{#each neededBy(b.id) as l (lineKey(l))}{@render edgeRow(l, l.a)}{/each}</ul>
-						{/if}
-						{#if d.parts?.length}
-							<h3>Parts{d.parts.length < (b.count ?? 0) ? ` (first ${d.parts.length} of ${b.count})` : ''}</h3>
-							<ul>
-								{#each allParts ? d.parts : d.parts.slice(0, 8) as pt (pt.host + pt.owner)}
-									{@const k = pt.host + ' ' + pt.owner}
-									<li>
-										{#if pt.owner.startsWith('k8s:')}
-											<a href={k8sLink(pt.host, pt.owner)}>{pt.host}</a><span class="muted mono">{pt.owner.slice(4)}</span>
-										{:else}
-											<a href="/hosts/{pt.host}">{pt.host}</a><span class="muted mono">{pt.owner.replace(/^(container|unit|process):/, '')}</span>
-										{/if}
-										{#if canFix}<button class="mini" title="Move it to another service" onclick={() => { moving = moving === k ? null : k; moveTo = ''; }}>⇄</button>{/if}
-									</li>
-									{#if moving === k}
-										<li class="form">
-											<input placeholder="Service it belongs to (a new name makes one)" bind:value={moveTo} />
-											<button class="btn sm" disabled={busy || !moveTo.trim()} onclick={async () => {
-												const hit = v?.boxes.find((x) => x.name === moveTo.trim() && isSvc(x.id));
-												if (await fix(hit ? { op: 'move', host: pt.host, owner: pt.owner, into: svcId(hit.id) } : { op: 'move', host: pt.host, owner: pt.owner, name: moveTo.trim() })) moving = null;
-											}}>Move</button>
-										</li>
-									{/if}
-								{/each}
-							</ul>
-							{#if d.parts.length > 8 && !allParts}<button class="linkish more" onclick={() => (allParts = true)}>{d.parts.length < (b.count ?? 0) ? `Show the first ${d.parts.length}` : `Show all ${d.parts.length}`}</button>{/if}
-						{/if}
-						{#if d.outside?.length}
-							<h3>Reaches outside</h3>
-							<ul>
-								{#each d.outside as o (o)}
-									<li><span class="mono">{o}</span>
-										{#if canFix}<button class="mini wide" onclick={() => (outsideForm = { name: '', addrs: o, neededBy: svcId(b.id) })}>Name it</button>{/if}
-									</li>
-								{/each}
-							</ul>
-						{/if}
-						<div class="acts">
-							{#if b.id !== focus}<button class="btn sm" onclick={() => open(b)}>Focus on it <Icon name="arrow" size={14} /></button>{/if}
-						</div>
-						{#if canFix}
-							<h3>Correct it</h3>
-							<div class="fixes">
-								<label>Name<span class="row"><input bind:value={rename} /><button class="btn sm ghost" disabled={busy || !rename.trim() || rename === b.name} onclick={() => fix({ op: 'name', id: svcId(b.id), name: rename })}>Rename</button></span></label>
-								<label>Tier<span class="row">
-									<select bind:value={tier}><option value="">Worked out ({b.tier})</option><option value="edge">Edge</option><option value="apps">Apps</option><option value="data">Data</option></select>
-									<button class="btn sm ghost" disabled={busy} onclick={() => fix({ op: 'tier', id: svcId(b.id), tier })}>Set</button></span></label>
-								<label>Merge into another service<input placeholder="Find a service" bind:value={mergeQ} /></label>
-								{#if mergeHits.length}
-									<ul class="hits">{#each mergeHits as h (h.focus)}<li><button class="linkish" disabled={busy} onclick={async () => { if (await fix({ op: 'merge', id: svcId(b.id), into: svcId(h.focus) })) { sel = null; mergeQ = ''; } }}>{h.name}</button><span class="muted">{h.where ?? ''}</span></li>{/each}</ul>
-								{/if}
-								<button class="btn sm ghost" disabled={busy} onclick={async () => { if (await fix({ op: 'hide', id: svcId(b.id) })) sel = null; }}>Hide from the maps</button>
-							</div>
-						{/if}
-					{/if}
-				{:else if v}
-					<h2>{v.title}</h2>
-					{#if newServices.length || newEdges.length}
-						<h3>Found since you last looked</h3>
-						<ul>
-							{#each newServices as s (s.id)}
-								<li class="new">
-									<span class="tag">new</span>
-									<span class="what"><button class="linkish" onclick={() => (byId.has('svc:' + s.id) ? (sel = 'svc:' + s.id) : go('svc:' + s.id))}>{s.name}</button>
-										<small>{s.hosts.slice(0, 2).join(', ')}{s.hosts.length > 2 ? ' …' : ''} · since {fmtDay(s.first_seen)}</small></span>
-									<button class="mini" title="Looks right" onclick={() => dismiss('svc:' + s.id)}>✓</button>
-									{#if canFix}<button class="mini" title="Hide from the maps" disabled={busy} onclick={() => fix({ op: 'hide', id: s.id })}>✕</button>{/if}
-								</li>
-							{/each}
-							{#each newEdges as e (e.from + e.to + e.port)}
-								<li class="new">
-									<span class="tag">needs</span>
-									<span class="what">{e.from_name} → {e.to_name}{e.port ? ' :' + e.port : ''}
-										<small>{e.stage} · since {fmtDay(e.first_seen)}</small></span>
-									{#if canFix}
-										<button class="mini" title="Confirm" disabled={busy} onclick={() => fix({ op: 'edge', from: e.from, to: e.to, port: e.port, verdict: 'confirm' })}>✓</button>
-										<button class="mini" title="Not a dependency" disabled={busy} onclick={() => fix({ op: 'edge', from: e.from, to: e.to, port: e.port, verdict: 'reject' })}>✕</button>
-									{:else}
-										<button class="mini" title="Seen it" onclick={() => dismiss(`edge:${e.from}|${e.to}|${e.port}`)}>✓</button>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-						{#if (list?.service_count ?? 0) + (list?.edge_count ?? 0) > newServices.length + newEdges.length}
-							<p class="muted">{(list?.service_count ?? 0) + (list?.edge_count ?? 0)} new in all; the newest are listed.</p>
-						{/if}
-						<div class="acts"><button class="btn sm ghost" onclick={markSeen}>Mark all as seen</button></div>
-					{:else if list}
-						<p class="muted">Nothing new since {looked ? 'you last looked' : 'last week'}.</p>
-					{/if}
-					{#if trouble.length}
-						<h3>Need a look</h3>
-						<ul>
-							{#each trouble.slice(0, 20) as b (b.id)}
-								<li>{@render iconLi(b.status)}<button class="linkish" onclick={() => (sel = b.id)}>{b.name}</button><span class="muted">{b.sub ?? ''}</span></li>
-							{/each}
-						</ul>
-					{/if}
-					{#if fixes?.items?.length}
-						<h3>Corrections ({fixes.items.length})</h3>
-						<ul>
-							{#each fixes.items as it (JSON.stringify(it.undo))}
-								<li><span>{it.text}</span>{#if canFix}<button class="mini wide" disabled={busy} onclick={() => fix(it.undo)}>Undo</button>{/if}</li>
-							{/each}
-						</ul>
-						{#if fixes.updated_by}<p class="muted">Last by {fixes.updated_by}, {ago(fixes.updated ?? '')}.</p>{/if}
-					{/if}
-					{#if canFix}
-						<div class="acts"><button class="btn sm ghost" onclick={() => (outsideForm = { name: '', addrs: '', neededBy: '' })}>Add an outside service</button></div>
-					{/if}
-					<p class="muted">Click a service or a line for its details; double-click or press Enter twice to open it.</p>
-				{/if}
-
-				{#if outsideForm}
-					<div class="outside">
-						<h3>An outside service</h3>
-						<p class="muted">Something not ours that services depend on: a payment provider, a relay at another company. Connections to its addresses become dependencies on it.</p>
-						<label>Name<input bind:value={outsideForm.name} placeholder="Payments provider" /></label>
-						<label>Addresses<input bind:value={outsideForm.addrs} placeholder="203.0.113.10:443 198.51.100.0/24" class="mono" /></label>
-						{#if outsideForm.neededBy}<p class="muted">Needed by {nameOf('svc:' + outsideForm.neededBy)}.</p>{/if}
-						<div class="acts">
-							<button class="btn sm" disabled={busy || !outsideForm.name.trim()} onclick={addOutside}>Add it</button>
-							<button class="btn sm ghost" onclick={() => (outsideForm = null)}>Cancel</button>
-						</div>
+			{#if outsideForm}
+				<div class="outside">
+					<h3>An outside service</h3>
+					<p class="muted">Something not ours that services depend on: a payment provider, a relay at another company. Connections to its addresses become dependencies on it.</p>
+					<label>Name<input bind:value={outsideForm.name} placeholder="Payments provider" /></label>
+					<label>Addresses<input bind:value={outsideForm.addrs} placeholder="203.0.113.10:443 198.51.100.0/24" class="mono" /></label>
+					{#if outsideForm.neededBy}<p class="muted">Needed by {nameOf('svc:' + outsideForm.neededBy)}.</p>{/if}
+					<div class="acts">
+						<button class="btn sm" disabled={busy || !outsideForm.name.trim()} onclick={addOutside}>Add it</button>
+						<button class="btn sm ghost" onclick={() => (outsideForm = null)}>Cancel</button>
 					</div>
-				{/if}
-			</aside>
-		</div>
-	</Panel>
-{/if}
+				</div>
+			{/if}
+		</aside>
+	</div>
+</Panel>
 
 <style>
-	.tabs { display: flex; gap: 6px; margin: 0 0 12px; }
-	.tabs button { height: 32px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); font-size: 13px; cursor: pointer; }
-	.tabs button.on { border-color: var(--primary); color: var(--foreground); background: var(--accent); }
 	.map-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 	.crumbs { display: flex; align-items: center; gap: 6px; font-size: 14px; min-width: 0; flex: 1; flex-wrap: wrap; }
 	.crumb { background: none; border: 0; padding: 0; color: var(--primary); cursor: pointer; font: inherit; }

@@ -24,7 +24,6 @@ func (srv *Server) features() map[string]bool {
 	}
 	return map[string]bool{
 		"maps":       srv.cfg.Topology != "" || mapped, // drawn from map samples, or by hand
-		"topology":   srv.cfg.Topology != "",
 		"mail":       srv.cfg.Mail != nil,
 		"data":       srv.cfg.DataLayer != nil,
 		"containers": containers || len(srv.currentExpected().Hosts) > 0,

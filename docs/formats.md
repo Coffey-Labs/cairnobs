@@ -731,41 +731,35 @@ different hosts warns once it has lasted 15 minutes: a deploy that didn't
 reach every host. Digests aren't compared, since hosts that build images
 themselves get different digests for the same content.
 
-## topology.yaml: the maps
+## topology.yaml: corrections to the maps
 
 `topology` in obs-beacond.yaml points at it; re-read when it changes. The
-maps also draw themselves from what the agents see (maps.md): sites from
+maps draw themselves from what the agents see (maps.md): sites from
 shared private networks, links from WireGuard keys and traffic, services
 from compose projects, containers and listening units, and what each
-service needs from the connections between them. There, this file is a set
-of corrections: `network.site` names the site holding most of its hosts,
-`roles` go on the host cards, and each service claims the containers and
-units its patterns match (taking their place under its own `id` and
-`name`), its `tier` places it, and its `needs` are declared edges. A
-service nothing matches is still drawn, as declared. The hand-drawn maps
-below read the file as before until the new pages replace them.
+service needs from the connections between them. This file corrects and
+names what's found; nothing in it is needed for the maps to draw.
 
-`network`: `site` (the box the hosts sit in), `hosts` (in drawing order:
-top left, top right, bottom), each with `mesh_ip` and `roles` (shown on its card), `mesh_check`, the ping check
-other hosts run against it (a link's round trip is the average of both
-directions), and `mail`: `name`, `host` and the `check` that tries it.
-`remote` lists agents outside the site that reach it over a link of their
-own to one site host (a desk machine at home on its own WireGuard tunnel):
-`name`, `via` (the site host at the other end), `link` (its name, e.g.
-`wg-bench`), `mesh_ip`, `roles` and `link_check`, a ping check the remote
-host runs to the far end (give it `from: [<name>]`). They're drawn below the
-site box with one dashed line to `via`, and aren't mesh members or on the
-service map. The link is up while the host's reports arrive, since they come
-over it; `link_check` adds the round trip.
-Web paths come from Cloudflare's pools when Cloudflare is set up.
+`network`: `site` names the site holding most of the `hosts` listed, and
+each host's `roles` (a few words, e.g. `"mail · Gitea"`) go on its card.
+`remote` lists hosts outside the site (a desk machine at home on its own
+tunnel), with `name` and `roles`. Every host named must be an agent.
 
-`services`: `id`, `name`, `tier` (edge, public, apps, data; the hosts are
-the bottom row by themselves), `needs` (service ids or host names),
-`sub` (a few words under its name; default: what it's made of), `note`, and what makes up its state: `checks` (ids), `containers` and
-`units` (`host/pattern` or `*/pattern`; a unit without a type is a
-.service) and `cloudflare: true`. A service's state is the worst of its
-parts. The service map lights up what a service needs and what depends on
-it, all the way down and up.
+`services`: `id`, `name`, `tier` (edge, public, apps, data), `needs`
+(service ids or host names: declared edges, which group alerts), and what
+makes up its state: `checks` (ids), `containers` and `units`
+(`host/pattern` or `*/pattern`; a unit without a type is a .service) and
+`cloudflare: true`. Each service claims the containers and units its
+patterns match, which take their place under its own `id` and `name`;
+one nothing matches is still drawn, as declared. A service's state is the
+worst of its parts, and its history is kept for the Reports page.
+
+Up to 0.1.0-rc.3 this file also drew two hand-drawn maps, with `mesh_ip`,
+`mesh_check`, `network.mail`, a remote host's `via`, `link` and
+`link_check`, and a service's `sub` and `note`. Those maps are gone, and a
+file that still has those fields is refused: obs-beacond won't start with
+it, and a running one keeps the last good file and logs why. Take them
+out before upgrading.
 
 ### Root-cause grouping
 

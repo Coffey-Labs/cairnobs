@@ -260,7 +260,7 @@ canvas or WebGL.
   `svc:<id>` with `steps`, default 3). Each answer is boxes, lines between
   them and the crumbs back up. A response is capped at 300 boxes and 1,000
   lines; the server groups further rather than sending more.
-  `/api/v1/topology` stays until the pages have moved.
+  `/api/v1/topology` (the hand-drawn maps' state) went with them in step 8.
 - What's plumbing on every host (sshd, the resolver, Docker's proxy, the
   agent itself) is never a service, and connections to it aren't
   dependencies. A service's colour is the worst of its parts: a
@@ -384,7 +384,13 @@ One PR each, in order:
    the Internet coming in. Listeners and connections now say when
    they're `inside` a namespace of their own, the server matches only
    the host's own listeners to its addresses, and a connection whose
-   both ends are on the host is counted once, going out.
+   both ends are on the host is counted once, going out (0.1.0-rc.3, on
+   prod the same day; the wrong lines stopped). Then the hand-drawn maps
+   went: no second tab, no `/api/v1/topology`, and topology.yaml keeps
+   only corrections (site name, roles, declared services with their
+   parts, tier, needs and checks; formats.md). Ours lost its drawing
+   fields and gained what the comparison showed missing: two web
+   containers under Websites and the image builders under CI runners.
 
 Between this and the cluster watcher's step 4 (KubeVirt), the order is
 John's call (question 6).
