@@ -116,7 +116,10 @@ type HostView struct {
 	Containers      ContainerSummary `json:"containers"`
 	ContainersError string           `json:"containers_error,omitempty"`
 	Units           []UnitView       `json:"units"`
-	rows            []ContainerRow
+	// Events is a Windows host's event log: the errors and criticals of
+	// the last day (docs/windows.md, step 7).
+	Events *report.Events `json:"events,omitempty"`
+	rows   []ContainerRow
 }
 
 // UnitView is one expected systemd unit as the UI shows it.
@@ -326,6 +329,12 @@ func (srv *Server) view(now time.Time) ([]HostView, []Condition) {
 				}
 				add(Condition{Key: "unit/" + h.name + "/" + u.Name, Severity: "critical", Title: fmt.Sprintf("%s on %s: %s", name, h.name, strings.ToLower(u.Word)),
 					Detail: manager + " reports it " + u.Active + " (" + u.Sub + ").", Host: "", Href: href})
+			}
+		}
+		if h.events != nil && now.Sub(h.events.At) < 2*time.Hour {
+			v.Events = h.events
+			for _, c := range eventConditions(h.name, h.events, now) {
+				add(c)
 			}
 		}
 		if v.ContainersError != "" {

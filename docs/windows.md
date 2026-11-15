@@ -3,7 +3,7 @@
 Status: decided 2026-11-14 (Decisions, at the end): every question went
 the recommended way. Built: steps 1–4 under Plan (2026-11-14), and run on
 a Windows Server 2025 evaluation VM (decision 5) the same day; what that
-turned up was fixed in #10. Steps 5–6 built 2026-11-15; 7–8 next.
+turned up was fixed in #10. Steps 5–7 built 2026-11-15; 8 next.
 
 John, 2026-11-12: "will need windows agent as well". Plenty of the fleets
 Cairn OBS is for have Windows servers beside the Linux ones (domain
@@ -122,8 +122,15 @@ Then, from John's "work it out make it sexy and relavant" (2026-11-15):
    "renewed but not reloaded", as on Linux.
 6. **arm64** (built 2026-11-15): a `windows_arm64` zip beside the amd64
    one; install.ps1 picks by the machine's architecture.
-7. **The event log**: errors and criticals in System and Application,
-   grouped by source, on the host's page.
+7. **The event log** (built 2026-11-15): every five minutes the agent
+   reads the errors and criticals of the last day in System and
+   Application through wevtapi (at most 2,000 a log, newest first),
+   grouped by log, source and event ID with the latest one's message as
+   Windows formats it, on the host's page ("Event log"). A critical event
+   in the last hour (Kernel-Power 41, a failing disk) is a warning;
+   errors are listed, never alerted on: Windows logs plenty nobody needs
+   waking for. `event_log: false` turns it off. The service's own account
+   reads both logs on Server 2025 without extra rights.
 8. **Hyper-V VMs**, like libvirt's, so a Windows hypervisor's guests
    link to their hosts.
 

@@ -127,6 +127,32 @@
 			</Panel>
 		</div>
 	{/if}
+	{#if host.events}
+		<div class="mt" id="events">
+			<Panel title="Event log" aside="Errors and criticals in System and Application, the last day" flush>
+				{#if host.events.error}<p class="pad sub">Couldn't read: {host.events.error}</p>{/if}
+				<div class="tbl-wrap flat">
+					<table class="tbl">
+						<thead><tr><th>Level</th><th>Source</th><th class="r">Event</th><th class="r">Times</th><th>Latest</th><th>What it said</th></tr></thead>
+						<tbody>
+							{#each host.events.list as g (g.log + g.source + g.id)}
+								<tr>
+									<td><Status s={g.level === 'critical' ? 'critical' : 'warning'} word={g.level === 'critical' ? 'Critical' : 'Error'} /></td>
+									<td><span class="mono">{g.source}</span><div class="sub">{g.log}</div></td>
+									<td class="r mono">{g.id}</td>
+									<td class="r mono">{g.count}</td>
+									<td class="sub nowrap">{ago(g.last)}</td>
+									<td class="sub msg">{g.message || '—'}</td>
+								</tr>
+							{:else}
+								<tr><td colspan="6" class="empty">Nothing in the last day.</td></tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</Panel>
+		</div>
+	{/if}
 {:else if host}
 	<p class="empty">No report from {name} yet. Is its agent running and pointed at this obs-beacond?</p>
 {/if}
@@ -142,5 +168,7 @@
 	.fill.crit i { background: var(--critical); }
 	.stat :global(.spark), :global(.panel) :global(.spark) { margin-top: 10px; }
 	.vm { margin-top: 2px; }
+	.msg { max-width: 60ch; min-width: 24ch; }
+	.nowrap { white-space: nowrap; }
 	.vm .bad { color: var(--critical); font-weight: 500; }
 </style>

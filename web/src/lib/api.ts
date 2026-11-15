@@ -27,10 +27,14 @@ export interface Host {
 	containers: ContainerSummary;
 	containers_error?: string;
 	units?: UnitView[];
+	/** A Windows host's event log: errors and criticals of the last day (docs/windows.md, step 7). */
+	events?: HostEvents;
 	/** The VM this host is, linked by its SMBIOS UUID. */
 	vm?: VMLink;
 	vms?: HostVMCount;
 }
+export interface HostEvents { at: string; since: string; list: EventGroup[]; error?: string }
+export interface EventGroup { log: string; source: string; id: number; level: 'critical' | 'error'; count: number; first: string; last: string; message?: string }
 /** A cluster's VM, as linked to a host (internal/server/vmlink.go). */
 export interface VMLink { source: string; namespace?: string; name: string; node?: string; state: string; word: string; href: string; on_host?: boolean; title?: string }
 /** The libvirt VMs a host runs. */
