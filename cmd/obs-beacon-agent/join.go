@@ -44,6 +44,9 @@ func runJoin(args []string) error {
 	if _, err := os.Stat(*cfgPath); err == nil && !*force {
 		return fmt.Errorf("%s exists: this host is set up already (-force replaces it)", *cfgPath)
 	}
+	if err := prepareJoin(*cfgPath, *stateDir); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	name, err := agentlink.Join(ctx, tok.Server, tok.CAFingerprint, tok.Secret, *stateDir)

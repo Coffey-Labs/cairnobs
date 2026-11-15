@@ -418,6 +418,7 @@ func (srv *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/agents/join/{id}", srv.needAdmin(srv.handleJoinCancel))
 	mux.HandleFunc("DELETE /api/v1/agents/{name}", srv.needAdmin(srv.handleAgentRemove))
 	mux.HandleFunc("GET /install.sh", srv.handleInstallScript)
+	mux.HandleFunc("GET /install.ps1", srv.handleInstallPS1)
 	mux.HandleFunc("GET /cluster.yaml", srv.handleClusterManifest)
 	mux.HandleFunc("GET /agent-packages/{file}", srv.handleAgentPackage)
 	mux.HandleFunc("GET /api/v1/map/network", srv.needSession(srv.handleMapNetwork))

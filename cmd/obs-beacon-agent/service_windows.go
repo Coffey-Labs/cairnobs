@@ -270,6 +270,20 @@ func ownDataDir(dir string) error {
 	return nil
 }
 
+// prepareJoin: the key and config join writes go in folders only the
+// service may read, so the service must be installed first.
+func prepareJoin(cfgPath, stateDir string) error {
+	if _, _, _, err := windows.LookupSID("", serviceAccount); err != nil {
+		return fmt.Errorf("install the service first (obs-beacon-agent.exe service install): %w", err)
+	}
+	for _, d := range []string{filepath.Dir(cfgPath), stateDir} {
+		if err := ownDataDir(d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // uninstallService stops and removes the service and the program; the
 // config and state stay, as a package's do.
 func uninstallService() error {
