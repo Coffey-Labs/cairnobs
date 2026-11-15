@@ -681,7 +681,8 @@ downloads as CSV (`/api/v1/reports/csv/<section>?period=`); printing the
 page gives a clean PDF.
 
 `reports` in obs-beacond.yaml (optional): `timezone` (where months and
-days start, and what the Reports page shows times in; default the
+days start, what the Reports page shows times in, and the "Since" time in
+alert notices; default the
 server's own: `TZ`, else what `/etc/localtime` links to, else UTC) and `digest`: `weekday` (monday), `at` (08:00 in
 that timezone) and `channels` (alert channel ids; default every email
 channel). The digest summarises the last seven days: what's wrong now,

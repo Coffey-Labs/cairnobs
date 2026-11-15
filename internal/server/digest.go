@@ -98,7 +98,7 @@ func (srv *Server) sendDigest(ctx context.Context, now time.Time) error {
 	url := srv.cfg.Alerts.PublicURL + "/reports?period=7d"
 	var errs []string
 	for _, ch := range srv.digestChannels() {
-		n := notify.Notice{Kind: "digest", Severity: "info", Title: subject, Detail: text, URL: url, Since: now}
+		n := notify.Notice{Kind: "digest", Severity: "info", Title: subject, Detail: text, URL: url, Since: now.In(srv.reportsLoc())}
 		if ch.Type() != "email" {
 			n.Detail = short
 		}

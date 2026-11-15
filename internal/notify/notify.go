@@ -260,7 +260,7 @@ func body(n Notice) string {
 		b.WriteString("Host: " + n.Host + "\n")
 	}
 	if !n.Since.IsZero() && n.Kind != "test" {
-		b.WriteString("Since: " + n.Since.UTC().Format("2006-01-02 15:04 UTC") + "\n")
+		b.WriteString("Since: " + n.Since.Format("2006-01-02 15:04 MST") + "\n") // in the zone obs-beacond gives it
 	}
 	if n.ID != "" {
 		b.WriteString("Incident " + n.ID)
