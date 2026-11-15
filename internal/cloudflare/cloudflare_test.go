@@ -215,3 +215,22 @@ func TestMissingTokenRefused(t *testing.T) {
 		t.Fatal("started without token_file")
 	}
 }
+
+func TestStandInOnLoopbackOnly(t *testing.T) {
+	tf := filepath.Join(t.TempDir(), "token")
+	_ = os.WriteFile(tf, []byte(token+"\n"), 0o600)
+	for _, bad := range []string{"https://127.0.0.1:1", "http://192.0.2.1:80", "http://api.example.org", "http://127.0.0.1:1/client/v4", "127.0.0.1:1"} {
+		if _, err := New(Config{TokenFile: tf, StandIn: bad}); err == nil {
+			t.Errorf("stand_in %s accepted", bad)
+		}
+	}
+	srv := Fake(t, true, nil)
+	w, err := New(Config{TokenFile: tf, StandIn: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Poll(context.Background(), time.Now())
+	if s := w.Snapshot(); s.Error != "" || len(s.Zones) != 2 || s.Status.Indicator != "minor" {
+		t.Fatalf("through the stand-in: %+v", s)
+	}
+}

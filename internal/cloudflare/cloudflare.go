@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,6 +37,11 @@ type Config struct {
 	ErrorMin         int     `yaml:"error_min"`          // fewer 5xx than this never alerts; default 20
 	BlockMin         int     `yaml:"block_min"`          // blocked requests before it can be a spike; default 100
 	BlockFactor      float64 `yaml:"block_factor"`       // times the last day's average; default 10
+
+	// StandIn is a stand-in for Cloudflare on this machine, such as the
+	// fleet simulator's (scripts/fleet): http on loopback only. The token
+	// and every request go there instead, the status page too.
+	StandIn string `yaml:"stand_in"`
 
 	API       string `yaml:"-"` // tests point these at a fake
 	StatusURL string `yaml:"-"`
@@ -197,6 +203,14 @@ type Watcher struct {
 // New checks the token file is readable; it is read again on every poll so
 // a new token needs no restart.
 func New(cfg Config) (*Watcher, error) {
+	if cfg.StandIn != "" {
+		u, err := url.Parse(cfg.StandIn)
+		if err != nil || u.Scheme != "http" || u.Path != "" && u.Path != "/" || !loopback(u.Hostname()) {
+			return nil, fmt.Errorf("cloudflare: stand_in %q: must be http://127.0.0.1:port (a stand-in on this machine)", cfg.StandIn)
+		}
+		cfg.API = "http://" + u.Host
+		cfg.StatusURL = cfg.API + "/status.json"
+	}
 	cfg.Defaults()
 	if cfg.TokenFile == "" {
 		return nil, errors.New("cloudflare: token_file is required")
@@ -206,6 +220,11 @@ func New(cfg Config) (*Watcher, error) {
 	}
 	return &Watcher{cfg: cfg, client: &http.Client{Timeout: 20 * time.Second},
 		snap: Snapshot{Zones: []Zone{}, Pools: []Pool{}}}, nil
+}
+
+func loopback(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && ip.IsLoopback()
 }
 
 // Config returns the settings in use (defaults filled in).

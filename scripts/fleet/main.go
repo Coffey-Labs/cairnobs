@@ -173,6 +173,7 @@ func run(args []string) {
 	ntnxVMs := fs.Int("nutanix", 0, "this many VMs in a Prism Central read by fleet-0100's agent (0: none)")
 	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by fleet-0040's agent (0: none)")
 	akamaiDir := fs.String("akamai", "", "serve a fake Akamai account on loopback, and write its .edgerc and the akamai: section for obs-beacond.yaml to this directory's akamai.yaml (\"\": none)")
+	cfDir := fs.String("cloudflare", "", "serve a fake Cloudflare account on loopback, and write its token and the cloudflare: section for obs-beacond.yaml to this directory's cloudflare.yaml (\"\": none)")
 	vaultDir := fs.String("vault", "", "serve two fake Vault clusters over HTTPS on loopback, and write their vault: list for obs-beacond.yaml to this directory's vault.yaml (\"\": none)")
 	demo := fs.Bool("demo", false, "hosts report the demo's checks, units, backups and data layer, and fleet serves its Patroni cluster (fleet config -demo, same number of agents)")
 	probe := fs.Bool("probe", true, "time how long a change in cluster-00 takes to show on every copy (needs dev_signin)")
@@ -369,6 +370,9 @@ func run(args []string) {
 	}
 	if *vaultDir != "" {
 		serveVaults(ctx, *vaultDir)
+	}
+	if *cfDir != "" {
+		serveCloudflare(ctx, *cfDir)
 	}
 	if *akamaiDir != "" {
 		serveAkamai(ctx, *akamaiDir)
