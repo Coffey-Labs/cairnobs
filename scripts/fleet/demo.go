@@ -236,7 +236,7 @@ func demoScan(n, hosts int, now time.Time) *report.Backups {
 
 // writeDemo writes the demo's files into dir, and demo.yaml: the lines to
 // add to obs-beacond.yaml.
-func writeDemo(dir string, hosts int) {
+func writeDemo(dir string, hosts, windows int) {
 	var checks bytes.Buffer
 	checks.WriteString("# The fleet demo's checks (fleet config -demo).\nchecks:\n")
 	for _, c := range demoChecks(hosts) {
@@ -264,6 +264,7 @@ func writeDemo(dir string, hosts int) {
 			exp.WriteString("    stopped:\n      - match: app-09\n        note: Replaced by app-09b; kept for a rollback until Friday.\n")
 		}
 	}
+	exp.WriteString(winExpected(windows))
 	if hosts > ibmiHost {
 		// The IBM i partitions' subsystems that must be active (run -ibmi):
 		// prod2's ORDERS isn't, and ha1, the standby, expects none.

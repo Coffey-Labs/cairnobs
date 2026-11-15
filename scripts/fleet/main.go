@@ -7,6 +7,7 @@
 //	go run ./scripts/fleet run -server http://127.0.0.1:5404,http://127.0.0.1:5405 -tokens dir/tokens -for 5m
 //
 // Cluster agents (named cluster-NN) play a cluster each (cluster.go).
+// Agents named win-* are Windows servers (windows.go).
 //
 // It's a test tool: tokens go over plain HTTP, and the interface requests
 // sign in with dev_signin, so point it only at a loopback test server.
@@ -61,6 +62,7 @@ func config(args []string) {
 	fs := flag.NewFlagSet("config", flag.ExitOnError)
 	n := fs.Int("n", 1000, "agents")
 	clusters := fs.Int("clusters", 0, "cluster agents")
+	windows := fs.Int("windows", 0, "Windows servers, up to four (windows.go)")
 	out := fs.String("out", ".", "where to write agents.yaml and tokens")
 	demo := fs.Bool("demo", false, "also write the demo's checks.yaml, expected.yaml, backups.yaml, and demo.yaml with the lines for obs-beacond.yaml (demo.go)")
 	_ = fs.Parse(args)
@@ -83,15 +85,24 @@ func config(args []string) {
 		fmt.Fprintf(&agents, "  - { name: %s, token_sha256: %s, cluster: true }\n", name, hex.EncodeToString(sum[:]))
 		fmt.Fprintf(&tokens, "%s %s\n", name, tok)
 	}
+	for _, w := range winServers[:min(max(*windows, 0), len(winServers))] {
+		b := make([]byte, 24)
+		_, _ = rand.Read(b)
+		tok := hex.EncodeToString(b)
+		sum := sha256.Sum256([]byte(tok))
+		fmt.Fprintf(&agents, "  - { name: %s, token_sha256: %s }\n", w.name, hex.EncodeToString(sum[:]))
+		fmt.Fprintf(&tokens, "%s %s\n", w.name, tok)
+	}
 	if err := os.WriteFile(filepath.Join(*out, "agents.yaml"), agents.Bytes(), 0o600); err != nil {
 		log.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(*out, "tokens"), tokens.Bytes(), 0o600); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%d agents and %d cluster agents: %s/agents.yaml goes into obs-beacond.yaml; %s/tokens is for fleet run\n", *n, *clusters, *out, *out)
+	fmt.Printf("%d agents, %d cluster agents and %d Windows servers: %s/agents.yaml goes into obs-beacond.yaml; %s/tokens is for fleet run\n",
+		*n, *clusters, min(max(*windows, 0), len(winServers)), *out, *out)
 	if *demo {
-		writeDemo(*out, *n)
+		writeDemo(*out, *n, *windows)
 		fmt.Printf("the demo: %s/demo.yaml has the lines for obs-beacond.yaml; run fleet with -demo and the same -n\n", *out)
 	}
 }
@@ -183,7 +194,7 @@ func run(args []string) {
 	_ = fs.Parse(args)
 
 	type agent struct{ host, token string }
-	var agents, clusterAgents []agent
+	var agents, clusterAgents, winAgents []agent
 	f, err := os.Open(*tokFile)
 	if err != nil {
 		log.Fatal(err)
@@ -194,6 +205,10 @@ func run(args []string) {
 		switch {
 		case ok && strings.HasPrefix(h, "cluster-"):
 			clusterAgents = append(clusterAgents, agent{h, t})
+		case ok && strings.HasPrefix(h, winPrefix):
+			if _, known := winServerFor(h); known {
+				winAgents = append(winAgents, agent{h, t})
+			}
 		case ok:
 			agents = append(agents, agent{h, t})
 		}
@@ -265,16 +280,22 @@ func run(args []string) {
 	var made, delivered, queued atomic.Int64
 	log.Printf("fleet: %d agents every %s, %d containers each, to %s, for %s", len(agents), *interval, *containers, *servers, *dur)
 	var wg sync.WaitGroup
-	for i, a := range agents {
+	for i, a := range append(slices.Clone(agents), winAgents...) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			h := newHost(i, a.host, *containers, *interval)
-			if *demo {
+			var h *host
+			switch {
+			case i >= len(agents): // a Windows server (windows.go)
+				h = newWindowsHost(a.host, *interval)
+			default:
+				h = newHost(i, a.host, *containers, *interval)
+			}
+			if *demo && h.win == nil {
 				h.demo = newDemoHost(fleetIndex(i, a.host), len(agents), demoAll)
 				h.demo.setup(&h.r)
 			}
-			if *withMap {
+			if *withMap && h.win == nil {
 				h.m = fakeMap(i, a.host, h.r.Containers)
 				h.certs, h.files = hostCerts(i, a.host)
 			}
@@ -551,6 +572,7 @@ type host struct {
 	vms []report.Workload // its libvirt VMs, when it's a hypervisor
 
 	demo *demoHost // what it reports for the demo (demo.go), when it runs
+	win  *winHost  // what a Windows server reports (windows.go)
 
 	certs     *report.CertScan  // what its ports serve (certs.go)
 	files     *report.CertFiles // what its files hold
@@ -723,6 +745,9 @@ func (h *host) next(now time.Time) report.Report {
 	h.stampCerts(&r, now)
 	if h.demo != nil {
 		h.demo.stamp(&r, h.start, now)
+	}
+	if h.win != nil {
+		h.win.stamp(h, &r, now)
 	}
 	if h.m != nil && now.Sub(h.mapSent) >= netmap.SendEvery-time.Duration(r.Interval)*time.Second/2 {
 		// Handshakes are a minute or so old each time, as a live link's are.
