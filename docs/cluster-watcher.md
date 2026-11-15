@@ -525,8 +525,11 @@ configured, and listed them with the rest in 200 ms.
   server checks RBAC before it knows the group isn't served); with the
   new one, nothing, and no usage. The numbers themselves were checked
   against metrics.k8s.io's documented JSON in the tests, and on the
-  fleet simulator's 30 nodes, 300 controllers and 300 VMs; a run against
-  a live metrics-server is still to do.
+  fleet simulator's 30 nodes, 300 controllers and 300 VMs. Against a live
+  metrics-server (v0.8.0 on kind, 2026-11-15): the agent picked the API
+  up within a minute of it answering, and what obs-beacond stored matched
+  `kubectl top` (the node 0.173 cores and 4,337 MiB against 185m and
+  4,342 Mi a moment apart; the KubeVirt VM's launcher pod likewise).
 
 ### libvirt (step 6, 2026-11-13)
 
