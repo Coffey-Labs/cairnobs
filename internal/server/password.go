@@ -357,6 +357,9 @@ func (srv *Server) firstAdminBase() string {
 	if srv.local.origin != "" {
 		return srv.local.origin
 	}
+	if _, ok := unixListen(srv.cfg.Listen); ok {
+		return "https://<the address your proxy serves>"
+	}
 	host, port, err := net.SplitHostPort(srv.cfg.Listen)
 	if err != nil {
 		return "http://" + srv.cfg.Listen

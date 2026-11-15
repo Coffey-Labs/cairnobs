@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -640,6 +641,24 @@ func (srv *Server) Close() error {
 	return srv.db.Close()
 }
 
+// listenUnix listens on a unix socket for a proxy on the same machine
+// (listen: unix:PATH). A socket left by an earlier run is replaced. Anyone
+// may connect: the folder it's in decides who can reach it.
+func listenUnix(path string) (net.Listener, error) {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
+		_ = os.Remove(path)
+	}
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		l.Close()
+		return nil, err
+	}
+	return l, nil
+}
+
 // ListenAndServe runs until ctx is done, then shuts down gracefully.
 func (srv *Server) ListenAndServe(ctx context.Context) error {
 	newServer := func(addr string, h http.Handler) *http.Server {
@@ -671,7 +690,12 @@ func (srv *Server) ListenAndServe(ctx context.Context) error {
 	for i, hs := range servers {
 		go func() {
 			var err error
-			switch {
+			switch path, unix := unixListen(hs.Addr); {
+			case i == 0 && unix:
+				var l net.Listener
+				if l, err = listenUnix(path); err == nil {
+					err = hs.Serve(l)
+				}
 			case i == 0 && srv.cfg.TLS.Cert != "":
 				err = hs.ListenAndServeTLS(srv.cfg.TLS.Cert, srv.cfg.TLS.Key)
 			case hs.TLSConfig != nil: // the agent listener: certificates from the agent CA
