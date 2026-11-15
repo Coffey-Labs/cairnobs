@@ -79,6 +79,8 @@ jobs:
           (cd dist && sha256sum --strict -c SHA256SUMS)
           [ "$(ls dist | wc -l)" = "$(( $(wc -l < dist/SHA256SUMS) + 2 ))" ] \
             || { echo "dist has files SHA256SUMS doesn't list" >&2; ls dist >&2; exit 1; }
+          # Downloads aren't executable; the image copies the binaries as they are.
+          chmod 0755 dist/obs-beacond-linux-* dist/obs-beacon-agent-linux-*
       - name: GitHub Release
         run: |
           set -euo pipefail
@@ -105,3 +107,9 @@ jobs:
           fi
           docker buildx imagetools inspect "$image:$version"
           docker logout ghcr.io
+          # The image as anyone gets it: both binaries run and say this version.
+          for bin in obs-beacond obs-beacon-agent; do
+            got="$(docker run --rm --pull always --entrypoint "/usr/bin/$bin" "$image:$version" -version)"
+            echo "$bin: $got"
+            grep -qF "$version" <<<"$got" || { echo "$image:$version's $bin says $got" >&2; exit 1; }
+          done
