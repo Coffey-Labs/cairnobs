@@ -1,4 +1,5 @@
-// Package collect reads a Linux host's own numbers from /proc and statfs.
+// Package collect reads a host's own numbers: on Linux from /proc and
+// statfs, on Windows from kernel32 and iphlpapi (collector_windows.go).
 // The parsers take an io.Reader so they can be tested against fixtures.
 package collect
 
