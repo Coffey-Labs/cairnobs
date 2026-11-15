@@ -128,3 +128,34 @@ func TestStoppedOnPurposeDoesNotGreyAService(t *testing.T) {
 		t.Fatalf("site: %+v", svcs)
 	}
 }
+
+// A declared service judged only by its checks (no parts found) takes
+// their state on the service map, as the hand-drawn map gave it.
+func TestServiceMapJudgesByChecks(t *testing.T) {
+	srv := topoServer(t)
+	now := time.Now()
+	look := func() string {
+		t.Helper()
+		v, ok := srv.servicesView("", 3, now)
+		if !ok {
+			t.Fatal("no view")
+		}
+		for _, b := range v.Boxes {
+			if b.ID == "svc:mail" {
+				return b.Status + "/" + b.Sub
+			}
+		}
+		t.Fatalf("no mail box in %+v", v.Boxes)
+		return ""
+	}
+	for _, h := range []string{"host1", "host2", "host3"} {
+		srv.store.Put(h, report.Report{V: report.Version, Checks: []report.CheckResult{{ID: "mx", At: now, OK: true, Ms: 40}}}, now)
+	}
+	if got := look(); got != "good/OK" {
+		t.Errorf("checks pass: %s", got)
+	}
+	srv.store.Put("host2", report.Report{V: report.Version, Checks: []report.CheckResult{{ID: "mx", At: now, Error: "refused"}}}, now)
+	if got := look(); !strings.HasPrefix(got, "critical/mail.example.org SMTP: ") && !strings.HasPrefix(got, "warning/mail.example.org SMTP: ") {
+		t.Errorf("a check fails: %s", got)
+	}
+}
