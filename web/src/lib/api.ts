@@ -195,15 +195,6 @@ export interface ExpectedSettings {
 	source: Source; file: string; host: string; reported: boolean; expected: HostExpectations; ci_jobs: string[];
 	containers: { name: string; state: string; status: string }[] | null; containers_error?: string; services: string[] | null;
 }
-export interface Signal { kind: string; name: string; host?: string; status: Severity; word: string; href?: string }
-export interface ServiceNode { id: string; name: string; tier: string; needs: string[]; status: Severity; word: string; sub: string; cause?: string; note?: string; signals: Signal[] }
-export interface MeshLink { hosts: string[]; ms: number | null; status: Severity; word: string }
-export interface NetPath { kind: 'public' | 'mail'; name: string; host: string; status: Severity; word: string }
-export interface NetHost { name: string; status: Severity; word: string; cpu_pct: number; mem_pct: number; disk_pct: number; rx_bps: number; tx_bps: number; mesh_ip?: string; roles?: string; os?: string; kernel?: string; uptime_s?: number; last_seen?: string | null; workstation?: boolean; services: { id: string; name: string; status: string }[] }
-/** A host outside the site on a link of its own to one site host (topology `network.remote`). */
-export interface NetRemote extends NetHost { link: { name: string; via: string; status: Severity; word: string; ms: number | null } }
-export interface Topology { configured: boolean; tiers?: string[]; services?: ServiceNode[]; network?: { site: string; hosts: NetHost[]; remote?: NetRemote[]; links: MeshLink[]; paths: NetPath[]; channels: { id: string; type: string; min: string }[];
-		cloudflare?: { configured: boolean; status?: string; word?: string; zones?: number; pools?: { name: string; enabled: boolean; healthy: boolean; up: number; total: number }[]; cloudflare_status?: { indicator: string; description: string } } } }
 export interface AuditEntry { at: string; who: string; action: string; detail: string }
 export interface Audit { entries: AuditEntry[]; stored: boolean }
 export interface Incidents { open: Incident[]; recent: Incident[]; channels: AlertChannel[]; for_s: number; repeat_s: number; stored: boolean; maintenance?: MaintWindow[]; maintenance_source?: Source; channels_source?: Source }

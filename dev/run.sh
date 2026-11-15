@@ -64,8 +64,8 @@ network:
   hosts:
     - {name: $host, roles: "development"}
 services:
-  - {id: frontend, name: Frontend, tier: public, needs: [worker], checks: [nothing-here], sub: "the check on :8159"}
-  - {id: worker, name: Worker, tier: apps, needs: [$host], containers: ["*/beacon-demo-sleeper"], sub: "beacon-demo-sleeper"}
+  - {id: frontend, name: Frontend, tier: public, needs: [worker], checks: [nothing-here]}  # the check on :8159
+  - {id: worker, name: Worker, tier: apps, needs: [$host], containers: ["*/beacon-demo-sleeper"]}
   - {id: beacon, name: obs-beacond, tier: apps, needs: [$host], checks: [obs-beacond]}
 YAML
 

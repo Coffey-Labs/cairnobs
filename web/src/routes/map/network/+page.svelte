@@ -5,7 +5,6 @@
 	import Icon from '$lib/Icon.svelte';
 	import Panel from '$lib/Panel.svelte';
 	import Status from '$lib/Status.svelte';
-	import HandDrawnNetwork from '$lib/HandDrawnNetwork.svelte';
 	import { paths as ICONS } from '$lib/icons';
 	import { get, send, SignedOut, type MapBox, type MapFixes, type MapFixReq, type MapFound, type MapLine, type MapView } from '$lib/api';
 	import { live } from '$lib/live.svelte';
@@ -18,7 +17,6 @@
 	// hosts (grouped when there are many), a host on what it's linked to.
 	// Where you are lives in the address, so a view can be linked to.
 	let focus = $state(page.url.searchParams.get('focus') ?? '');
-	let tab = $state(page.url.searchParams.get('drawn') ? 'drawn' : 'found');
 	let v = $state<MapView | null>(null);
 	let error = $state('');
 	let sel = $state<string | null>(null);
@@ -44,9 +42,7 @@
 		const f = focus;
 		const p = new URLSearchParams();
 		if (f) p.set('focus', f);
-		if (tab === 'drawn') p.set('drawn', '1');
 		try { replaceState('/map/network' + (p.size ? '?' + p : ''), {}); } catch { /* before the router is up */ }
-		if (tab !== 'found') return;
 		void load(f);
 		const t = setInterval(() => void load(f), 15_000);
 		return () => clearInterval(t);
@@ -144,7 +140,6 @@
 		if (f.map === 'services') void goto('/map/services?focus=' + encodeURIComponent(f.focus));
 		else go(f.focus);
 	}
-	const drawnToo = $derived(!!live.overview?.features?.topology);
 
 	// Corrections that belong to this map: a site's name, a host hidden.
 	let fixes = $state<MapFixes | null>(null);
@@ -156,7 +151,7 @@
 	async function loadFixes() {
 		try { fixes = await get<MapFixes>('/api/v1/map/corrections'); } catch { /* the map still draws */ }
 	}
-	$effect(() => { if (tab === 'found') void loadFixes(); });
+	$effect(() => { void loadFixes(); });
 	$effect(() => {
 		void sel;
 		rename = untrack(() => selected?.name ?? '');
@@ -188,165 +183,151 @@
 	</div>
 </div>
 
-{#if drawnToo}
-	<div class="tabs" role="tablist">
-		<button role="tab" class:on={tab === 'found'} aria-selected={tab === 'found'} onclick={() => (tab = 'found')}>Found</button>
-		<button role="tab" class:on={tab === 'drawn'} aria-selected={tab === 'drawn'} onclick={() => (tab = 'drawn')}>Drawn in topology.yaml</button>
+{#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
+
+{#snippet glyph(st: string, x: number, y: number)}
+	<svg {x} {y} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
+{/snippet}
+{#snippet iconLi(st: string)}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
+{/snippet}
+
+<Panel flush>
+	<div class="map-bar">
+		<nav class="crumbs" aria-label="Where you are">
+			{#each v?.crumbs ?? [] as c (c.id)}
+				<button class="crumb" onclick={() => go(c.id)}>{c.name}</button><span class="sep">›</span>
+			{/each}
+			<span class="here">{v?.title ?? '…'}</span>
+		</nav>
+		<div class="find">
+			<input type="search" placeholder="Find a host, site or service" bind:value={typed} aria-label="Find on the maps" />
+			{#if found.length}
+				<ul class="found" role="listbox">
+					{#each found as f (f.map + f.focus)}
+						<li><button role="option" aria-selected="false" onclick={() => pickFound(f)}><span class="k">{f.kind}</span>{f.name}{#if f.where}<span class="muted"> · {f.where}</span>{/if}</button></li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 	</div>
-{/if}
+	<div class="map-wrap">
+		<div class="map-canvas" bind:clientWidth={cw}>
+			{#if !v || !lay}
+				<p class="empty">Loading…</p>
+			{:else if v.mapped === 0}
+				<div class="none">
+					<h2>No map samples yet</h2>
+					<p>Each agent sends one a minute through its root helper: the host's interfaces, WireGuard peers and who talks to whom. Agents need <span class="mono">helper_socket</span> set and the helper running (docs/install.md).</p>
+				</div>
+			{:else}
+				<svg viewBox="0 0 {lay.width} {lay.height}" role="img" aria-label="Network map: {v.title}">
+					{#each lay.bands as b (b.label + b.y)}
+						<rect class="region off" x="16" y={b.y - 10} width={lay.width - 32} height={b.h + 22} rx="14" />
+						<text class="region-l" x="32" y={b.y + 8}>{b.label}</text>
+					{/each}
+					{#each v.lines as l (l.a + l.b + l.kind)}
+						{@const moving = flows(l)}
+						<path class="lnk" d={path(l)} stroke={tint(l)} stroke-width={width(l)} stroke-dasharray={l.up ? undefined : '6 5'} opacity={moving ? opacity(l) * 0.45 : opacity(l)}><title>{lineTitle(l)}</title></path>
+						{#if moving}<path class="flow" d={path(l)} stroke={tint(l)} stroke-width={width(l) + 0.5} opacity={opacity(l)} />{/if}
+					{/each}
+					{#each v.boxes as b (b.id)}
+						{@const p = lay.pos[b.id] as Pos}
+						<g class="node {b.kind.replace(':', '-')}" class:sel={sel === b.id} role="button" tabindex="0" aria-label="{kindWord(b.kind)} {b.name}: {b.status}"
+							onclick={() => (sel = b.id)} ondblclick={() => open(b)} onkeydown={(e) => key(e, b)}
+							onmouseenter={() => (hover = b.id)} onmouseleave={() => (hover = null)} onfocus={() => (hover = b.id)} onblur={() => (hover = null)}>
+							<rect class="box" x={p.x - p.w / 2} y={p.y - p.h / 2} width={p.w} height={p.h} rx="10" />
+							{#if b.kind !== 'internet'}{@render glyph(b.status, p.x - p.w / 2 + 11, p.y - p.h / 2 + 10)}{/if}
+							<text x={p.x - p.w / 2 + (b.kind === 'internet' ? 14 : 32)} y={p.y - p.h / 2 + 22}>{b.name.length > 24 ? b.name.slice(0, 23) + '…' : b.name}</text>
+							{#if b.sub}<text class="s" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 41}>{b.sub.length > 32 ? b.sub.slice(0, 31) + '…' : b.sub}</text>{/if}
+							{#if b.problems?.length}
+								<text class="s bad" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 59}>{b.problems.length} need a look: {b.problems.slice(0, 2).join(', ')}</text>
+							{:else if b.ports?.length}
+								<text class="m" x={p.x - p.w / 2 + 12} y={p.y + p.h / 2 - 10}>in {b.ports.slice(0, 5).map((x) => ':' + x).join(' ')}</text>
+							{/if}
+							{#if b.open && !b.kind.startsWith('elsewhere')}<text class="m open" x={p.x + p.w / 2 - 10} y={p.y - p.h / 2 + 22} text-anchor="end">›</text>{/if}
+						</g>
+					{/each}
+				</svg>
+				{#if v.cut}<p class="cut">More than fits: some boxes are left out. Open a site or use Find.</p>{/if}
+				<div class="map-legend">
+					<span><i class="ln" style="border-color:var(--s3)"></i>WireGuard</span>
+					<span><i class="ln dash" style="border-color:var(--warning)"></i>no recent handshake</span>
+					{#each LEGEND as c (c)}<span><i class="ln" style="border-color:{CARRIES_COLOR[c]}"></i>traffic: {CARRIES_WORD[c]}</span>{/each}
+					<span><i class="ln" style="border-color:var(--s1)"></i>from the Internet</span>
+					<span>{v.mapped} of {v.hosts} hosts mapped · {ago(v.built)}</span>
+				</div>
+			{/if}
+		</div>
 
-{#if tab === 'drawn'}
-	<HandDrawnNetwork />
-{:else}
-	{#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
-
-	{#snippet glyph(st: string, x: number, y: number)}
-		<svg {x} {y} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
-	{/snippet}
-	{#snippet iconLi(st: string)}
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:{glyphColor(st)}">{@html icon(st)}</svg>
-	{/snippet}
-
-	<Panel flush>
-		<div class="map-bar">
-			<nav class="crumbs" aria-label="Where you are">
-				{#each v?.crumbs ?? [] as c (c.id)}
-					<button class="crumb" onclick={() => go(c.id)}>{c.name}</button><span class="sep">›</span>
-				{/each}
-				<span class="here">{v?.title ?? '…'}</span>
-			</nav>
-			<div class="find">
-				<input type="search" placeholder="Find a host, site or service" bind:value={typed} aria-label="Find on the maps" />
-				{#if found.length}
-					<ul class="found" role="listbox">
-						{#each found as f (f.map + f.focus)}
-							<li><button role="option" aria-selected="false" onclick={() => pickFound(f)}><span class="k">{f.kind}</span>{f.name}{#if f.where}<span class="muted"> · {f.where}</span>{/if}</button></li>
+		<aside class="map-panel" aria-live="polite">
+			{#if selected}
+				{@const b = selected}
+				<p class="kind">{kindWord(b.kind)}{b.kind.startsWith('elsewhere') ? ' · outside this view' : ''}</p>
+				<h2>{b.name}</h2>
+				<div class="mt6"><Status s={b.status} word={b.sub && b.kind === 'host' ? b.sub : undefined} /></div>
+				<dl class="kv">
+					{#if b.count && b.kind !== 'host'}<dt>{b.kind === 'cluster' ? 'Nodes' : 'Hosts'}</dt><dd>{b.count}</dd>{/if}
+					{#if b.via}<dt>Linked via</dt><dd>{b.via}</dd>{/if}
+					{#if b.ports?.length}<dt>From the Internet</dt><dd class="mono">{b.ports.map((x) => ':' + x).join(' ')}</dd>{/if}
+					{#if b.detail?.addrs}<dt>Addresses</dt><dd class="mono">{(b.detail.addrs as string[]).join(' ') || '—'}</dd>{/if}
+					{#if b.detail?.outside_peers}<dt>Other peers</dt><dd>{b.detail.outside_peers} WireGuard peers that aren't our hosts</dd>{/if}
+				</dl>
+				{#if b.problems?.length}
+					<h3>Need a look</h3>
+					<ul>{#each b.problems as p (p)}<li>{@render iconLi('warning')}<span>{p}</span></li>{/each}</ul>
+				{/if}
+				{#if Array.isArray(b.detail?.services) && (b.detail.services as string[]).length}
+					<h3>Services here</h3>
+					<ul>{#each b.detail.services as string[] as s (s)}<li><a href="/map/services?focus={encodeURIComponent('svc:' + s)}">{s.replace(/^(unit|compose|image|process):/, '')}</a></li>{/each}</ul>
+				{/if}
+				{#if linksOf(b.id).length}
+					<h3>Links</h3>
+					<ul>
+						{#each linksOf(b.id).slice(0, 30) as l (l.a + l.b + l.kind)}
+							{@const other = byId.get(l.a === b.id ? l.b : l.a)}
+							<li>{@render iconLi(l.up ? 'good' : 'warning')}<span>{other?.name ?? '?'}</span><span class="muted">{l.kind === 'wireguard' ? 'WireGuard' : l.kind}{l.ports?.length ? ' ' + l.ports.slice(0, 4).map((x) => ':' + x).join(' ') : ''}</span></li>
 						{/each}
 					</ul>
 				{/if}
-			</div>
-		</div>
-		<div class="map-wrap">
-			<div class="map-canvas" bind:clientWidth={cw}>
-				{#if !v || !lay}
-					<p class="empty">Loading…</p>
-				{:else if v.mapped === 0}
-					<div class="none">
-						<h2>No map samples yet</h2>
-						<p>Each agent sends one a minute through its root helper: the host's interfaces, WireGuard peers and who talks to whom. Agents need <span class="mono">helper_socket</span> set and the helper running (docs/install.md).</p>
-					</div>
+				{#if canFix && b.kind === 'site'}
+					<h3>Correct it</h3>
+					<label class="fixrow">Name<span><input bind:value={rename} /><button class="btn sm ghost" disabled={busy || !rename.trim() || rename === b.name} onclick={() => fix({ op: 'name', id: b.id, name: rename })}>Rename</button></span></label>
+				{/if}
+				{#if fixError}<p class="err">{fixError}</p>{/if}
+				<div class="acts">
+					{#if canFix && b.kind.replace('elsewhere:', '') === 'host'}<button class="btn sm ghost" disabled={busy} onclick={async () => { if (await fix({ op: 'hide', id: 'host:' + b.name })) sel = null; }}>Hide from the maps</button>{/if}
+					{#if b.kind === 'cluster'}<a class="btn sm" href="/clusters">Open clusters <Icon name="arrow" size={14} /></a>
+					{:else if focusOf(b) && focusOf(b) !== focus}<button class="btn sm" onclick={() => open(b)}>Open on the map <Icon name="arrow" size={14} /></button>{/if}
+					{#if b.kind.replace('elsewhere:', '') === 'host'}<a class="btn sm ghost" href="/hosts/{b.name}">Host page</a>{/if}
+				</div>
+			{:else if v}
+				<h2>{v.title}</h2>
+				{#if trouble.length}
+					<h3>Need a look</h3>
+					<ul>
+						{#each trouble.slice(0, 20) as b (b.id)}
+							<li>{@render iconLi(b.status)}<button class="linkish" onclick={() => (sel = b.id)}>{b.name}</button><span class="muted">{b.sub ?? ''}</span></li>
+						{/each}
+					</ul>
 				{:else}
-					<svg viewBox="0 0 {lay.width} {lay.height}" role="img" aria-label="Network map: {v.title}">
-						{#each lay.bands as b (b.label + b.y)}
-							<rect class="region off" x="16" y={b.y - 10} width={lay.width - 32} height={b.h + 22} rx="14" />
-							<text class="region-l" x="32" y={b.y + 8}>{b.label}</text>
-						{/each}
-						{#each v.lines as l (l.a + l.b + l.kind)}
-							{@const moving = flows(l)}
-							<path class="lnk" d={path(l)} stroke={tint(l)} stroke-width={width(l)} stroke-dasharray={l.up ? undefined : '6 5'} opacity={moving ? opacity(l) * 0.45 : opacity(l)}><title>{lineTitle(l)}</title></path>
-							{#if moving}<path class="flow" d={path(l)} stroke={tint(l)} stroke-width={width(l) + 0.5} opacity={opacity(l)} />{/if}
-						{/each}
-						{#each v.boxes as b (b.id)}
-							{@const p = lay.pos[b.id] as Pos}
-							<g class="node {b.kind.replace(':', '-')}" class:sel={sel === b.id} role="button" tabindex="0" aria-label="{kindWord(b.kind)} {b.name}: {b.status}"
-								onclick={() => (sel = b.id)} ondblclick={() => open(b)} onkeydown={(e) => key(e, b)}
-								onmouseenter={() => (hover = b.id)} onmouseleave={() => (hover = null)} onfocus={() => (hover = b.id)} onblur={() => (hover = null)}>
-								<rect class="box" x={p.x - p.w / 2} y={p.y - p.h / 2} width={p.w} height={p.h} rx="10" />
-								{#if b.kind !== 'internet'}{@render glyph(b.status, p.x - p.w / 2 + 11, p.y - p.h / 2 + 10)}{/if}
-								<text x={p.x - p.w / 2 + (b.kind === 'internet' ? 14 : 32)} y={p.y - p.h / 2 + 22}>{b.name.length > 24 ? b.name.slice(0, 23) + '…' : b.name}</text>
-								{#if b.sub}<text class="s" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 41}>{b.sub.length > 32 ? b.sub.slice(0, 31) + '…' : b.sub}</text>{/if}
-								{#if b.problems?.length}
-									<text class="s bad" x={p.x - p.w / 2 + 12} y={p.y - p.h / 2 + 59}>{b.problems.length} need a look: {b.problems.slice(0, 2).join(', ')}</text>
-								{:else if b.ports?.length}
-									<text class="m" x={p.x - p.w / 2 + 12} y={p.y + p.h / 2 - 10}>in {b.ports.slice(0, 5).map((x) => ':' + x).join(' ')}</text>
-								{/if}
-								{#if b.open && !b.kind.startsWith('elsewhere')}<text class="m open" x={p.x + p.w / 2 - 10} y={p.y - p.h / 2 + 22} text-anchor="end">›</text>{/if}
-							</g>
-						{/each}
-					</svg>
-					{#if v.cut}<p class="cut">More than fits: some boxes are left out. Open a site or use Find.</p>{/if}
-					<div class="map-legend">
-						<span><i class="ln" style="border-color:var(--s3)"></i>WireGuard</span>
-						<span><i class="ln dash" style="border-color:var(--warning)"></i>no recent handshake</span>
-						{#each LEGEND as c (c)}<span><i class="ln" style="border-color:{CARRIES_COLOR[c]}"></i>traffic: {CARRIES_WORD[c]}</span>{/each}
-						<span><i class="ln" style="border-color:var(--s1)"></i>from the Internet</span>
-						<span>{v.mapped} of {v.hosts} hosts mapped · {ago(v.built)}</span>
-					</div>
+					<p class="muted">Everything here is fine.</p>
 				{/if}
-			</div>
-
-			<aside class="map-panel" aria-live="polite">
-				{#if selected}
-					{@const b = selected}
-					<p class="kind">{kindWord(b.kind)}{b.kind.startsWith('elsewhere') ? ' · outside this view' : ''}</p>
-					<h2>{b.name}</h2>
-					<div class="mt6"><Status s={b.status} word={b.sub && b.kind === 'host' ? b.sub : undefined} /></div>
-					<dl class="kv">
-						{#if b.count && b.kind !== 'host'}<dt>{b.kind === 'cluster' ? 'Nodes' : 'Hosts'}</dt><dd>{b.count}</dd>{/if}
-						{#if b.via}<dt>Linked via</dt><dd>{b.via}</dd>{/if}
-						{#if b.ports?.length}<dt>From the Internet</dt><dd class="mono">{b.ports.map((x) => ':' + x).join(' ')}</dd>{/if}
-						{#if b.detail?.addrs}<dt>Addresses</dt><dd class="mono">{(b.detail.addrs as string[]).join(' ') || '—'}</dd>{/if}
-						{#if b.detail?.outside_peers}<dt>Other peers</dt><dd>{b.detail.outside_peers} WireGuard peers that aren't our hosts</dd>{/if}
-					</dl>
-					{#if b.problems?.length}
-						<h3>Need a look</h3>
-						<ul>{#each b.problems as p (p)}<li>{@render iconLi('warning')}<span>{p}</span></li>{/each}</ul>
-					{/if}
-					{#if Array.isArray(b.detail?.services) && (b.detail.services as string[]).length}
-						<h3>Services here</h3>
-						<ul>{#each b.detail.services as string[] as s (s)}<li><a href="/map/services?focus={encodeURIComponent('svc:' + s)}">{s.replace(/^(unit|compose|image|process):/, '')}</a></li>{/each}</ul>
-					{/if}
-					{#if linksOf(b.id).length}
-						<h3>Links</h3>
-						<ul>
-							{#each linksOf(b.id).slice(0, 30) as l (l.a + l.b + l.kind)}
-								{@const other = byId.get(l.a === b.id ? l.b : l.a)}
-								<li>{@render iconLi(l.up ? 'good' : 'warning')}<span>{other?.name ?? '?'}</span><span class="muted">{l.kind === 'wireguard' ? 'WireGuard' : l.kind}{l.ports?.length ? ' ' + l.ports.slice(0, 4).map((x) => ':' + x).join(' ') : ''}</span></li>
-							{/each}
-						</ul>
-					{/if}
-					{#if canFix && b.kind === 'site'}
-						<h3>Correct it</h3>
-						<label class="fixrow">Name<span><input bind:value={rename} /><button class="btn sm ghost" disabled={busy || !rename.trim() || rename === b.name} onclick={() => fix({ op: 'name', id: b.id, name: rename })}>Rename</button></span></label>
-					{/if}
-					{#if fixError}<p class="err">{fixError}</p>{/if}
-					<div class="acts">
-						{#if canFix && b.kind.replace('elsewhere:', '') === 'host'}<button class="btn sm ghost" disabled={busy} onclick={async () => { if (await fix({ op: 'hide', id: 'host:' + b.name })) sel = null; }}>Hide from the maps</button>{/if}
-						{#if b.kind === 'cluster'}<a class="btn sm" href="/clusters">Open clusters <Icon name="arrow" size={14} /></a>
-						{:else if focusOf(b) && focusOf(b) !== focus}<button class="btn sm" onclick={() => open(b)}>Open on the map <Icon name="arrow" size={14} /></button>{/if}
-						{#if b.kind.replace('elsewhere:', '') === 'host'}<a class="btn sm ghost" href="/hosts/{b.name}">Host page</a>{/if}
-					</div>
-				{:else if v}
-					<h2>{v.title}</h2>
-					{#if trouble.length}
-						<h3>Need a look</h3>
-						<ul>
-							{#each trouble.slice(0, 20) as b (b.id)}
-								<li>{@render iconLi(b.status)}<button class="linkish" onclick={() => (sel = b.id)}>{b.name}</button><span class="muted">{b.sub ?? ''}</span></li>
-							{/each}
-						</ul>
-					{:else}
-						<p class="muted">Everything here is fine.</p>
-					{/if}
-					{#if ours.length}
-						<h3>Corrections ({ours.length})</h3>
-						<ul>
-							{#each ours as it (it.kind + it.text)}
-								<li><span>{it.text}</span>{#if canFix}<button class="btn sm ghost undo" disabled={busy} onclick={() => fix(it.undo)}>Undo</button>{/if}</li>
-							{/each}
-						</ul>
-					{/if}
-					<p class="muted">Click a box for its details and links; double-click or press Enter twice to open it.</p>
+				{#if ours.length}
+					<h3>Corrections ({ours.length})</h3>
+					<ul>
+						{#each ours as it (it.kind + it.text)}
+							<li><span>{it.text}</span>{#if canFix}<button class="btn sm ghost undo" disabled={busy} onclick={() => fix(it.undo)}>Undo</button>{/if}</li>
+						{/each}
+					</ul>
 				{/if}
-			</aside>
-		</div>
-	</Panel>
-{/if}
+				<p class="muted">Click a box for its details and links; double-click or press Enter twice to open it.</p>
+			{/if}
+		</aside>
+	</div>
+</Panel>
 
 <style>
-	.tabs { display: flex; gap: 6px; margin: 0 0 12px; }
-	.tabs button { height: 32px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--muted-fg); font-size: 13px; cursor: pointer; }
-	.tabs button.on { border-color: var(--primary); color: var(--foreground); background: var(--accent); }
 	.map-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 	.crumbs { display: flex; align-items: center; gap: 6px; font-size: 14px; min-width: 0; flex: 1; flex-wrap: wrap; }
 	.crumb { background: none; border: 0; padding: 0; color: var(--primary); cursor: pointer; font: inherit; }

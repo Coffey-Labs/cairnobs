@@ -85,11 +85,9 @@ func (srv *Server) statuses(now time.Time) map[string]string {
 	for _, c := range checks {
 		out["check/"+c.ID] = c.Status
 	}
-	if v := srv.topologyView(now); v["configured"] != false {
-		if svcs, ok := v["services"].([]ServiceView); ok {
-			for _, s := range svcs {
-				out["svc/"+s.ID] = s.Status
-			}
+	if svcs, ok := srv.serviceStates(now); ok {
+		for _, s := range svcs {
+			out["svc/"+s.ID] = s.Status
 		}
 	}
 	return out

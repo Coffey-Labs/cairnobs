@@ -35,7 +35,7 @@ type Config struct {
 	StaleAfter      time.Duration `yaml:"stale_after"` // a host is silent after this long without a report
 	Expected        string        `yaml:"expected"`    // expected-containers file, optional
 	Checks          string        `yaml:"checks"`      // active checks file (checks.yaml), optional
-	Topology        string        `yaml:"topology"`    // what the maps draw (topology.yaml), optional
+	Topology        string        `yaml:"topology"`    // corrections to the maps (topology.yaml), optional
 	Backups         string        `yaml:"backups"`     // what each host's backups should be (backups.yaml), optional
 
 	// Cairn OBS's own database (sessions, incidents, audit log). Without it
