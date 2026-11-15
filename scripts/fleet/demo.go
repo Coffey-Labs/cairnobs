@@ -264,6 +264,14 @@ func writeDemo(dir string, hosts int) {
 			exp.WriteString("    stopped:\n      - match: app-09\n        note: Replaced by app-09b; kept for a rollback until Friday.\n")
 		}
 	}
+	if hosts > ibmiHost {
+		// The IBM i partitions' subsystems that must be active (run -ibmi):
+		// prod2's ORDERS isn't, and ha1, the standby, expects none.
+		src := hostName(ibmiHost)
+		fmt.Fprintf(&exp, "clusters:\n  %s:prod1:\n    subsystems: [QINTER, QBATCH, QUSRWRK, ORDLIB/ORDERS]\n", src)
+		fmt.Fprintf(&exp, "  %s:prod2:\n    subsystems: [QINTER, QBATCH, QUSRWRK, ORDLIB/ORDERS]\n", src)
+		fmt.Fprintf(&exp, "  %s:dev1:\n    subsystems: [QINTER, QBATCH]\n", src)
+	}
 	var bk bytes.Buffer
 	bk.WriteString("# The fleet demo's backups (fleet config -demo).\nmax_age: 26h\nhosts:\n")
 	for _, b := range demoBackupSites(hosts) {

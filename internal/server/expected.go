@@ -27,7 +27,15 @@ type Expected struct {
 type ExpectedCluster struct {
 	Namespaces map[string]string  `yaml:"namespaces,omitempty"` // namespace → page, warn or off
 	Workloads  []ExpectedWorkload `yaml:"workloads,omitempty"`
+	// Subsystems are an IBM i partition's that must be active
+	// (docs/ibmi.md, step 2): QINTER, or ORDLIB/ORDERS when two libraries
+	// hold one of that name.
+	Subsystems []string `yaml:"subsystems,omitempty"`
 }
+
+// subsystemName is an expected subsystem: an IBM i name, or
+// library/name.
+var subsystemName = regexp.MustCompile(`^(?i)([a-z$#@][a-z0-9$#@_.]{0,9}/)?[a-z$#@][a-z0-9$#@_.]{0,9}$`)
 
 // ExpectedWorkload is one adopted workload: "shop/deployment/web", or
 // "vms/vm/db1" for a VM. Alert is page (the default), warn or off.
@@ -59,6 +67,11 @@ func checkAlert(a string, empty bool) error {
 }
 
 func (ec ExpectedCluster) check() error {
+	for _, b := range ec.Subsystems {
+		if !subsystemName.MatchString(b) {
+			return fmt.Errorf("subsystem %q isn't an IBM i name, or library/name", b)
+		}
+	}
 	for ns, a := range ec.Namespaces {
 		if !k8sName.MatchString(ns) || len(ns) > 63 {
 			return fmt.Errorf("%q isn't a namespace name", ns)

@@ -1,7 +1,7 @@
 # IBM i: design note
 
-Status: decided 2026-11-14 (Decisions, at the end); step 1 built, 2 and
-3 next, 4 after them.
+Status: decided 2026-11-14 (Decisions, at the end); steps 1 to 3
+built; 4, the HMC, next.
 
 John, 2026-11-12: "is there anything we can do for iseries?" Yes. The
 shops Cairn OBS is aimed at often still run their core business on IBM i
@@ -32,12 +32,11 @@ Every minute, one query per line, all SELECTs:
 | SQL service | Becomes |
 |---|---|
 | `QSYS2.SYSTEM_STATUS_INFO_BASIC`: CPU use, system ASP % used, jobs, temporary storage, restricted state, the attention light; `SYSIBMADM.ENV_SYS_INFO` and `QSYS2.GROUP_PTF_INFO`: the release and the Technology Refresh | the partition's own record: "PROD1 · read by mgmt1", "IBM i 7.5 TR6", CPU and storage graphs |
-| `QSYS2.ASP_INFO` and `SYSDISKSTAT`: each ASP's state and % used, each disk unit's status | parts: a failed ASP is down, one with disk units missing or overflowing into the system ASP is degraded, a disk unit not active is degraded; ASP % used warns at the ASP's own threshold (IBM i's, not ours). An independent ASP varied off is said, not judged: PowerHA keeps it so on the node that isn't using it |
-| `QSYS2.SUBSYSTEM_INFO`: each subsystem and whether it's active | parts, as units are on Linux: `expected.yaml` names the subsystems that must be active (`subsystems: [QINTER, QBATCH, ORDERS]`) |
-| jobs waiting on a message (MSGW): see decision 2 | listed on the record: a job in MSGW is someone's batch stuck on a question; warns |
-| `QSYS2.MESSAGE_QUEUE_INFO` for QSYSOPR: inquiry messages not yet answered, and messages of severity 80 and up | listed on the record; an unanswered inquiry warns, severity 90+ is critical |
-| `QSYS2.JOB_QUEUE_INFO`: held job queues, and queues with jobs waiting longer than they should | listed; a held queue that should be released warns |
-| `QSYS2.NETSTAT_INTERFACE_INFO`: interfaces and their state | parts: an interface that should be active and isn't is degraded |
+| `QSYS2.ASP_INFO` and `SYSDISKSTAT`: each ASP's state and % used, each disk unit's status | parts: a failed ASP is down, one with disk units missing or overflowing into the system ASP is degraded, a disk unit in trouble (failed, not ready, parity being rebuilt, mirroring suspended, an SSD's predictive failure warning) makes its ASP degraded, named on it; ASP % used warns at the ASP's own threshold (IBM i's, not ours). An independent ASP varied off is said, not judged: PowerHA keeps it so on the node that isn't using it |
+| `QSYS2.SUBSYSTEM_INFO`: each subsystem and whether it's active | parts, as units are on Linux: `expected.yaml` names the subsystems that must be active (`subsystems: [QINTER, QBATCH, ORDERS]`), and obs-beacond judges them; the rest are counted, not alerted on |
+| `QSYS2.MESSAGE_QUEUE_INFO` for QSYSOPR: inquiry messages of the last 30 days with no reply, and messages of severity 80 and up of the last day | parts, named for the message and the job that sent it ("Unanswered inquiry CPA0701 from 418276/BATCH/NIGHTLY"): an unanswered inquiry is a job in MSGW (decision 2) and warns; a message of severity 90 and up is critical, 80 to 89 warns. At most 25 of each; the partition's own record counts them all |
+| `QSYS2.JOB_QUEUE_INFO`: queues with jobs ready to run | parts, only for a queue that's held, or that no active subsystem takes from: its jobs can't start; warns |
+| `QSYS2.NETSTAT_INTERFACE_INFO`: interfaces and their state | parts: an interface set to start with TCP/IP (IBM i's own `AUTOSTART`) that isn't active is degraded, or down when its line failed (RCYPND, RCYCNL, FAILED); one not set to start is said, not judged |
 
 What the partition says about itself it judges itself, as Purity and
 vCenter do: IBM i's ASP threshold, QSYSOPR's severities. Cairn OBS adds
@@ -119,7 +118,10 @@ On the partition, as a security officer:
    with the agent host's address.
 4. **Optional:** `*USE` on two objects names the partition as the HMC
    does and gives its Technology Refresh. Without them the partition is
-   named by its host name and its version is just the release.
+   named by its host name and its version is just the release. The
+   profile sees the subsystems whose descriptions it may use: IBM's
+   usually are public, a shop's own may need `GRTOBJAUT ...
+   OBJTYPE(*SBSD) AUT(*USE)` before it can be expected.
 
    ```
    GRTOBJAUT OBJ(QSYS/QPMLPMGT) OBJTYPE(*SRVPGM) USER(CAIRNOBS) AUT(*USE)

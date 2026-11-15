@@ -260,7 +260,7 @@ func (srv *Server) handleClusterAdoptPut(w http.ResponseWriter, r *http.Request)
 		cur = &Expected{}
 	}
 	old := cur.Clusters[cluster]
-	ec := ExpectedCluster{Namespaces: maps.Clone(old.Namespaces), Workloads: slices.Clone(old.Workloads)}
+	ec := ExpectedCluster{Namespaces: maps.Clone(old.Namespaces), Workloads: slices.Clone(old.Workloads), Subsystems: slices.Clone(old.Subsystems)}
 	what, did := f.Namespace, ""
 	if f.Namespace != "" {
 		if ec.Namespaces == nil {
@@ -301,7 +301,7 @@ func (srv *Server) handleClusterAdoptPut(w http.ResponseWriter, r *http.Request)
 	if len(ec.Workloads) == 0 {
 		ec.Workloads = nil
 	}
-	if ec.Namespaces == nil && ec.Workloads == nil {
+	if ec.Namespaces == nil && ec.Workloads == nil && len(ec.Subsystems) == 0 {
 		delete(next.Clusters, cluster)
 	} else {
 		next.Clusters[cluster] = ec
