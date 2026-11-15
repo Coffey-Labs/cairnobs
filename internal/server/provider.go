@@ -278,6 +278,9 @@ func (srv *Server) recheck(ctx context.Context, tok string, s session) bool {
 	if s.Dev {
 		return srv.cfg.DevSignin // a stored dev session dies once dev sign-in is off
 	}
+	if s.demo() {
+		return srv.cfg.DemoSignin // and a demo visitor's once the demo is off
+	}
 	if srv.local != nil && s.Provider == srv.local.id {
 		return srv.recheckLocal(tok, s)
 	}

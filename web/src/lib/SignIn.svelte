@@ -5,7 +5,7 @@
 	import { post, type Provider } from './api';
 	import { live } from './live.svelte';
 	import { passkeysSupported, signInWithPasskey } from './passkey';
-	let { dev, providers }: { dev: boolean; providers: Provider[] } = $props();
+	let { dev, demo = false, providers }: { dev: boolean; demo?: boolean; providers: Provider[] } = $props();
 	let busy = $state(false);
 	let error = $state('');
 
@@ -54,6 +54,19 @@
 		}
 	}
 
+	async function demoSignin() {
+		busy = true;
+		error = '';
+		try {
+			await post('/auth/demo');
+			await live.checkSession();
+		} catch (e) {
+			error = String(e);
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function devSignin() {
 		busy = true;
 		error = '';
@@ -74,6 +87,11 @@
 		<div class="brand"><Mark size={34} /><b>Cairn OBS</b></div>
 		<p class="lead">Self-hosted monitoring</p>
 		{#if reason}<p class="reason" role="alert">{reason}</p>{/if}
+		{#if demo}
+			<p class="demo">This is the demo: a simulated enterprise of hosts, clusters, VMs, arrays and IBM i, failing in the ways real ones do. Look at anything, setup included; nothing you do changes it.</p>
+			<button class="btn pri wide" onclick={demoSignin} disabled={busy}><Icon name="eye" /> Look around</button>
+			<p class="fine"><a href="https://cairnobs.org/">What Cairn OBS is</a></p>
+		{/if}
 		{#each redirects as p (p.id)}
 			<a class="btn pri wide" href="/auth/{p.id}/login{back}" data-sveltekit-reload data-sveltekit-preload-data="off"><Icon name="lock" /> {p.label}</a>
 			{#if p.note}<p class="fine">{p.note}</p>{/if}
@@ -91,7 +109,7 @@
 				<button class="btn {passkey ? '' : 'pri'} wide" type="submit" disabled={busy}><Icon name="lock" /> Sign in</button>
 			</form>
 		{/if}
-		{#if !providers.length}<p class="fine">No sign-in provider is configured.</p>{/if}
+		{#if !providers.length && !demo}<p class="fine">No sign-in provider is configured.</p>{/if}
 		{#if dev}
 			<div class="dev">
 				<p>This obs-beacond runs with <b>development sign-in</b>, which only works on a loopback address.</p>
@@ -115,6 +133,8 @@
 	.dev { margin-top: 10px; padding-top: 16px; border-top: 1px solid var(--border); }
 	.dev p { font-size: 12px; color: var(--muted-fg); margin: 0 0 10px; }
 	.err { color: var(--critical); font-size: 13px; }
+	.demo { font-size: 13.5px; line-height: 1.55; text-align: center; margin: 0 0 6px; }
+	.fine a { color: inherit; }
 	.or { display: flex; align-items: center; gap: 10px; color: var(--muted-fg); font-size: 12px; margin: 6px 0; }
 	.or::before, .or::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 	.pw { display: grid; gap: 10px; }
