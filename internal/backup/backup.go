@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -144,11 +143,10 @@ func scanFiles(h Host, out *report.Backups) {
 			d.Name, d.From = name, s.From
 			out.Received = append(out.Received, d)
 		}
-		var st syscall.Statfs_t
-		if err := syscall.Statfs(s.Root, &st); err != nil {
+		if pct, err := usedPct(s.Root); err != nil {
 			fail(fmt.Errorf("%s: %w", s.Root, err))
-		} else if st.Blocks > 0 {
-			out.Roots = append(out.Roots, report.BackupRoot{Path: s.Root, UsedPct: 100 * (1 - float64(st.Bavail)/float64(st.Blocks))})
+		} else if pct >= 0 {
+			out.Roots = append(out.Roots, report.BackupRoot{Path: s.Root, UsedPct: pct})
 		}
 	}
 	for _, m := range h.Made {

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # A v* tag is a release: obs-beacond and obs-beacon-agent for linux/amd64 and
-# linux/arm64, the .deb and .rpm packages, and SHA256SUMS, attached to a
+# linux/arm64, the .deb and .rpm packages, the Windows agent zip and SHA256SUMS, attached to a
 # Release on this repo (scripts/build-release.sh builds them all).
 #
 # Private until launch: the Release lives only on this

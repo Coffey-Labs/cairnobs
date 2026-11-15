@@ -177,7 +177,7 @@
 
 			<h3>System services</h3>
 			{#if data.services === null}
-				<p class="sub">This host's agent doesn't list its services: it's older than this server, or the host has no systemd. Services can still be named below.</p>
+				<p class="sub">This host's agent doesn't list its services: it's older than this server, or the host has neither systemd nor Windows services. Services can still be named below.</p>
 			{:else}
 				<p class="sub">Tick the ones that must stay active. One that stops, or isn't installed, is critical.</p>
 			{/if}

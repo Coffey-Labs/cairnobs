@@ -19,15 +19,13 @@ import (
 // serviceUser runs the agent; join hands it the state it writes.
 const serviceUser = "obs-beacon"
 
-const defaultStateDir = "/var/lib/obs-beacon-agent"
-
 // runJoin is `obs-beacon-agent join [-force] <token>`: it joins this host to
 // the obs-beacond the token came from (Hosts, Add host) and writes
 // agent.yaml. install.sh runs it; it can be run by hand after installing
 // the package.
 func runJoin(args []string) error {
 	fs := flag.NewFlagSet("join", flag.ExitOnError)
-	cfgPath := fs.String("config", "/etc/obs-beacon/agent.yaml", "the config file to write")
+	cfgPath := fs.String("config", defaultConfig, "the config file to write")
 	stateDir := fs.String("state-dir", defaultStateDir, "where the certificate and key go")
 	force := fs.Bool("force", false, "replace an existing config file")
 	fs.Usage = func() {
@@ -94,7 +92,7 @@ func chownTree(dir string, uid, gid int) error {
 func writeJoinedConfig(p string, tok jointoken.Token, name, stateDir string, gid int, owned bool) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Written by `obs-beacon-agent join` on %s. See the example in\n", time.Now().UTC().Format(time.DateOnly))
-	b.WriteString("# /usr/share/doc/obs-beacon-agent/examples for everything else it can say.\n\n")
+	fmt.Fprintf(&b, "# %s for everything else it can say.\n\n", examplesDir)
 	fmt.Fprintf(&b, "server: %q\n", tok.Server)
 	fmt.Fprintf(&b, "ca_fingerprint: %q\n", tok.CAFingerprint)
 	fmt.Fprintf(&b, "host: %s\n", name)
@@ -102,8 +100,10 @@ func writeJoinedConfig(p string, tok jointoken.Token, name, stateDir string, gid
 		fmt.Fprintf(&b, "state_dir: %q\n", stateDir)
 	}
 	b.WriteString("interval: 15s\n")
-	// The helper runs with or without Docker: it also takes the map sample.
-	b.WriteString("helper_socket: /run/obs-beacon/helper.sock  # the root helper: containers and the map sample\n")
+	if hasHelper {
+		// The helper runs with or without Docker: it also takes the map sample.
+		b.WriteString("helper_socket: /run/obs-beacon/helper.sock  # the root helper: containers and the map sample\n")
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
 		return err
 	}
