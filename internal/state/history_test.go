@@ -64,10 +64,10 @@ func join(s []string) string {
 func TestHostHoursMailRoundsNotes(t *testing.T) {
 	db, _ := open(t)
 	h := time.Date(2026, 10, 1, 5, 0, 0, 0, time.UTC)
-	if err := db.PutHostHour(HostHour{Host: "host1", Hour: h, CPU: 3, CPUMax: 40, Mem: 50, MemMax: 55, Disks: []DiskSample{{Mount: "/", Used: 10, Total: 100}}}); err != nil {
+	if err := db.PutHostHour(HostHour{Host: "node1", Hour: h, CPU: 3, CPUMax: 40, Mem: 50, MemMax: 55, Disks: []DiskSample{{Mount: "/", Used: 10, Total: 100}}}); err != nil {
 		t.Fatal(err)
 	}
-	_ = db.PutHostHour(HostHour{Host: "host1", Hour: h, CPU: 4, CPUMax: 41, Mem: 51, MemMax: 56, Disks: []DiskSample{{Mount: "/", Used: 11, Total: 100}}}) // replaces
+	_ = db.PutHostHour(HostHour{Host: "node1", Hour: h, CPU: 4, CPUMax: 41, Mem: 51, MemMax: 56, Disks: []DiskSample{{Mount: "/", Used: 11, Total: 100}}}) // replaces
 	hh, err := db.HostHours(h, h.Add(time.Hour))
 	if err != nil || len(hh) != 1 || hh[0].CPU != 4 || hh[0].Disks[0].Used != 11 {
 		t.Fatalf("%+v %v", hh, err)
@@ -78,9 +78,9 @@ func TestHostHoursMailRoundsNotes(t *testing.T) {
 	if len(mr) != 2 || mr[1].Seconds != -1 {
 		t.Errorf("%+v", mr)
 	}
-	_ = db.SetNote("a1", Note{Text: "disk full on host2", By: "John", At: h})
+	_ = db.SetNote("a1", Note{Text: "disk full on node2", By: "John", At: h})
 	n, _ := db.Notes([]string{"a1", "a2"})
-	if len(n) != 1 || n["a1"].Text != "disk full on host2" {
+	if len(n) != 1 || n["a1"].Text != "disk full on node2" {
 		t.Errorf("%+v", n)
 	}
 	_ = db.SetNote("a1", Note{})

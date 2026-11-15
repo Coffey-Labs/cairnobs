@@ -135,10 +135,13 @@ administrator rights and no helper; its config and state are in
 `C:\ProgramData\obs-beacon`, which only it, SYSTEM and Administrators may
 open, and it logs to the Application event log. It reports the host, the
 Windows services named for it (as units: `units: [W32Time]` in
-expected.yaml) and the map sample; no containers or VMs. Running `service
+expected.yaml), the map sample, the machine's certificate stores, errors
+and criticals from the System and Application event logs, and Hyper-V's
+VMs where the role is installed (the account must be in Hyper-V
+Administrators for that; docs/windows.md). No containers. Running `service
 install` from a newer zip upgrades it; `service uninstall` removes it and
 keeps ProgramData. Windows Server 2016 and later, and Windows 10 and 11,
-on amd64 (docs/windows.md).
+on amd64 and arm64 (docs/windows.md).
 
 ### Hosts in the config file
 

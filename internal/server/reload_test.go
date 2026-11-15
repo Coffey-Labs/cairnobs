@@ -52,26 +52,26 @@ func TestCertReloadOffer(t *testing.T) {
 	}
 
 	// No cert_reload on the host: nothing on offer, and nothing taken.
-	srv.store.Put("host1", r, now)
+	srv.store.Put("node1", r, now)
 	if o := offers(); len(o) != 0 {
 		t.Fatalf("offered without cert_reload: %+v", o)
 	}
-	ask := `{"host":"host1","unit":"admin.service","addr":"127.0.0.1","port":8443}`
+	ask := `{"host":"node1","unit":"admin.service","addr":"127.0.0.1","port":8443}`
 	if rec := sendCookie(h, "POST", "/api/v1/certificates/reload", c, ask); rec.Code != 409 {
 		t.Fatalf("not on offer: %d %s", rec.Code, rec.Body)
 	}
 
 	// A rule for other files: still nothing.
 	r.Reloads = []report.ReloadRule{{Unit: "nginx.service", Files: []string{"/etc/nginx/**/*.pem"}}}
-	srv.store.Put("host1", r, now)
+	srv.store.Put("node1", r, now)
 	if o := offers(); len(o) != 0 {
 		t.Fatalf("offered for another unit's files: %+v", o)
 	}
 
 	r.Reloads = append(r.Reloads, report.ReloadRule{Unit: "admin.service", Files: []string{"/etc/letsencrypt/live/*/cert.pem"}})
-	srv.store.Put("host1", r, now)
+	srv.store.Put("node1", r, now)
 	o := offers()
-	if len(o) != 1 || o[0].Unit != "admin.service" || o[0].Port != 8443 || o[0].Where != "host1:8443 · admin" || o[0].File != "/etc/letsencrypt/live/admin/cert.pem" || o[0].Last != nil {
+	if len(o) != 1 || o[0].Unit != "admin.service" || o[0].Port != 8443 || o[0].Where != "node1:8443 · admin" || o[0].File != "/etc/letsencrypt/live/admin/cert.pem" || o[0].Last != nil {
 		t.Fatalf("offer: %+v", o)
 	}
 	if rec := sendCookie(h, "POST", "/api/v1/certificates/reload", c, strings.Replace(ask, "admin.service", "sshd.service", 1)); rec.Code != 409 {
@@ -89,11 +89,11 @@ func TestCertReloadOffer(t *testing.T) {
 	}
 	// The agent gets the unit and the port, nothing else.
 	as, _ := srv.db.Actions(10)
-	if len(as) != 1 || as[0].Agent != "host1" || as[0].Args != `{"unit":"admin.service","addr":"127.0.0.1","port":8443}` {
+	if len(as) != 1 || as[0].Agent != "node1" || as[0].Args != `{"unit":"admin.service","addr":"127.0.0.1","port":8443}` {
 		t.Fatalf("queued: %+v", as)
 	}
 	audit := get(h, "/api/v1/audit", c).Body.String()
-	if !strings.Contains(audit, `"action":"asked host1 to act","detail":"reload admin.service, as host1:8443 · admin serves admin.internal (`) {
+	if !strings.Contains(audit, `"action":"asked node1 to act","detail":"reload admin.service, as node1:8443 · admin serves admin.internal (`) {
 		t.Errorf("audit: %s", audit)
 	}
 }

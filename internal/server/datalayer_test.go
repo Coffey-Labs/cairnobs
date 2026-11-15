@@ -14,23 +14,23 @@ import (
 	"github.com/cairnobs/cairnobs/internal/report"
 )
 
-// HAProxy's CSV as host1 answered it (trimmed to the columns that matter).
+// HAProxy's CSV as node1 answered it (trimmed to the columns that matter).
 const haproxyCSV = `# pxname,svname,qcur,status,weight
 stats,FRONTEND,,OPEN,
 pg-primary,FRONTEND,,OPEN,
-pg-primary,host1,0,DOWN,1
-pg-primary,host2,0,UP,1
-pg-primary,host3,0,DOWN,1
+pg-primary,node1,0,DOWN,1
+pg-primary,node2,0,UP,1
+pg-primary,node3,0,DOWN,1
 pg-primary,BACKEND,0,UP,1
 pg-replicas,FRONTEND,,OPEN,
-pg-replicas,host1,0,UP,1
-pg-replicas,host2,0,DOWN,1
-pg-replicas,host3,0,UP,1
+pg-replicas,node1,0,UP,1
+pg-replicas,node2,0,DOWN,1
+pg-replicas,node3,0,UP,1
 pg-replicas,BACKEND,0,UP,2
 s3,FRONTEND,,OPEN,
-s3,host1,0,UP,1
-s3,host2,0,UP,1
-s3,host3,0,%s,1
+s3,node1,0,UP,1
+s3,node2,0,UP,1
+s3,node3,0,%s,1
 s3,BACKEND,0,UP,3
 `
 
@@ -64,7 +64,7 @@ func dataServer(t *testing.T, patroniURL string) *Server {
 		{ID: "nats", Kind: "nats", URL: "http://127.0.0.1:8222/varz", Peers: 2},
 		{ID: "garage", Kind: "garage", URL: "http://127.0.0.1:3903/health"},
 	}}
-	if err := srv.cfg.DataLayer.check(map[string]bool{"host1": true, "host2": true, "host3": true}); err != nil {
+	if err := srv.cfg.DataLayer.check(map[string]bool{"node1": true, "node2": true, "node3": true}); err != nil {
 		t.Fatal(err)
 	}
 	return srv
@@ -84,9 +84,9 @@ func natsBody(remotes, slow int) string {
 func TestDataLayerHealthy(t *testing.T) {
 	now := time.Now()
 	fp := &fakePatroni{dcs: now.Unix() - 5, members: `
-		{"name":"host1","role":"replica","state":"streaming","host":"127.0.0.1","timeline":9,"lag":0},
-		{"name":"host2","role":"leader","state":"running","host":"10.0.0.2","timeline":9},
-		{"name":"host3","role":"sync_standby","state":"streaming","host":"10.0.0.3","timeline":9,"lag":"unknown"}`}
+		{"name":"node1","role":"replica","state":"streaming","host":"127.0.0.1","timeline":9,"lag":0},
+		{"name":"node2","role":"leader","state":"running","host":"10.0.0.2","timeline":9},
+		{"name":"node3","role":"sync_standby","state":"streaming","host":"10.0.0.3","timeline":9,"lag":"unknown"}`}
 	ps := fp.server(t)
 	srv := dataServer(t, ps.URL)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -94,7 +94,7 @@ func TestDataLayerHealthy(t *testing.T) {
 	defer cancel()
 	waitFor(t, func() bool { srv.patroni.mu.Lock(); defer srv.patroni.mu.Unlock(); return len(srv.patroni.reads) == 1 })
 
-	for _, h := range []string{"host1", "host2", "host3"} {
+	for _, h := range []string{"node1", "node2", "node3"} {
 		put(srv, h, now,
 			report.Fetch{ID: "haproxy", Status: 200, Body: fmt.Sprintf(haproxyCSV, "UP")},
 			report.Fetch{ID: "nats", Status: 200, Body: natsBody(2, 0)},
@@ -104,13 +104,13 @@ func TestDataLayerHealthy(t *testing.T) {
 	if len(conds) != 0 {
 		t.Fatalf("healthy cluster raised: %s", keys(conds))
 	}
-	srv.cfg.DataLayer.PreferredLeader = "host1"
+	srv.cfg.DataLayer.PreferredLeader = "node1"
 	if _, c := srv.dataLayerView(now); keys(c) != "warning:dl/patroni/home" {
 		t.Errorf("leader away from home: got %q", keys(c))
 	}
-	srv.cfg.DataLayer.PreferredLeader = "host2"
+	srv.cfg.DataLayer.PreferredLeader = "node2"
 	b, _ := json.Marshal(v)
-	for _, want := range []string{`"leader":"host2"`, `"lag_bytes":0`, `"dcs_age_s":5`, `"rule":"exactly one"`, `"says":"Garage is fully operational"`, `"peers":2`} {
+	for _, want := range []string{`"leader":"node2"`, `"lag_bytes":0`, `"dcs_age_s":5`, `"rule":"exactly one"`, `"says":"Garage is fully operational"`, `"peers":2`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("view lacks %s: %s", want, b)
 		}
@@ -121,8 +121,8 @@ func TestDataLayerTrouble(t *testing.T) {
 	now := time.Now()
 	lag := 40 << 20
 	fp := &fakePatroni{dcs: now.Unix() - 300, members: fmt.Sprintf(`
-		{"name":"host1","role":"replica","state":"streaming","host":"127.0.0.1","timeline":9,"lag":%d},
-		{"name":"host3","role":"replica","state":"starting","host":"10.0.0.3","timeline":9}`, lag)}
+		{"name":"node1","role":"replica","state":"streaming","host":"127.0.0.1","timeline":9,"lag":%d},
+		{"name":"node3","role":"replica","state":"starting","host":"10.0.0.3","timeline":9}`, lag)}
 	ps := fp.server(t)
 	srv := dataServer(t, ps.URL)
 	srv.cfg.DataLayer.Patroni = append(srv.cfg.DataLayer.Patroni, "http://127.0.0.1:1") // a second member that doesn't answer
@@ -131,34 +131,34 @@ func TestDataLayerTrouble(t *testing.T) {
 	defer cancel()
 	waitFor(t, func() bool { srv.patroni.mu.Lock(); defer srv.patroni.mu.Unlock(); return len(srv.patroni.reads) == 2 })
 
-	put(srv, "host1", now,
+	put(srv, "node1", now,
 		report.Fetch{ID: "haproxy", Status: 200, Body: fmt.Sprintf(haproxyCSV, "DOWN")},
 		report.Fetch{ID: "nats", Status: 200, Body: natsBody(1, 0)},
 		report.Fetch{ID: "garage", Status: 503, Body: "Garage is not operational: 1 partition has no quorum"})
-	put(srv, "host2", now, report.Fetch{ID: "haproxy", Error: "dial tcp 127.0.0.1:8404: connect: connection refused"},
+	put(srv, "node2", now, report.Fetch{ID: "haproxy", Error: "dial tcp 127.0.0.1:8404: connect: connection refused"},
 		report.Fetch{ID: "nats", Status: 200, Body: natsBody(0, 0)})
 	_, conds := srv.dataLayerView(now)
 	got := keys(conds)
 	for _, want := range []string{
 		"critical:dl/patroni/leader",      // nobody leads
-		"warning:dl/patroni/member/host3", // starting
-		"warning:dl/patroni/lag/host1",    // 40 MB behind
-		"warning:dl/etcd/dcs/host1",       // 5 min without etcd
-		"warning:dl/haproxy/s3/host1",     // one of three s3 servers down
-		"warning:dl/nats/peers/host1",     // 1 of 2
-		"critical:dl/garage/health/host1",
-		"critical:dl/haproxy/down/host2", // status page not answering
-		"critical:dl/nats/peers/host2",   // 0 of 2
+		"warning:dl/patroni/member/node3", // starting
+		"warning:dl/patroni/lag/node1",    // 40 MB behind
+		"warning:dl/etcd/dcs/node1",       // 5 min without etcd
+		"warning:dl/haproxy/s3/node1",     // one of three s3 servers down
+		"warning:dl/nats/peers/node1",     // 1 of 2
+		"critical:dl/garage/health/node1",
+		"critical:dl/haproxy/down/node2", // status page not answering
+		"critical:dl/nats/peers/node2",   // 0 of 2
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in %s", want, got)
 		}
 	}
 	// Slow consumers growing between readings warn.
-	put(srv, "host3", now, report.Fetch{ID: "nats", Status: 200, Body: natsBody(2, 3)})
+	put(srv, "node3", now, report.Fetch{ID: "nats", Status: 200, Body: natsBody(2, 3)})
 	srv.dataLayerView(now)
-	put(srv, "host3", now, report.Fetch{ID: "nats", Status: 200, Body: natsBody(2, 7)})
-	if _, conds := srv.dataLayerView(now); !strings.Contains(keys(conds), "warning:dl/nats/slow/host3") {
+	put(srv, "node3", now, report.Fetch{ID: "nats", Status: 200, Body: natsBody(2, 7)})
+	if _, conds := srv.dataLayerView(now); !strings.Contains(keys(conds), "warning:dl/nats/slow/node3") {
 		t.Fatalf("slow consumers: %s", keys(conds))
 	}
 }
@@ -171,22 +171,22 @@ func TestPatroniUnreachableAndLeaderChange(t *testing.T) {
 		t.Fatalf("unreachable: %s", keys(conds))
 	}
 	// The leader moving goes in the audit log.
-	srv.patroni.reads["http://127.0.0.1:1"] = patroniRead{at: now, members: []patroniMember{{Name: "host2", Role: "leader", State: "running"}}}
+	srv.patroni.reads["http://127.0.0.1:1"] = patroniRead{at: now, members: []patroniMember{{Name: "node2", Role: "leader", State: "running"}}}
 	srv.dataLayerView(now)
-	srv.patroni.reads["http://127.0.0.1:1"] = patroniRead{at: now, members: []patroniMember{{Name: "host1", Role: "leader", State: "running"}}}
+	srv.patroni.reads["http://127.0.0.1:1"] = patroniRead{at: now, members: []patroniMember{{Name: "node1", Role: "leader", State: "running"}}}
 	srv.dataLayerView(now)
-	if srv.patroni.lastLeader != "host1" {
+	if srv.patroni.lastLeader != "node1" {
 		t.Fatalf("last leader %q", srv.patroni.lastLeader)
 	}
 }
 
 func TestDataLayerConfigChecks(t *testing.T) {
-	agents := map[string]bool{"host1": true}
+	agents := map[string]bool{"node1": true}
 	for _, bad := range []DataLayerConfig{
 		{Probes: []ProbeConfig{{ID: "a", Kind: "redis", URL: "http://127.0.0.1/"}}},
 		{Probes: []ProbeConfig{{ID: "a", Kind: "nats", URL: "http://example.com/varz"}}},
 		{Probes: []ProbeConfig{{ID: "a", Kind: "nats", URL: "http://127.0.0.1/"}, {ID: "a", Kind: "nats", URL: "http://127.0.0.1/"}}},
-		{Probes: []ProbeConfig{{ID: "a", Kind: "nats", URL: "http://127.0.0.1/", From: []string{"host9"}}}},
+		{Probes: []ProbeConfig{{ID: "a", Kind: "nats", URL: "http://127.0.0.1/", From: []string{"node9"}}}},
 	} {
 		if err := bad.check(agents); err == nil {
 			t.Errorf("accepted %+v", bad)
@@ -235,10 +235,10 @@ func TestEtcdProbe(t *testing.T) {
 		return mine
 	}
 	// Healthy, on spinning disks: syncs up to 64 ms are fine under a 500 ms threshold.
-	if c := read("host1", etcdMetrics(1, 1.1e6, [4]int{21, 40, 40, 40})); len(c) != 0 {
+	if c := read("node1", etcdMetrics(1, 1.1e6, [4]int{21, 40, 40, 40})); len(c) != 0 {
 		t.Fatalf("first reading: %s", keys(c))
 	}
-	if c := read("host1", etcdMetrics(1, 1.1e6, [4]int{30, 80, 80, 80})); len(c) != 0 {
+	if c := read("node1", etcdMetrics(1, 1.1e6, [4]int{30, 80, 80, 80})); len(c) != 0 {
 		t.Fatalf("64 ms syncs under a 500 ms threshold: %s", keys(c))
 	}
 	// Judged again before the next report, as the page and the evaluator
@@ -247,7 +247,7 @@ func TestEtcdProbe(t *testing.T) {
 		v, _ := srv.dataLayerView(now)
 		var got any
 		for _, pv := range v["probes"].([]ProbeView) {
-			if pv.Kind == "etcd" && pv.Host == "host1" {
+			if pv.Kind == "etcd" && pv.Host == "node1" {
 				got = pv.Facts["fsync_p99_ms"]
 			}
 		}
@@ -256,15 +256,15 @@ func TestEtcdProbe(t *testing.T) {
 		}
 	}
 	// Then syncs slower than 512 ms, no leader, and nearly full.
-	c := read("host1", etcdMetrics(0, 1.8e9, [4]int{30, 80, 80, 120}))
-	if got := keys(c); got != "critical:dl/etcd/leader/host1 warning:dl/etcd/quota/host1 warning:dl/etcd/fsync/host1" {
+	c := read("node1", etcdMetrics(0, 1.8e9, [4]int{30, 80, 80, 120}))
+	if got := keys(c); got != "critical:dl/etcd/leader/node1 warning:dl/etcd/quota/node1 warning:dl/etcd/fsync/node1" {
 		t.Fatalf("trouble: %s", got)
 	}
 	if !strings.Contains(c[2].Detail, "took up to over 8 s") && !strings.Contains(c[2].Detail, "99% of the last 40 WAL syncs") {
 		t.Fatalf("fsync detail: %s", c[2].Detail)
 	}
 	// The agent is asked to keep only the lines Cairn OBS reads.
-	work, _ := srv.workFor("host1")
+	work, _ := srv.workFor("node1")
 	for _, f := range work.Fetches {
 		if f.ID == "etcd" && len(f.Keep) == 0 {
 			t.Fatal("etcd fetch keeps everything")

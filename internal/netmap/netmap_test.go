@@ -150,7 +150,7 @@ func TestInterfaceKind(t *testing.T) {
 		{"docker0", "bridge", false, "container"},
 		{"br-c71d59ac4344", "bridge", false, "container"},
 		{"br0", "bridge", false, "bridge"},
-		{"wg-bench", "wireguard", false, "wireguard"},
+		{"wg-desk", "wireguard", false, "wireguard"},
 		{"enp3s0.20", "vlan", false, "vlan"},
 		{"tun0", "", false, "tun"},
 		{"virbr0", "bridge", false, "container"},
@@ -250,10 +250,10 @@ func TestMerge(t *testing.T) {
 }
 
 // inbuxa in a namespace of its own, with its own public address, reaching
-// HAProxy on the host's mesh address (ours on host2, 2026-11-14): the host
+// HAProxy on the host's mesh address (ours on node2, 2026-11-14): the host
 // sees both ends. Counted once, going out, never as the Internet coming in.
 func TestShrinkAcrossNamespaces(t *testing.T) {
-	mail, mesh := netip.MustParseAddrPort("95.216.2.52:49890"), netip.MustParseAddrPort("10.77.0.2:5000")
+	mail, mesh := netip.MustParseAddrPort("203.0.113.52:49890"), netip.MustParseAddrPort("10.30.0.2:5000")
 	socks := []NSSocket{
 		{NS: 1, Socket: Socket{Proto: "tcp", State: stListen, Inode: 1, Local: netip.MustParseAddrPort("0.0.0.0:5000")}},
 		{NS: 1, Socket: Socket{Proto: "tcp", State: stEstablished, Inode: 2, Local: mesh, Remote: mail}},
@@ -265,7 +265,7 @@ func TestShrinkAcrossNamespaces(t *testing.T) {
 	_, conns, _ := Shrink(socks, 1, func(i uint64) string { return owners[i] })
 	want := []report.Conn{
 		{Owner: "unit:haproxy.service", Dir: "in", Port: 5000, Count: 1},
-		{Owner: "unit:inbuxa.service", Dir: "out", Remote: "10.77.0.2", Port: 5000, Count: 1, Inside: true},
+		{Owner: "unit:inbuxa.service", Dir: "out", Remote: "10.30.0.2", Port: 5000, Count: 1, Inside: true},
 	}
 	slices.SortFunc(conns, func(a, b report.Conn) int { return strings.Compare(a.Owner, b.Owner) })
 	if !slices.Equal(conns, want) {

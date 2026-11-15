@@ -1,7 +1,7 @@
 # obs-beacond's config. Copy to /etc/obs-beacon/obs-beacond.yaml (root:obs-beacon, 0640).
 # Quote addresses: YAML reads an unquoted [::1] as a list.
 
-listen: "127.0.0.1:8150"          # web UI + browser API, behind host3's nginx
+listen: "127.0.0.1:8150"          # web UI + browser API, behind nginx on the same machine
 agent_listen: ":8461"             # agents only: TLS with obs-beacond's own agent CA (needs database)
 # agent_tls:
 #   names: ["beacon.example.org"]  # extra names for its certificate (agents don't check names)
@@ -34,8 +34,8 @@ datalayer:
 # Daily windows when a host's alerts are held (the auto-reboots). Use the
 # host's timezone so daylight saving moves the window with its timer.
 maintenance:
-  - name: host1 auto-reboot
-    hosts: [host1]
+  - name: node1 auto-reboot
+    hosts: [node1]
     daily: "04:30"
     timezone: Europe/Berlin
     duration: 20m
@@ -70,13 +70,13 @@ snapshot: /var/lib/obs-beacon/backup/beacon.db   # a consistent copy for the bac
 # Agents managed in this file instead. `obs-beacond token` prints a new
 # token and its hash; the token goes on the host, only the hash goes here.
 agents:
-  - name: host1
+  - name: node1
     token_sha256: "<64 hex characters>"
-  - name: host2
+  - name: node2
     token_sha256: "<64 hex characters>"
-  - name: host3
+  - name: node3
     token_sha256: "<64 hex characters>"
-  # - name: bench                  # a desk machine: watched, never pages
+  # - name: desk                   # a desk machine: watched, never pages
   #   token_sha256: "<64 hex characters>"
   #   workstation: true               # docs/formats.md, "Workstations"
 

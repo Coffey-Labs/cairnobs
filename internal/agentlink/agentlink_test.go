@@ -32,7 +32,7 @@ type rig struct {
 	srv   *server.Server
 	ts    *httptest.Server
 	pin   string
-	token string // host1's
+	token string // node1's
 	tokf  string // a file holding it
 }
 
@@ -48,7 +48,7 @@ func newRig(t *testing.T, dir, token string) *rig {
 	}
 	cfg := &server.Config{Listen: "127.0.0.1:0", AgentListen: "127.0.0.1:0", StaleAfter: time.Minute,
 		Database: statetest.Database(t, dir), DataDir: dir, StateKeyFile: key,
-		Agents: []server.AgentConfig{{Name: "host1", TokenSHA256: server.HashToken(token)}}}
+		Agents: []server.AgentConfig{{Name: "node1", TokenSHA256: server.HashToken(token)}}}
 	srv, err := server.New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func (r *rig) link(t *testing.T, stateDir string) *agentlink.Link {
 // report sends one report the way the agent does and returns the status.
 func reportWith(t *testing.T, l *agentlink.Link, url string, hdr map[string]string) int {
 	t.Helper()
-	body, _ := json.Marshal(report.Report{V: report.Version, Host: "host1", Time: time.Now().UTC(), Interval: 15})
+	body, _ := json.Marshal(report.Report{V: report.Version, Host: "node1", Time: time.Now().UTC(), Interval: 15})
 	req, _ := http.NewRequest(http.MethodPost, url+"/api/v1/agent/report", bytes.NewReader(body))
 	l.Authorize(req)
 	for k, v := range hdr {
@@ -270,7 +270,7 @@ func TestTLSNeedsADatabase(t *testing.T) {
 func TestPlainHTTPUsesTheToken(t *testing.T) {
 	token := server.NewAgentToken()
 	cfg := &server.Config{Listen: "127.0.0.1:0", AgentListen: "127.0.0.1:0", StaleAfter: time.Minute,
-		Agents: []server.AgentConfig{{Name: "host1", TokenSHA256: server.HashToken(token)}}}
+		Agents: []server.AgentConfig{{Name: "node1", TokenSHA256: server.HashToken(token)}}}
 	cfg.AgentTLS.Off = true
 	srv, err := server.New(cfg)
 	if err != nil {
@@ -347,7 +347,7 @@ func TestJoin(t *testing.T) {
 	if code, _ := api(http.MethodPost, "/api/v1/agents/join", `{"name":"web1"}`); code != http.StatusConflict {
 		t.Fatalf("a second token for a waiting name: %d", code)
 	}
-	if code, _ := api(http.MethodPost, "/api/v1/agents/join", `{"name":"host1"}`); code != http.StatusConflict {
+	if code, _ := api(http.MethodPost, "/api/v1/agents/join", `{"name":"node1"}`); code != http.StatusConflict {
 		t.Fatalf("a token for a name in the config file: %d", code)
 	}
 	if code, _ := api(http.MethodPost, "/api/v1/agents/join", `{"name":"Not A Name"}`); code != http.StatusBadRequest {
@@ -389,7 +389,7 @@ func TestJoin(t *testing.T) {
 
 	// Removing it cuts it off; a config-file agent can't be removed here.
 	api2 := admin(t, r2)
-	if code, _ := api2(http.MethodDelete, "/api/v1/agents/host1", ""); code != http.StatusConflict {
+	if code, _ := api2(http.MethodDelete, "/api/v1/agents/node1", ""); code != http.StatusConflict {
 		t.Fatalf("removed a config-file agent: %d", code)
 	}
 	if code, _ := api2(http.MethodDelete, "/api/v1/agents/web1", ""); code != http.StatusNoContent {

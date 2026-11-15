@@ -21,7 +21,7 @@ func actionServer(t *testing.T) (*Server, string) {
 	tok := NewAgentToken()
 	srv, err := New(&Config{Listen: "127.0.0.1:0", DevSignin: true, StaleAfter: time.Minute,
 		Database: statetest.Database(t, dir), DataDir: dir, StateKeyFile: key,
-		Agents: []AgentConfig{{Name: "host1", TokenSHA256: HashToken(tok)}, {Name: "host2", TokenSHA256: HashToken(NewAgentToken())}}})
+		Agents: []AgentConfig{{Name: "node1", TokenSHA256: HashToken(tok)}, {Name: "node2", TokenSHA256: HashToken(NewAgentToken())}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,11 @@ func TestActionsChannel(t *testing.T) {
 	if r := rep(); r.Code != 204 || r.Header().Get("X-Beacon-Actions") != "" {
 		t.Fatalf("nothing waiting: %d %q", r.Code, r.Header().Get("X-Beacon-Actions"))
 	}
-	id, err := srv.queueAction("host1", "reload", map[string]string{"unit": "nginx.service"}, "john", "reload nginx.service on host1")
+	id, err := srv.queueAction("node1", "reload", map[string]string{"unit": "nginx.service"}, "john", "reload nginx.service on node1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srv.queueAction("host2", "reload", map[string]string{}, "john", "x"); err != nil {
+	if _, err := srv.queueAction("node2", "reload", map[string]string{}, "john", "x"); err != nil {
 		t.Fatal(err)
 	}
 	if r := rep(); r.Header().Get("X-Beacon-Actions") != "1" {
@@ -85,18 +85,18 @@ func TestActionsChannel(t *testing.T) {
 	}
 	for _, a := range list.Actions {
 		switch a.Agent {
-		case "host1":
+		case "node1":
 			if a.State != "done" || a.Detail != "reloaded nginx.service" || a.By != "john" {
-				t.Errorf("host1: %+v", a)
+				t.Errorf("node1: %+v", a)
 			}
-		case "host2":
+		case "node2":
 			if a.State != "waiting" {
-				t.Errorf("host2: %+v", a)
+				t.Errorf("node2: %+v", a)
 			}
 		}
 	}
 	audit := get(h, "/api/v1/audit", c).Body.String()
-	if !strings.Contains(audit, "asked host1 to act") || !strings.Contains(audit, "did action "+id) {
+	if !strings.Contains(audit, "asked node1 to act") || !strings.Contains(audit, "did action "+id) {
 		t.Errorf("audit: %s", audit)
 	}
 }

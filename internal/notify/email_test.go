@@ -136,7 +136,7 @@ func emailChannel(t *testing.T, addr string, pool *x509.CertPool) *email {
 }
 
 var sample = Notice{Kind: "firing", ID: "B-0007", Severity: "critical", Title: "mail.example.org SMTP (25) is down",
-	Detail: "Failing from host2, host3: connection refused.", URL: "https://obs.example.test/checks", Since: time.Now()}
+	Detail: "Failing from node2, node3: connection refused.", URL: "https://obs.example.test/checks", Since: time.Now()}
 
 func TestEmailStartTLS(t *testing.T) {
 	cert, pool := testCert(t)
@@ -150,7 +150,7 @@ func TestEmailStartTLS(t *testing.T) {
 	}
 	msg := <-f.got
 	for _, want := range []string{"Subject: [Cairn OBS] Critical: mail.example.org SMTP (25) is down", "Auto-Submitted: auto-generated",
-		"From: \"Cairn OBS\" <obs@example.test>", "Failing from host2, host3", "https://obs.example.test/checks", "Incident B-0007"} {
+		"From: \"Cairn OBS\" <obs@example.test>", "Failing from node2, node3", "https://obs.example.test/checks", "Incident B-0007"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message lacks %q:\n%s", want, msg)
 		}

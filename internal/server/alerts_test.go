@@ -73,7 +73,7 @@ func drain(a *alerter) {
 	}
 }
 
-var demoDown = Condition{Key: "container/host2/inbuxa-demo", Severity: "critical", Title: "inbuxa-demo on host2: restarting", Host: "host2", Href: "/containers"}
+var demoDown = Condition{Key: "container/node2/inbuxa-demo", Severity: "critical", Title: "inbuxa-demo on node2: restarting", Host: "node2", Href: "/containers"}
 
 func eq(a, b []string) bool { return strings.Join(a, ",") == strings.Join(b, ",") }
 
@@ -129,11 +129,11 @@ func TestEscalationSendsAgainAndClearsAck(t *testing.T) {
 	ch := &spy{id: "ops", min: "warning"}
 	a := testAlerter(ch)
 	t0 := time.Now()
-	disk := Condition{Key: "disk/host3//var/backups", Severity: "warning", Title: "host3 /var/backups is 84% full", Host: "host3"}
+	disk := Condition{Key: "disk/node3//var/backups", Severity: "warning", Title: "node3 /var/backups is 84% full", Host: "node3"}
 	a.evaluate(t0, []Condition{disk})
 	a.evaluate(t0.Add(3*time.Minute), []Condition{disk})
 	a.acknowledge("B-0001", "Pat Admin", t0.Add(4*time.Minute), true)
-	disk.Severity, disk.Title = "critical", "host3 /var/backups is 91% full"
+	disk.Severity, disk.Title = "critical", "node3 /var/backups is 91% full"
 	a.evaluate(t0.Add(5*time.Minute), []Condition{disk})
 	drain(a)
 	if want := []string{"firing:warning", "escalated:critical"}; !eq(ch.kinds(), want) {
@@ -149,7 +149,7 @@ func TestChannelMinimums(t *testing.T) {
 	ops := &spy{id: "ops", min: "warning"}
 	a := testAlerter(phone, ops)
 	t0 := time.Now()
-	mem := Condition{Key: "memory/host1", Severity: "warning", Title: "host1 is low on memory", Host: "host1"}
+	mem := Condition{Key: "memory/node1", Severity: "warning", Title: "node1 is low on memory", Host: "node1"}
 	a.evaluate(t0, []Condition{mem, demoDown})
 	a.evaluate(t0.Add(2*time.Minute), []Condition{mem, demoDown})
 	drain(a)
@@ -176,7 +176,7 @@ func TestNeverReportedHostAlerts(t *testing.T) {
 		t.Fatalf("too early: %+v", conds)
 	}
 	_, conds := srv.view(srv.started.Add(2 * time.Minute))
-	if len(conds) != 2 || conds[0].Key != "silent/host1" || conds[0].Severity != "critical" {
+	if len(conds) != 2 || conds[0].Key != "silent/node1" || conds[0].Severity != "critical" {
 		t.Fatalf("never-reported hosts: %+v", conds)
 	}
 }
@@ -226,13 +226,13 @@ func TestMaintenanceHoldsAHostsAlerts(t *testing.T) {
 	ch := &spy{id: "phone", min: "warning"}
 	a := testAlerter(ch)
 	t0 := time.Now()
-	disk := Condition{Key: "disk/host2//", Severity: "warning", Title: "host2 / is 85% full", Host: "host2"}
+	disk := Condition{Key: "disk/node2//", Severity: "warning", Title: "node2 / is 85% full", Host: "node2"}
 	a.evaluate(t0, []Condition{disk})
 	a.evaluate(t0.Add(3*time.Minute), []Condition{disk}) // fires
-	held := map[string]bool{"host2": true}
-	silent := Condition{Key: "silent/host2", Severity: "critical", Title: "host2 has gone silent", Host: "host2"}
-	gitDown := Condition{Key: "container/host1/gitea", Severity: "critical", Title: "gitea on host1: exited", Host: "host1"} // another host: not held
-	// host2 reboots: its disk reading disappears and it goes silent, for ten minutes.
+	held := map[string]bool{"node2": true}
+	silent := Condition{Key: "silent/node2", Severity: "critical", Title: "node2 has gone silent", Host: "node2"}
+	gitDown := Condition{Key: "container/node1/gitea", Severity: "critical", Title: "gitea on node1: exited", Host: "node1"} // another host: not held
+	// node2 reboots: its disk reading disappears and it goes silent, for ten minutes.
 	for m := 4; m <= 14; m++ {
 		a.evaluateHeld(t0.Add(time.Duration(m)*time.Minute), []Condition{silent, gitDown}, held)
 	}
@@ -241,7 +241,7 @@ func TestMaintenanceHoldsAHostsAlerts(t *testing.T) {
 	if want := []string{"firing:warning", "firing:critical"}; !eq(ch.kinds(), want) || len(open) != 2 {
 		t.Fatalf("during the window: %v, %d open", ch.kinds(), len(open))
 	}
-	// Window over, host2 is back and the disk is fine: now it resolves; silence never paged.
+	// Window over, node2 is back and the disk is fine: now it resolves; silence never paged.
 	a.evaluate(t0.Add(15*time.Minute), []Condition{gitDown})
 	drain(a)
 	if want := []string{"firing:warning", "firing:critical", "resolved:warning"}; !eq(ch.kinds(), want) {
@@ -253,8 +253,8 @@ func TestMaintenanceConfig(t *testing.T) {
 	dir := t.TempDir()
 	p := dir + "/obs-beacond.yaml"
 	write := func(s string) { _ = os.WriteFile(p, []byte(s), 0o600) }
-	agents := "agents:\n  - name: host1\n    token_sha256: \"" + HashToken("x") + "\"\n"
-	write(agents + "maintenance:\n  - name: reboot\n    hosts: [host1]\n    daily: \"04:30\"\n    timezone: Europe/Berlin\n    duration: 20m\n")
+	agents := "agents:\n  - name: node1\n    token_sha256: \"" + HashToken("x") + "\"\n"
+	write(agents + "maintenance:\n  - name: reboot\n    hosts: [node1]\n    daily: \"04:30\"\n    timezone: Europe/Berlin\n    duration: 20m\n")
 	cfg, err := LoadConfig(p)
 	if err != nil || len(cfg.Maintenance) != 1 {
 		t.Fatalf("good window: %v", err)
@@ -264,16 +264,16 @@ func TestMaintenanceConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	berlin, _ := time.LoadLocation("Europe/Berlin")
-	if held := srv.heldHosts(time.Date(2026, 10, 16, 4, 40, 0, 0, berlin)); !held["host1"] {
-		t.Fatal("host1 not held in its window")
+	if held := srv.heldHosts(time.Date(2026, 10, 16, 4, 40, 0, 0, berlin)); !held["node1"] {
+		t.Fatal("node1 not held in its window")
 	}
-	write(agents + "maintenance:\n  - name: reboot\n    hosts: [host9]\n    daily: \"04:30\"\n    duration: 20m\n")
+	write(agents + "maintenance:\n  - name: reboot\n    hosts: [node9]\n    daily: \"04:30\"\n    duration: 20m\n")
 	// The name is checked when obs-beacond starts, against joined agents too.
 	cfg, err = LoadConfig(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), `no agent called "host9"`) {
+	if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), `no agent called "node9"`) {
 		t.Fatalf("unknown host accepted: %v", err)
 	}
 }
@@ -297,13 +297,13 @@ func TestIncidentCarriesContainerLogs(t *testing.T) {
 		{ID: "c1", Name: "gitea", State: "restarting", Status: "Restarting (1) 5 seconds ago",
 			Logs: []string{"2026-10-15T21:00:00Z panic: can't reach the database"}},
 	}}}
-	srv.store.Put("host1", rep, now)
+	srv.store.Put("node1", rep, now)
 	_, conds := srv.view(now)
 	srv.alerts.evaluate(now, conds)
 	h := srv.Handler()
 	cookie := post(h, "/auth/dev", "", nil, map[string]string{"X-Beacon": "1"}).Result().Cookies()[0]
 	body := get(h, "/api/v1/incidents", cookie).Body.String()
-	if !strings.Contains(body, `"key":"container/host1/gitea"`) || !strings.Contains(body, `"logs":["2026-10-15T21:00:00Z panic: can't reach the database"]`) {
+	if !strings.Contains(body, `"key":"container/node1/gitea"`) || !strings.Contains(body, `"logs":["2026-10-15T21:00:00Z panic: can't reach the database"]`) {
 		t.Fatalf("incidents: %s", body)
 	}
 }

@@ -43,7 +43,7 @@ func secret(t *testing.T, v string) string {
 	return p
 }
 
-var crit = Notice{Kind: "firing", ID: "B-0001", Severity: "critical", Title: "inbuxa-demo on host2: restarting", Detail: "Restarting (1) 3 seconds ago", Host: "host2", URL: "https://beacon.test/containers", Since: time.Date(2026, 10, 15, 18, 0, 0, 0, time.UTC)}
+var crit = Notice{Kind: "firing", ID: "B-0001", Severity: "critical", Title: "inbuxa-demo on node2: restarting", Detail: "Restarting (1) 3 seconds ago", Host: "node2", URL: "https://beacon.test/containers", Since: time.Date(2026, 10, 15, 18, 0, 0, 0, time.UTC)}
 
 func TestNtfy(t *testing.T) {
 	s, got := sink(t, 200)
@@ -57,10 +57,10 @@ func TestNtfy(t *testing.T) {
 	c := <-got
 	if c.path != "/beacon-abc123" || c.hdr.Get("Priority") != "urgent" || c.hdr.Get("Tags") != "rotating_light" ||
 		c.hdr.Get("Click") != crit.URL || c.hdr.Get("Authorization") != "Bearer tk_secret" ||
-		c.hdr.Get("Title") != "Critical: inbuxa-demo on host2: restarting" {
+		c.hdr.Get("Title") != "Critical: inbuxa-demo on node2: restarting" {
 		t.Fatalf("ntfy request: %s %v", c.path, c.hdr)
 	}
-	if !strings.Contains(string(c.body), "Host: host2") || !strings.Contains(string(c.body), "Incident B-0001") {
+	if !strings.Contains(string(c.body), "Host: node2") || !strings.Contains(string(c.body), "Incident B-0001") {
 		t.Fatalf("ntfy body: %s", c.body)
 	}
 	res := crit
@@ -96,7 +96,7 @@ func TestDiscordMentionsOnlyWhenAsked(t *testing.T) {
 		if mention != (msg.Content == "@here") || mention != (len(msg.AllowedMentions.Parse) == 1) {
 			t.Fatalf("mention=%v: %+v", mention, msg)
 		}
-		if msg.Embeds[0].Color != 0xff4545 || msg.Embeds[0].Title != "Critical: inbuxa-demo on host2: restarting" {
+		if msg.Embeds[0].Color != 0xff4545 || msg.Embeds[0].Title != "Critical: inbuxa-demo on node2: restarting" {
 			t.Fatalf("embed: %+v", msg.Embeds)
 		}
 	}

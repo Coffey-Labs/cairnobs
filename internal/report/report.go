@@ -103,7 +103,7 @@ type Backups struct {
 
 // BackupDir is the newest copy of one backup.
 type BackupDir struct {
-	Name     string    `json:"name"`           // e.g. mastodon-db
+	Name     string    `json:"name"`           // e.g. wiki-db
 	From     string    `json:"from,omitempty"` // the sending host
 	Path     string    `json:"path"`           // the newest copy's path
 	Size     int64     `json:"size"`

@@ -91,7 +91,7 @@ func TestOneEvaluatorAtATime(t *testing.T) {
 
 	// b sees it resolve, and numbers the next one after a's.
 	b.alerts.evaluate(t0.Add(5*time.Minute), nil)
-	b.alerts.evaluate(t0.Add(6*time.Minute), []Condition{{Key: "host/host3/down", Severity: "critical", Title: "host3 down", Host: "host3"}})
+	b.alerts.evaluate(t0.Add(6*time.Minute), []Condition{{Key: "host/node3/down", Severity: "critical", Title: "node3 down", Host: "node3"}})
 	drain(b.alerts)
 	if want := []string{"firing:critical", "resolved:critical"}; !eq(phone.kinds(), want) {
 		t.Fatalf("phone got %v", phone.kinds())

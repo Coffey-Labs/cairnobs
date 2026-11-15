@@ -67,7 +67,7 @@ func TestSignAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	iss, err := ca.SignAgent(csr, "host1", time.Now())
+	iss, err := ca.SignAgent(csr, "node1", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestSignAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Subject.CommonName != "host1" {
+	if c.Subject.CommonName != "node1" {
 		t.Errorf("common name %q, want the name obs-beacond gave, not the request's", c.Subject.CommonName)
 	}
 	if len(c.ExtKeyUsage) != 1 || c.ExtKeyUsage[0] != x509.ExtKeyUsageClientAuth {
@@ -90,12 +90,12 @@ func TestSignAgent(t *testing.T) {
 	}
 
 	// Requests that must be refused.
-	if _, err := ca.SignAgent([]byte("nonsense"), "host1", time.Now()); err == nil {
+	if _, err := ca.SignAgent([]byte("nonsense"), "node1", time.Now()); err == nil {
 		t.Error("signed nonsense")
 	}
 	rk, _ := rsa.GenerateKey(rand.Reader, 2048)
 	rcsr, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, rk)
-	if _, err := ca.SignAgent(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: rcsr}), "host1", time.Now()); err == nil {
+	if _, err := ca.SignAgent(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: rcsr}), "node1", time.Now()); err == nil {
 		t.Error("signed an RSA key")
 	}
 	// Same structure, one letter of the name changed: only the signature can catch it.
@@ -105,7 +105,7 @@ func TestSignAgent(t *testing.T) {
 		t.Fatal("test: name not found in the request")
 	}
 	tampered := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})
-	if _, err := ca.SignAgent(tampered, "host1", time.Now()); err == nil || !strings.Contains(err.Error(), "signature") {
+	if _, err := ca.SignAgent(tampered, "node1", time.Now()); err == nil || !strings.Contains(err.Error(), "signature") {
 		t.Errorf("tampered request: %v, want a signature error", err)
 	}
 }
@@ -135,7 +135,7 @@ func TestVerifyPinned(t *testing.T) {
 	}
 	// An agent's certificate can't pose as the server.
 	_, csr, _ := NewKey()
-	iss, _ := ca.SignAgent(csr, "host1", time.Now())
+	iss, _ := ca.SignAgent(csr, "node1", time.Now())
 	blk, _ := pem.Decode(iss.PEM)
 	if _, err := VerifyPinned([][]byte{blk.Bytes, ca.Cert.Raw}, ca.Fingerprint(), time.Now()); err == nil {
 		t.Error("accepted an agent certificate as the server's")

@@ -383,7 +383,7 @@ func (srv *Server) clusterSnaps() []wsnap {
 }
 
 // title is the cluster's own name: its record's, which is the source's
-// for a cluster agent, and the Proxmox cluster's ("prod-pve (host1)") for
+// for a cluster agent, and the Proxmox cluster's ("prod-pve (node1)") for
 // a Proxmox node's agent.
 func (s wsnap) title() string {
 	for _, r := range s.recs {

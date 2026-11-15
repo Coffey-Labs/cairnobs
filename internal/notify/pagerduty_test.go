@@ -35,7 +35,7 @@ func TestPagerDutyFollowsTheIncident(t *testing.T) {
 	m := send(crit)
 	p, _ := m["payload"].(map[string]any)
 	if m["_path"] != "/v2/enqueue" || m["event_action"] != "trigger" || m["dedup_key"] != "cairn-obs/B-0001" || m["routing_key"] != "R0UT1NGKEY0123456789abcdefghijkl" ||
-		p["severity"] != "critical" || p["source"] != "host2" || p["summary"] != crit.Title || p["timestamp"] != "2026-10-15T18:00:00Z" ||
+		p["severity"] != "critical" || p["source"] != "node2" || p["summary"] != crit.Title || p["timestamp"] != "2026-10-15T18:00:00Z" ||
 		m["client_url"] != crit.URL {
 		t.Fatalf("trigger: %v", m)
 	}

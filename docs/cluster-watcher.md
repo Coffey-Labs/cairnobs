@@ -380,17 +380,17 @@ everything at once.
   node.
 - **kind** (allowed for testing): the real agent against real
   Deployments, StatefulSets, PVCs and Jobs, and KubeVirt in emulation mode
-  for VMs, on bench. This is free; it needs no nested virtualization.
+  for VMs, on a development workstation. This is free; it needs no nested virtualization.
 - **OKD** for the OpenShift parts (ClusterOperators, an upgrade rolling
   through MachineConfigPools): only on the EX280 lab cluster, and only
   with John's go-ahead each time.
 - **Proxmox** and **libvirt:** against their documented APIs with
-  fakes, plus libvirt for real on bench, which has KVM. Each PR says what
+  fakes, plus libvirt for real on a development workstation, which has KVM. Each PR says what
   was tested against the real thing and what against a fake.
 
 ### What kind showed (step 2a, 2026-11-13)
 
-A kind cluster on bench, with three obs-beacond copies on CloudNativePG
+A kind cluster on a development workstation, with three obs-beacond copies on CloudNativePG
 inside it. The cluster was added the way a customer would add one: a join
 token, then `curl … /cluster.yaml | kubectl apply -f -`.
 
@@ -563,7 +563,7 @@ configured, and listed them with the rest in 200 ms.
 - **Tested** against a fake libvirtd answering from the protocol's own
   definitions (remote_protocol.x), and in the fleet simulator (a
   hypervisor in every 20 hosts, 12 VMs each, five of them fleet hosts).
-  Not yet against a real libvirtd: bench has KVM but no libvirt.
+  Not yet against a real libvirtd: the workstation has KVM but no libvirt.
 
 ### Proxmox (step 7, 2026-11-13)
 

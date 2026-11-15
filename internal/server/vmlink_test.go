@@ -17,8 +17,8 @@ func TestVMLinkedToItsHost(t *testing.T) {
 	a, _, _, tok := clusterCopies(t)
 	now := time.Now()
 	const uuid = "5d307ca9-b3ef-428c-8861-06e72d69f223"
-	// host1 reported 10 minutes ago, as that VM: it's silent now.
-	a.store.Put("host1", report.Report{V: report.Version, Host: "host1", Time: now.Add(-10 * time.Minute), Machine: strings.ToUpper(uuid)}, now.Add(-10*time.Minute))
+	// node1 reported 10 minutes ago, as that VM: it's silent now.
+	a.store.Put("node1", report.Report{V: report.Version, Host: "node1", Time: now.Add(-10 * time.Minute), Machine: strings.ToUpper(uuid)}, now.Add(-10*time.Minute))
 	vm := func(state, word string) report.Workload {
 		return report.Workload{Kind: report.KindVM, ID: "v1", Name: "db", Namespace: "vms", Node: "worker-1", State: state, Word: word,
 			Alert: report.AlertPage, Facts: map[string]any{"firmware_uuid": uuid}}
@@ -35,14 +35,14 @@ func TestVMLinkedToItsHost(t *testing.T) {
 	if hosts[0].VM == nil || hosts[0].VM.Name != "db" || hosts[0].VM.Source != "prod" || hosts[0].VM.Href != "/workloads?source=prod&ns=vms&q=db" {
 		t.Fatalf("host's VM: %+v", hosts[0].VM)
 	}
-	silent := find(conds, "silent/host1")
+	silent := find(conds, "silent/node1")
 	if silent == nil || !strings.Contains(silent.Detail, "It's VM db in vms (prod), which is running as far as the hypervisor knows") {
 		t.Fatalf("silent: %+v", silent)
 	}
 	rec := get(a.Handler(), "/api/v1/workloads?kind=vm", devCookie(t, a.Handler()))
 	var list struct{ Workloads []WorkloadRow }
 	_ = json.Unmarshal(rec.Body.Bytes(), &list)
-	if rec.Code != http.StatusOK || len(list.Workloads) != 1 || list.Workloads[0].Host == nil || list.Workloads[0].Host.Name != "host1" {
+	if rec.Code != http.StatusOK || len(list.Workloads) != 1 || list.Workloads[0].Host == nil || list.Workloads[0].Host.Name != "node1" {
 		t.Fatalf("VM's host: %d %s", rec.Code, rec.Body)
 	}
 
@@ -53,7 +53,7 @@ func TestVMLinkedToItsHost(t *testing.T) {
 	if got := keysOf(g); got != "critical:vm/prod/vms/db" {
 		t.Fatalf("VM down: %s", got)
 	}
-	if g[0].Affected != "host1" || !strings.Contains(g[0].Detail, "Also affected: host1 (1 alert held back).") {
+	if g[0].Affected != "node1" || !strings.Contains(g[0].Detail, "Also affected: node1 (1 alert held back).") {
 		t.Fatalf("VM down: %q %q", g[0].Affected, g[0].Detail)
 	}
 
@@ -61,7 +61,7 @@ func TestVMLinkedToItsHost(t *testing.T) {
 	// host's says why.
 	sendBatch(t, a, tok, report.Workloads{Records: []report.Workload{vm(report.StateStopped, "Stopped")}})
 	_, conds = a.view(now)
-	if s := find(conds, "silent/host1"); s == nil || !strings.HasSuffix(s.Detail, "It's VM db in vms (prod), which is stopped.") {
+	if s := find(conds, "silent/node1"); s == nil || !strings.HasSuffix(s.Detail, "It's VM db in vms (prod), which is stopped.") {
 		t.Fatalf("stopped: %+v", s)
 	}
 
@@ -69,12 +69,12 @@ func TestVMLinkedToItsHost(t *testing.T) {
 	sendBatch(t, a, tok, report.Workloads{Records: []report.Workload{node(report.StateDown), vm(report.StateOK, "Running")}})
 	_, conds = a.view(now)
 	g = a.groupConditions(conds, never)
-	if got := keysOf(g); got != "critical:node/prod/worker-1" || g[0].Affected != "host1" {
+	if got := keysOf(g); got != "critical:node/prod/worker-1" || g[0].Affected != "node1" {
 		t.Fatalf("node down: %s %q", got, g[0].Affected)
 	}
 
 	// Another host claims the same UUID (a clone): no link at all.
-	a.store.Put("host2", report.Report{V: report.Version, Host: "host2", Time: now, Machine: uuid}, now)
+	a.store.Put("node2", report.Report{V: report.Version, Host: "node2", Time: now, Machine: uuid}, now)
 	if byHost, byVM := a.vmLinks(); len(byHost) != 0 || len(byVM) != 0 {
 		t.Fatalf("duplicate UUID linked: %v %v", byHost, byVM)
 	}
@@ -186,14 +186,14 @@ func TestVSphereSwappedUUID(t *testing.T) {
 	a, _, _, tok := clusterCopies(t)
 	now := time.Now()
 	const bios = "4221a2b3-c4d5-e6f7-8899-aabbccddeeff"
-	a.store.Put("host1", report.Report{V: report.Version, Host: "host1", Time: now, Machine: report.SwappedUUID(bios)}, now)
+	a.store.Put("node1", report.Report{V: report.Version, Host: "node1", Time: now, Machine: report.SwappedUUID(bios)}, now)
 	vm := func(hv string) report.Workload {
 		return report.Workload{Kind: report.KindVM, ID: "vm-42", Name: "erp", State: report.StateOK, Word: "Running",
 			Facts: map[string]any{"firmware_uuid": bios, "hypervisor": hv}}
 	}
 	sendBatch(t, a, tok, report.Workloads{Full: report.FullBegin, Records: []report.Workload{vm("vSphere")}})
 	sendBatch(t, a, tok, report.Workloads{Full: report.FullEnd})
-	if byHost, _ := a.vmLinks(); byHost["host1"].Name != "erp" {
+	if byHost, _ := a.vmLinks(); byHost["node1"].Name != "erp" {
 		t.Fatalf("not linked: %+v", byHost)
 	}
 	sendBatch(t, a, tok, report.Workloads{Records: []report.Workload{vm("KubeVirt")}})

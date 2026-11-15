@@ -131,13 +131,13 @@ machine, not a server. Cairn OBS watches it but it never pages:
   the servers only
 - its containers aren't judged, drawn on the maps or compared for image drift
 - give it no section in expected.yaml. Its section in backups.yaml is
-  usually empty (`bench: {}`): the scan then only asks smartctl about its
+  usually empty (`desk: {}`): the scan then only asks smartctl about its
   disks, and a failing one is a warning like everything else on it. With no
   section, leave `backup_scan` out of its agent.yaml
 
 ```yaml
 agents:
-  - name: bench
+  - name: desk
     token_sha256: "<64 hex characters>"
     workstation: true
 ```
@@ -647,12 +647,12 @@ max_age: 26h      # newest copy older than this (default 26h)
 shrink: 0.5       # newest under half the one before warns (default 0.5)
 disk_warn: 0.9    # a backup disk fuller than this warns (default 0.9)
 hosts:
-  host1:
+  node1:
     received:     # a subdirectory per backup under root, dated copies inside
-      - {from: host2, root: /var/backups/host2, expect: [mastodon-db, host2-system]}
+      - {from: node2, root: /var/backups/node2, expect: [wiki-db, node2-system]}
     made:         # backups whichever host is in charge makes: newest over the globs
-      - {name: inbuxa-pg, paths: ["/var/backups/host*/inbuxa-pg/*.dump"]}
-    jobs: [gitea-backup.service, host1-backup.service]
+      - {name: inbuxa-pg, paths: ["/var/backups/node*/inbuxa-pg/*.dump"]}
+    jobs: [gitea-backup.service, node1-backup.service]
 ```
 
 The scan lists directories and reads file sizes and times; it never opens
@@ -822,9 +822,9 @@ the whole file (see "Settings edited in the UI").
 
 ```yaml
 hosts:
-  host2:
+  node2:
     running:              # container names; * matches any run of characters
-      - mastodon-*
+      - wiki-*
       - inbuxa-demo
     stopped:              # stopped on purpose: shown, never alerted on
       - match: cairnobs-demo-*

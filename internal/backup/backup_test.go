@@ -27,22 +27,22 @@ func TestLoad(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "backups.yaml")
 	os.WriteFile(p, []byte(`
 hosts:
-  host1:
+  node1:
     received:
-      - {from: host2, root: /var/backups/host2, expect: [mastodon-db]}
+      - {from: node2, root: /var/backups/node2, expect: [wiki-db]}
     made:
-      - {name: inbuxa-pg, paths: ["/var/backups/host*/inbuxa-pg/*.dump"], max_age: 30h}
+      - {name: inbuxa-pg, paths: ["/var/backups/node*/inbuxa-pg/*.dump"], max_age: 30h}
     jobs: [gitea-backup.service]
 `), 0o600)
 	f, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := f.Hosts["host1"]
+	h := f.Hosts["node1"]
 	if f.MaxAge != 26*time.Hour || h.Received[0].MaxAge != 26*time.Hour || h.Made[0].MaxAge != 30*time.Hour || f.Shrink != 0.5 {
 		t.Errorf("defaults not filled in: %+v", f)
 	}
-	os.WriteFile(p, []byte("hosts:\n  host1:\n    made:\n      - {name: x, paths: [relative/*.dump]}\n"), 0o600)
+	os.WriteFile(p, []byte("hosts:\n  node1:\n    made:\n      - {name: x, paths: [relative/*.dump]}\n"), 0o600)
 	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "absolute") {
 		t.Errorf("relative glob: err = %v", err)
 	}
@@ -55,14 +55,14 @@ hosts:
 func TestScanFiles(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()
-	write(t, root+"/host2/mastodon-db/20261014.tgz", 1000, now.Add(-49*time.Hour))
-	write(t, root+"/host2/mastodon-db/20261015.tgz", 1200, now.Add(-25*time.Hour))
-	write(t, root+"/host2/mastodon-db/.20261016.tgz.partial", 50, now) // rsync's temporary: not a copy
-	write(t, root+"/host1/inbuxa-pg/a.dump", 300, now.Add(-30*time.Hour))
+	write(t, root+"/node2/wiki-db/20261014.tgz", 1000, now.Add(-49*time.Hour))
+	write(t, root+"/node2/wiki-db/20261015.tgz", 1200, now.Add(-25*time.Hour))
+	write(t, root+"/node2/wiki-db/.20261016.tgz.partial", 50, now) // rsync's temporary: not a copy
+	write(t, root+"/node1/inbuxa-pg/a.dump", 300, now.Add(-30*time.Hour))
 	write(t, root+"/nightly/inbuxa-pg.dump", 400, now.Add(-2*time.Hour))
 	h := Host{
-		Received: []Source{{From: "host2", Root: root + "/host2", Expect: []string{"mastodon-db", "games-scores"}}},
-		Made:     []Made{{Name: "inbuxa-pg", Paths: []string{root + "/host*/inbuxa-pg/*.dump", root + "/nightly/inbuxa-pg.dump"}}},
+		Received: []Source{{From: "node2", Root: root + "/node2", Expect: []string{"wiki-db", "photos"}}},
+		Made:     []Made{{Name: "inbuxa-pg", Paths: []string{root + "/node*/inbuxa-pg/*.dump", root + "/nightly/inbuxa-pg.dump"}}},
 	}
 	var out report.Backups
 	scanFiles(h, &out)
@@ -70,11 +70,11 @@ func TestScanFiles(t *testing.T) {
 		t.Fatalf("received = %+v", out.Received)
 	}
 	db, games := out.Received[0], out.Received[1]
-	if db.Name != "mastodon-db" || db.From != "host2" || db.Count != 2 || db.Size != 1200 || db.PrevSize != 1000 || !strings.HasSuffix(db.Path, "20261015.tgz") {
-		t.Errorf("mastodon-db = %+v", db)
+	if db.Name != "wiki-db" || db.From != "node2" || db.Count != 2 || db.Size != 1200 || db.PrevSize != 1000 || !strings.HasSuffix(db.Path, "20261015.tgz") {
+		t.Errorf("wiki-db = %+v", db)
 	}
-	if games.Count != 0 || games.Path != root+"/host2/games-scores" {
-		t.Errorf("games-scores = %+v, want nothing found", games)
+	if games.Count != 0 || games.Path != root+"/node2/photos" {
+		t.Errorf("photos = %+v, want nothing found", games)
 	}
 	if len(out.Made) != 1 || out.Made[0].Size != 400 || out.Made[0].Count != 2 {
 		t.Errorf("made = %+v, want the nightly dump as newest of 2", out.Made)
@@ -107,43 +107,43 @@ unused devices: <none>
 
 func TestJudge(t *testing.T) {
 	now := time.Now()
-	f := &File{MaxAge: 26 * time.Hour, Shrink: 0.5, DiskWarn: 0.9, Hosts: map[string]Host{"host1": {
-		Received: []Source{{From: "host2", Root: "/b/host2", Expect: []string{"fresh", "old", "empty", "shrunk", "none"}, MaxAge: 26 * time.Hour}},
+	f := &File{MaxAge: 26 * time.Hour, Shrink: 0.5, DiskWarn: 0.9, Hosts: map[string]Host{"node1": {
+		Received: []Source{{From: "node2", Root: "/b/node2", Expect: []string{"fresh", "old", "empty", "shrunk", "none"}, MaxAge: 26 * time.Hour}},
 		Made:     []Made{{Name: "inbuxa-pg", Paths: []string{"/x/*.dump"}, MaxAge: 26 * time.Hour}},
 		Jobs:     []string{"a.service", "b.service", "c.service"},
 	}}}
 	b := &report.Backups{At: now,
 		Received: []report.BackupDir{
-			{Name: "fresh", From: "host2", Count: 3, Size: 100, PrevSize: 90, Modified: now.Add(-time.Hour)},
-			{Name: "old", From: "host2", Count: 3, Size: 100, Modified: now.Add(-30 * time.Hour)},
-			{Name: "empty", From: "host2", Count: 1, Modified: now},
-			{Name: "shrunk", From: "host2", Count: 2, Size: 40, PrevSize: 100, Modified: now},
-			{Name: "none", From: "host2", Path: "/b/host2/none"},
+			{Name: "fresh", From: "node2", Count: 3, Size: 100, PrevSize: 90, Modified: now.Add(-time.Hour)},
+			{Name: "old", From: "node2", Count: 3, Size: 100, Modified: now.Add(-30 * time.Hour)},
+			{Name: "empty", From: "node2", Count: 1, Modified: now},
+			{Name: "shrunk", From: "node2", Count: 2, Size: 40, PrevSize: 100, Modified: now},
+			{Name: "none", From: "node2", Path: "/b/node2/none"},
 		},
 		Made:  []report.BackupDir{{Name: "inbuxa-pg", Count: 1, Size: 5, Modified: now}},
-		Roots: []report.BackupRoot{{Path: "/b/host2", UsedPct: 93}},
+		Roots: []report.BackupRoot{{Path: "/b/node2", UsedPct: 93}},
 		Jobs:  []report.BackupJob{{Unit: "a.service", Result: "success"}, {Unit: "b.service", Result: "exit-code"}, {Unit: "c.service"}},
 		RAID:  []report.RAIDArray{{Dev: "md1", State: "[UU]"}, {Dev: "md2", State: "[U_]"}},
 		SMART: []report.DiskHealth{{Disk: "sda", OK: true}, {Disk: "sdb"}, {Disk: "nvme0n1", Error: "Permission denied"}},
 	}
 	var got []string
-	for _, x := range f.Judge("host1", b, now, 15*time.Minute) {
+	for _, x := range f.Judge("node1", b, now, 15*time.Minute) {
 		got = append(got, x.Severity+":"+x.Key)
 	}
-	want := "serious:received/host2/old serious:received/host2/empty warning:received/host2/shrunk serious:received/host2/none " +
-		"warning:disk//b/host2 serious:job/b.service warning:job/c.service critical:raid/md2 critical:smart/sdb warning:smart/nvme0n1"
+	want := "serious:received/node2/old serious:received/node2/empty warning:received/node2/shrunk serious:received/node2/none " +
+		"warning:disk//b/node2 serious:job/b.service warning:job/c.service critical:raid/md2 critical:smart/sdb warning:smart/nvme0n1"
 	if strings.Join(got, " ") != want {
 		t.Errorf("got  %s\nwant %s", strings.Join(got, " "), want)
 	}
-	if got := f.Judge("host1", nil, now, 15*time.Minute); len(got) != 1 || got[0].Key != "scan" {
+	if got := f.Judge("node1", nil, now, 15*time.Minute); len(got) != 1 || got[0].Key != "scan" {
 		t.Errorf("no scan: %+v", got)
 	}
 	b.Received, b.Made, b.Roots, b.Jobs, b.RAID, b.SMART = nil, nil, nil, nil, nil, nil
 	b.At = now.Add(-2 * time.Hour)
-	if got := f.Judge("host1", b, now, 15*time.Minute); len(got) < 1 || got[0].Key != "scan" || !strings.Contains(got[0].Title, "2 hours old") {
+	if got := f.Judge("node1", b, now, 15*time.Minute); len(got) < 1 || got[0].Key != "scan" || !strings.Contains(got[0].Title, "2 hours old") {
 		t.Errorf("stale scan: %+v", got)
 	}
-	if got := f.Judge("host9", b, now, 15*time.Minute); got != nil {
+	if got := f.Judge("node9", b, now, 15*time.Minute); got != nil {
 		t.Errorf("a host backups.yaml doesn't name: %+v", got)
 	}
 }

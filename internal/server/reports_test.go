@@ -40,7 +40,7 @@ func TestCapacityForecast(t *testing.T) {
 	var hours []state.HostHour
 	for i := 0; i < 48; i++ {
 		used := uint64(50*gb + i*gb/24) // a GB a day
-		hours = append(hours, state.HostHour{Host: "host1", Hour: t0.Add(time.Duration(i) * time.Hour), CPU: 10, CPUMax: 20, Mem: 40,
+		hours = append(hours, state.HostHour{Host: "node1", Hour: t0.Add(time.Duration(i) * time.Hour), CPU: 10, CPUMax: 20, Mem: 40,
 			Disks: []state.DiskSample{{Mount: "/", Used: used, Total: 100 * gb}, {Mount: "/boot", Used: gb, Total: 2 * gb}}})
 	}
 	disks, trends := capacity(hours, loc)
@@ -86,15 +86,15 @@ func TestReportAndDigest(t *testing.T) {
 	srv.started = start.Add(-time.Hour)
 	rec := &recorder{last: map[string]string{}, samples: map[string]*hourSum{}}
 
-	// host1 reports for two hours, goes silent for one.
+	// node1 reports for two hours, goes silent for one.
 	for m := 0; m <= 120; m++ {
 		at := start.Add(time.Duration(m) * time.Minute)
-		srv.store.Put("host1", report.Report{V: report.Version, Time: at, CPU: 5, Mem: report.Mem{Total: 100, Available: 60},
+		srv.store.Put("node1", report.Report{V: report.Version, Time: at, CPU: 5, Mem: report.Mem{Total: 100, Available: 60},
 			Disks: []report.Disk{{Mount: "/", Size: 1000, Used: 400, Avail: 600}}}, at)
 		srv.recordOnce(rec, at)
 	}
 	srv.recordOnce(rec, start.Add(150*time.Minute)) // silent by now
-	_ = srv.db.PutIncident(state.Incident{ID: "a1", Key: "silent/host1", Severity: "critical", Title: "host1 is silent", Host: "host1",
+	_ = srv.db.PutIncident(state.Incident{ID: "a1", Key: "silent/node1", Severity: "critical", Title: "node1 is silent", Host: "node1",
 		Opened: start.Add(122 * time.Minute), Fired: start.Add(124 * time.Minute), AckBy: "John", AckAt: start.Add(130 * time.Minute)})
 	_ = srv.db.SetNote("a1", state.Note{Text: "rebooted by hand", By: "John", At: now})
 	_ = srv.db.PutIncident(state.Incident{ID: "a2", Key: "x", Severity: "warning", Title: "held back, never told", Opened: start})
@@ -103,7 +103,7 @@ func TestReportAndDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Hosts) != 1 || r.Hosts[0].ID != "host1" || math.Abs(r.Hosts[0].DownS-1800) > 60 || math.Abs(r.Hosts[0].KnownS-3*3600) > 120 || r.Hosts[0].Incidents != 1 {
+	if len(r.Hosts) != 1 || r.Hosts[0].ID != "node1" || math.Abs(r.Hosts[0].DownS-1800) > 60 || math.Abs(r.Hosts[0].KnownS-3*3600) > 120 || r.Hosts[0].Incidents != 1 {
 		t.Errorf("hosts = %+v", r.Hosts)
 	}
 	if len(r.Incidents) != 1 || r.Incidents[0].Note == nil || *r.Incidents[0].ToAckS != 360 {
@@ -118,7 +118,7 @@ func TestReportAndDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"host1 is silent", "fixed in", "still open", "cause: rebooted by hand", "https://beacon.example.test/reports?period=7d"} {
+	for _, want := range []string{"node1 is silent", "fixed in", "still open", "cause: rebooted by hand", "https://beacon.example.test/reports?period=7d"} {
 		if want == "fixed in" {
 			continue // a1 isn't resolved
 		}
@@ -152,8 +152,8 @@ func TestReportAndDigest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	srv.recordHistory(ctx)
-	if latest, _ := srv.db.LatestStatuses(); latest["host/host1"] != "unknown" {
-		t.Errorf("after a restart host1 = %q, want unknown", latest["host/host1"])
+	if latest, _ := srv.db.LatestStatuses(); latest["host/node1"] != "unknown" {
+		t.Errorf("after a restart node1 = %q, want unknown", latest["host/node1"])
 	}
 }
 

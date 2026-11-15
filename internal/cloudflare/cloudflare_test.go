@@ -96,9 +96,9 @@ func Fake(t *testing.T, host2Healthy bool, fail *bool) *httptest.Server {
 				{"zoneTag":"z2","win":[],"day":[]}]}},"errors":null}`)
 		case p == "/accounts/a1/load_balancers/pools":
 			ok(w, fmt.Sprintf(`[{"id":"p1","name":"main-web","enabled":true,"healthy":true,"origins":[
-				{"name":"host1","address":"192.0.2.1","enabled":true},
-				{"name":"host2","address":"192.0.2.2","enabled":true},
-				{"name":"host3","address":"192.0.2.3","enabled":false}]},
+				{"name":"node1","address":"192.0.2.1","enabled":true},
+				{"name":"node2","address":"192.0.2.2","enabled":true},
+				{"name":"node3","address":"192.0.2.3","enabled":false}]},
 				{"id":"p2","name":"spare","enabled":true,"healthy":%v,"origins":[]}]`, host2Healthy), 1, 1)
 		case p == "/accounts/a1/load_balancers/pools/p1/health":
 			ok(w, fmt.Sprintf(`{"pool_id":"p1","pop_health":{

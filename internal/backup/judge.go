@@ -12,7 +12,7 @@ import (
 // condition. Missing or stale backups are serious (email and Discord, not
 // the phone); a failing disk or degraded RAID is critical.
 type Finding struct {
-	Key      string // unique per host, e.g. received/host2/mastodon-db
+	Key      string // unique per host, e.g. received/node2/wiki-db
 	Severity string
 	Title    string
 	Detail   string

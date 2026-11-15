@@ -117,7 +117,7 @@ func localServerWith(t *testing.T, door string) *Server {
 	_, _ = rand.Read(k)
 	_ = os.WriteFile(key, []byte(base64.StdEncoding.EncodeToString(k)), 0o600)
 	cfg := &Config{Listen: "127.0.0.1:0", DevSignin: true, StaleAfter: time.Minute, Database: statetest.Database(t, dir), DataDir: dir, StateKeyFile: key, EmergencyListen: door,
-		Agents: []AgentConfig{{Name: "host1", TokenSHA256: HashToken(NewAgentToken())}},
+		Agents: []AgentConfig{{Name: "node1", TokenSHA256: HashToken(NewAgentToken())}},
 		Signin: SigninConfig{Providers: []ProviderConfig{{ID: "local", Type: "local", Origin: testOrigin}}}}
 	for i := range cfg.Signin.Providers {
 		if err := cfg.Signin.Providers[i].check(); err != nil {

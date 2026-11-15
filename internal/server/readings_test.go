@@ -26,13 +26,13 @@ func TestReadingsReachTheOtherCopy(t *testing.T) {
 	for _, s := range []*Server{a, b} {
 		s.cf, _ = cloudflare.New(cloudflare.Config{TokenFile: tf})
 		s.mail, _ = mailmon.New(mailmon.Config{Account: "monitor@example.test", PasswordFile: pf, Server: "mail.example.test",
-			ClientID: "cairn-obs", RedirectURL: "https://obs.example.test/cb", Host: "host1"})
+			ClientID: "cairn-obs", RedirectURL: "https://obs.example.test/cb", Host: "node1"})
 	}
 	now := time.Now().Truncate(time.Second)
 	a.cf.Set(cloudflare.Snapshot{Checked: now, ErrorSince: now.Add(-time.Hour), Zones: []cloudflare.Zone{
 		{Name: "example.com", SSL: "strict", DNS: 1, Records: []cloudflare.Record{{Type: "A", Name: "www.example.com", Content: "192.0.2.1", TTL: 1}}}}})
 	a.patroni.reads = map[string]patroniRead{
-		"http://10.0.0.1:8008": {at: now, members: []patroniMember{{Name: "host1", Role: "leader", State: "running"}}, node: &patroniNode{DCSLastSeen: 5}},
+		"http://10.0.0.1:8008": {at: now, members: []patroniMember{{Name: "node1", Role: "leader", State: "running"}}, node: &patroniNode{DCSLastSeen: 5}},
 		"http://10.0.0.2:8008": {at: now, err: context.DeadlineExceeded},
 	}
 	a.mail.Set(mailmon.Snapshot{Checked: now, History: []mailmon.TripPoint{{At: now, Seconds: 2.5}}})
@@ -70,7 +70,7 @@ func TestPollingStartsWhenDue(t *testing.T) {
 	round := func(ctx context.Context) {
 		rounds.Add(1)
 		a.patroni.mu.Lock()
-		a.patroni.reads["http://10.0.0.1:8008"] = patroniRead{at: time.Now(), members: []patroniMember{{Name: "host1"}}}
+		a.patroni.reads["http://10.0.0.1:8008"] = patroniRead{at: time.Now(), members: []patroniMember{{Name: "node1"}}}
 		a.patroni.mu.Unlock()
 	}
 	ctx, cancel := context.WithCancel(context.Background())

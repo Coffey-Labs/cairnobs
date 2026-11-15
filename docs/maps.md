@@ -59,9 +59,9 @@ everything at once, and that stops being readable at about forty boxes.
 | Networks and sites | Each agent reports its interfaces: name, kind (physical, bridge, VLAN, WireGuard, …), addresses with prefixes, and the default gateway. Hosts that share a private subnet (RFC 1918, ULA or CGNAT) are on one network. A **site** is the hosts joined by private networks, so a provider's private network becomes one site with no setup. Container bridges and Docker's own networks don't count. |
 | WireGuard links | The root helper reads `wg show all dump`: each interface's public key, and each peer's public key, endpoint, allowed IPs, last handshake and byte counters. obs-beacond matches a peer's key to another host's interface key, so a mesh link is a fact, not a guess, and is "up" while the handshake is under three minutes old. A peer that isn't one of our hosts is an outside peer (someone's laptop, another office), counted on the host and listed in its detail. |
 | Other links between hosts | The socket sample (below): host A has connections to host B. Drawn as a plain line with its ports, separately from WireGuard. |
-| The way in from the Internet | Listeners on public addresses that have connections from public addresses: "Internet → host2 :443, :25". With Cloudflare set up, the Cloudflare box and its pools come from Cloudflare's API as today. |
+| The way in from the Internet | Listeners on public addresses that have connections from public addresses: "Internet → node2 :443, :25". With Cloudflare set up, the Cloudflare box and its pools come from Cloudflare's API as today. |
 | Clusters | The cluster agents. A cluster is a box of its nodes. A node is linked to its host agent, when it has one, by machine ID or SMBIOS UUID (as VMs are in cluster-watcher.md), and by name and address otherwise. |
-| Remote hosts | An agent that shares no private network with a site but has a WireGuard link to one of its hosts (bench today) is drawn off-site with that link, as `remote:` does by hand now. |
+| Remote hosts | An agent that shares no private network with a site but has a WireGuard link to one of its hosts (a desk machine at home, say) is drawn off-site with that link, as `remote:` does by hand now. |
 
 ### For the service map
 
@@ -77,7 +77,7 @@ first match wins:
 3. **A systemd unit that listens on a port** (postgresql, patroni, haproxy,
    nginx, a Go binary under its own unit) is a service of its own, named
    after the unit. The same unit on several hosts is one service with a
-   part on each: patroni on host1 to host3 is "patroni", three parts.
+   part on each: patroni on node1 to node3 is "patroni", three parts.
 4. **A container outside compose** is grouped with others from the same
    image name.
 
@@ -171,7 +171,7 @@ each with the change that undoes it:
 | Tier | a service id: edge, apps or data |
 | Hide | a service id, or `host:<name>` (the host leaves both maps) |
 | Merge | a service id, into another service id |
-| Move a part | the part's host and owner (`host1 container:mail-1`), into a service, or into a new one by name (`page:<name>`); this is how a part is split out |
+| Move a part | the part's host and owner (`node1 container:mail-1`), into a service, or into a new one by name (`page:<name>`); this is how a part is split out |
 | Confirm, reject | from, to and port (port 0: every port) |
 | Outside service | an id `outside:<name>`, with addresses (`203.0.113.10`, `…:443` or a prefix) and what needs it |
 

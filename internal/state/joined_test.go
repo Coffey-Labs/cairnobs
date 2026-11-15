@@ -34,8 +34,8 @@ func TestJoinTokens(t *testing.T) {
 	if _, err := db.UseJoinToken("cccccccccccc3", now.Add(time.Minute), none); err == nil || !strings.Contains(err.Error(), "already") {
 		t.Fatalf("joined a name twice: %v", err)
 	}
-	add("dddddddddddd4", "host1")
-	if _, err := db.UseJoinToken("dddddddddddd4", now.Add(time.Minute), func(n string) bool { return n == "host1" }); err == nil {
+	add("dddddddddddd4", "node1")
+	if _, err := db.UseJoinToken("dddddddddddd4", now.Add(time.Minute), func(n string) bool { return n == "node1" }); err == nil {
 		t.Fatal("joined a name the config file has")
 	}
 	add("eeeeeeeeeeee5", "web2")

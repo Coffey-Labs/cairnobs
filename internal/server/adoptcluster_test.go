@@ -125,7 +125,7 @@ func TestAdoptingInACluster(t *testing.T) {
 	}
 
 	// Setting a host's containers keeps what's adopted in clusters.
-	if rec := do("PUT", "/api/v1/settings/expected/hosts/host1", hostExpectations{Running: []string{"web"}}); rec.Code != http.StatusOK {
+	if rec := do("PUT", "/api/v1/settings/expected/hosts/node1", hostExpectations{Running: []string{"web"}}); rec.Code != http.StatusOK {
 		t.Fatalf("host: %d %s", rec.Code, rec.Body)
 	}
 	if ec := a.clusterExpected().Clusters["prod"]; ec.Namespaces["shop"] != "page" || len(ec.Workloads) != 3 {
