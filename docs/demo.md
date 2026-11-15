@@ -33,11 +33,19 @@ demo's settings.
 
 ## Shape of a demo host
 
-- obs-beacond on a loopback address behind your reverse proxy, with a
-  fresh database of its own.
-- The simulator's agents report to a loopback agent listener. The proxy
-  doesn't pass `/api/v1/agent/` at all, so nobody outside can send reports.
-- `fleet config -demo` writes the server and agent config;
-  `fleet run -demo` runs the fleet (add `-ibmi 4` for IBM i and the HMC).
-- Reset it nightly by stopping obs-beacond, dropping its database and
-  starting both again, so the demo always starts from the same story.
+One container with no network at all (`--network none`) holds both
+obs-beacond and the simulator, so nothing in it can reach anything else:
+
+- obs-beacond listens on a unix socket in a folder the reverse proxy can
+  reach (`listen: unix:/run/demo/web.sock`, formats.md). The agent API isn't
+  on that socket.
+- The simulator's agents report to a loopback agent listener
+  (`agent_listen: 127.0.0.1:8461`, `agent_tls: {off: true}`), and its
+  stand-ins for Cloudflare, Akamai, mail, Vault, Patroni and the alert
+  channels answer on the container's own loopback.
+- `fleet config -demo` writes the server's pieces; `fleet run -demo` runs
+  the fleet (add `-ibmi 4` for IBM i and the HMC). Start the fleet first so
+  its stand-ins are up for obs-beacond's first readings.
+- The root is read-only and the state is in tmpfs, so restarting the
+  container is a fresh demo; restart it on a timer (weekly is plenty) so
+  history doesn't pile up.
