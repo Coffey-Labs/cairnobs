@@ -10,6 +10,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,10 +19,26 @@ import (
 	"github.com/cairnobs/cairnobs/internal/version"
 )
 
-// clusterImage is join.image, with this obs-beacond's version as the tag
-// when it has none.
+// DefaultClusterImage is where clusters pull the cluster agent from when
+// join.image isn't set: the public image every release publishes.
+const DefaultClusterImage = "ghcr.io/coffey-labs/cairnobs"
+
+// releaseVersion is a version a release is tagged with: 0.1.0 or
+// 0.1.0-rc.2, not a development build's dev or 0.1.0-3-gabc1234-dirty.
+var releaseVersion = regexp.MustCompile(`^\d+\.\d+\.\d+(-rc\.\d+)?$`)
+
+// clusterImage is join.image, or DefaultClusterImage, with this
+// obs-beacond's version as the tag when it has none. A development build
+// has no image of its own on the public registry, so with the default it
+// takes :latest.
 func (srv *Server) clusterImage() string {
 	img := srv.cfg.Join.Image
+	if img == "" {
+		img = DefaultClusterImage
+		if v := strings.TrimPrefix(version.Version, "v"); !releaseVersion.MatchString(v) {
+			return img + ":latest"
+		}
+	}
 	last := img[strings.LastIndex(img, "/")+1:]
 	if strings.Contains(last, ":") || strings.Contains(last, "@") {
 		return img

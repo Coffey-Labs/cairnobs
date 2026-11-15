@@ -14,5 +14,6 @@ join:
   # image doesn't carry them, so packages_dir doesn't apply here.)
   # packages_url: https://downloads.example.org/cairnobs/v0.1.0
   # Where clusters pull this image from, for Configure, Clusters (it
-  # carries the cluster agent too). Without a tag, this version's.
-  # image: ghcr.io/coffey-labs/cairnobs
+  # carries the cluster agent too); ghcr.io/coffey-labs/cairnobs unless set.
+  # Without a tag, this version's.
+  # image: registry.example.org/ops/obs-beacond

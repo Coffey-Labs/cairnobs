@@ -48,9 +48,9 @@ type JoinConfig struct {
 	// download URL holding the same files.
 	PackagesURL string `yaml:"packages_url"`
 	// Image is where clusters pull the obs-beacond image from, which
-	// carries the cluster agent: e.g. registry.example.org/ops/obs-beacond.
-	// Without a tag, this obs-beacond's version is used. Add a cluster
-	// needs it.
+	// carries the cluster agent: e.g. registry.example.org/ops/obs-beacond,
+	// for clusters that can't reach the public one. Without it,
+	// DefaultClusterImage. Without a tag, this obs-beacond's version is used.
 	Image string `yaml:"image"`
 }
 
@@ -281,15 +281,9 @@ func (srv *Server) joinUnavailable(r *http.Request) string {
 }
 
 // clusterJoinUnavailable says why clusters can't join here; "" when they
-// can.
+// can. It's what stops hosts joining: the image has a default.
 func (srv *Server) clusterJoinUnavailable(r *http.Request) string {
-	if why := srv.joinUnavailable(r); why != "" {
-		return why
-	}
-	if srv.cfg.Join.Image == "" {
-		return "Adding a cluster needs join.image in obs-beacond.yaml: where your clusters pull the obs-beacond image from (it carries the cluster agent)."
-	}
-	return ""
+	return srv.joinUnavailable(r)
 }
 
 // handleAgents lists the agents and the pending join tokens.

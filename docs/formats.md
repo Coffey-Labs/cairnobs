@@ -87,7 +87,7 @@ obs-beacond.yaml:
 | `agent_url` | the agent listener as new hosts reach it, e.g. `https://monitor.example.org:8461`. Default: `alerts.public_url`'s host with `agent_listen`'s port |
 | `packages_dir` | a directory of agent `.deb`/`.rpm` files and `SHA256SUMS` from a release, served at `/agent-packages/` for install.sh |
 | `packages_url` | otherwise, a release download URL install.sh fetches them from |
-| `image` | where clusters pull the obs-beacond image from, which carries the cluster agent, e.g. `registry.example.org/ops/obs-beacond`. Without a tag, this obs-beacond's version. Adding a cluster needs it |
+| `image` | where clusters pull the obs-beacond image from, which carries the cluster agent: default `ghcr.io/coffey-labs/cairnobs`; set it, e.g. `registry.example.org/ops/obs-beacond`, for clusters that can't reach that. Without a tag, this obs-beacond's version (a development build takes `:latest` of the default) |
 
 Joining needs `database` and the TLS agent listener. obs-beacond serves
 `/install.sh` and `/cluster.yaml` on `listen`, unauthenticated; they hold

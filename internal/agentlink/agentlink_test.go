@@ -459,9 +459,17 @@ func TestJoinACluster(t *testing.T) {
 	r := newRig(t, t.TempDir(), server.NewAgentToken())
 	r.cfg.Join.AgentURL = r.ts.URL
 	api := admin(t, r)
-	if code, out := api(http.MethodPost, "/api/v1/agents/join", `{"name":"prod","cluster":true}`); code != http.StatusConflict ||
-		!strings.Contains(fmtJSON(out), "join.image") {
+	// Without join.image, the manifest names the public image.
+	if code, out := api(http.MethodPost, "/api/v1/agents/join", `{"name":"pub","cluster":true}`); code != http.StatusOK {
 		t.Fatalf("a cluster without join.image: %d %v", code, out)
+	} else {
+		req := httptest.NewRequest(http.MethodGet, "/cluster.yaml", nil)
+		req.Header.Set("Authorization", "Bearer "+out["token"].(string))
+		rec := httptest.NewRecorder()
+		r.srv.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `image: "ghcr.io/coffey-labs/cairnobs:`) {
+			t.Fatalf("manifest without join.image: %d\n%s", rec.Code, rec.Body.String())
+		}
 	}
 	r.cfg.Join.Image = "registry.example.org/ops/obs-beacond"
 	code, out := api(http.MethodPost, "/api/v1/agents/join", `{"name":"prod","cluster":true}`)

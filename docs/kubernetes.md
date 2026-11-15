@@ -154,8 +154,9 @@ obs-beacond. It reads the cluster with `get`, `list` and `watch` only and
 sends its nodes, pods, controllers, jobs and volumes over the agent port,
 as a host's agent does.
 
-1. Set `join.image` in obs-beacond.yaml to where your clusters pull this
-   image from (formats.md, Joining). For the cluster obs-beacond runs in,
+1. Clusters pull this image from `ghcr.io/coffey-labs/cairnobs`; if yours
+   can't reach it, set `join.image` in obs-beacond.yaml to your copy
+   (formats.md, Joining). For the cluster obs-beacond runs in,
    `join.agent_url` may be the Service: `https://obs-beacond.<namespace>.svc:8461`.
    Other clusters need the agent Route or load balancer.
 2. **Configure › Clusters › Add a cluster** gives one command, good once
