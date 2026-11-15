@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -132,11 +133,14 @@ func TestDataVolumes(t *testing.T) {
 // fsAPI answers filesystemlist for some VMs and refuses or fails others.
 type fsAPI struct {
 	answers map[string]any // path → *guestFS, or an error
+	mu      sync.Mutex     // readGuestFS asks several at once
 	asked   []string
 }
 
 func (f *fsAPI) Get(_ context.Context, path string, v any) error {
+	f.mu.Lock()
 	f.asked = append(f.asked, path)
+	f.mu.Unlock()
 	switch a := f.answers[path].(type) {
 	case error:
 		return a
