@@ -3,7 +3,7 @@
 Status: decided 2026-11-14 (Decisions, at the end): every question went
 the recommended way. Built: steps 1–4 under Plan (2026-11-14), and run on
 a Windows Server 2025 evaluation VM (decision 5) the same day; what that
-turned up was fixed in #10. Steps 5–7 built 2026-11-15; 8 next.
+turned up was fixed in #10. Steps 5–8 built 2026-11-15.
 
 John, 2026-11-12: "will need windows agent as well". Plenty of the fleets
 Cairn OBS is for have Windows servers beside the Linux ones (domain
@@ -131,8 +131,31 @@ Then, from John's "work it out make it sexy and relavant" (2026-11-15):
    errors are listed, never alerted on: Windows logs plenty nobody needs
    waking for. `event_log: false` turns it off. The service's own account
    reads both logs on Server 2025 without extra rights.
-8. **Hyper-V VMs**, like libvirt's, so a Windows hypervisor's guests
-   link to their hosts.
+8. **Hyper-V VMs** (built 2026-11-15), like libvirt's: each report, the
+   agent asks WMI's `root\virtualization\v2` (COM through
+   `x/sys/windows`, no cgo, no new dependency) for every VM's state and
+   health, BIOS GUID, generation, vCPUs, memory and automatic start
+   action. They're the host's VMs on its page and the workloads list,
+   judged as libvirt's are, and an agent inside one links to it by the
+   BIOS GUID (its SMBIOS UUID). Nothing is read or said where Hyper-V
+   isn't installed; `hyperv: false` turns it off.
+
+   **What the agent's account needs.** Hyper-V shows its VMs only to
+   Administrators and **Hyper-V Administrators**; anyone else gets an
+   empty list. Windows has no read-only Hyper-V role, and Hyper-V
+   Administrators can also start, stop and change VMs, so the agent isn't
+   added on its own: on a Hyper-V host without it, the host page and a
+   warning say so ("can't read its VMs"), and an admin chooses either
+
+   ```powershell
+   Add-LocalGroupMember -Group "Hyper-V Administrators" -Member "NT SERVICE\obs-beacon-agent"
+   Restart-Service obs-beacon-agent
+   ```
+
+   or `hyperv: false`. The agent only ever reads (four WQL `SELECT`s);
+   the group is what Windows asks for, not what the agent uses. Tested on
+   Windows Server 2025 with Hyper-V nested under KVM: without the group,
+   the warning; with it, every VM.
 
 An MSI waits for the code-signing decision (Signing): unsigned, it adds
 little over the zip and install.ps1.

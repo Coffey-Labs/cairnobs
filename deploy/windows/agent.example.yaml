@@ -24,3 +24,10 @@ interval: 15s
 # last day, grouped, on the host's page; a critical event in the last
 # hour (an unexpected restart, a failing disk) is a warning.
 # event_log: false
+
+# A Hyper-V host's VMs, read-only through WMI. Hyper-V shows them only to
+# Administrators and Hyper-V Administrators, so either add the agent's
+# account (it can then also change VMs; the agent only reads):
+#   Add-LocalGroupMember -Group "Hyper-V Administrators" -Member "NT SERVICE\obs-beacon-agent"
+# or turn it off:
+# hyperv: false
