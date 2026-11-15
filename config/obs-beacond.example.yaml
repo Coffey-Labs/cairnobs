@@ -66,6 +66,7 @@ snapshot: /var/lib/obs-beacon/backup/beacon.db   # a consistent copy for the bac
 #   agent_url: "https://beacon.example.org:8461"  # default: alerts.public_url's host, agent_listen's port
 #   packages_dir: /var/lib/obs-beacon/agent-packages  # a release's agent .deb/.rpm + SHA256SUMS, served at /agent-packages/
 #   packages_url: "https://..."                    # or a release download URL with the same files
+#   image: registry.example.org/ops/obs-beacond   # where clusters pull the cluster agent; default ghcr.io/coffey-labs/cairnobs
 
 # Agents managed in this file instead. `obs-beacond token` prints a new
 # token and its hash; the token goes on the host, only the hash goes here.
