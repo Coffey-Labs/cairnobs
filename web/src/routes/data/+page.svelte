@@ -41,7 +41,7 @@
 	<span class="tile"><Icon name="database" /></span>
 	<div>
 		<h1>Data layer</h1>
-		<p>What the mail cluster stands on: PostgreSQL under Patroni, etcd, HAProxy in front of the database and blob store, NATS and Garage. Read from each service's own status page.</p>
+		<p>What your services stand on: PostgreSQL under Patroni, etcd, HAProxy in front of them, NATS and Garage. Read from each service's own status page.</p>
 	</div>
 </div>
 
@@ -88,7 +88,7 @@
 									<td class="sub">{haHosts[0].backends?.find((b) => b.name === name)?.rule ?? ''} up</td>
 									{#each haHosts as p (p.host)}
 										{@const b = p.backends?.find((x) => x.name === name)}
-										<td>{#if b}<Status s={b.status} word={b.status === 'good' ? `${b.up.join(', ') || 'none'} up` : b.word} />{:else}<Status s={p.status} word={p.word} />{/if}</td>
+										<td title={b ? `Up: ${b.up.join(', ') || 'none'}` : ''}>{#if b}<Status s={b.status} word={b.status === 'good' ? (b.up.length > 3 ? `${b.up.length} servers up` : `${b.up.join(', ') || 'none'} up`) : b.word} />{:else}<Status s={p.status} word={p.word} />{/if}</td>
 									{/each}
 								</tr>
 							{/each}

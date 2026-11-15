@@ -270,6 +270,9 @@ func writeDemo(dir string, hosts int) {
 	}
 	conf := fmt.Sprintf("# The fleet demo (fleet config -demo): add these to obs-beacond.yaml.\nchecks: %s\nexpected: %s\nbackups: %s\n",
 		filepath.Join(abs, "checks.yaml"), filepath.Join(abs, "expected.yaml"), filepath.Join(abs, "backups.yaml"))
+	if hasDataLayer(hosts) {
+		conf += dataLayerYAML()
+	}
 	for name, b := range map[string][]byte{"checks.yaml": checks.Bytes(), "expected.yaml": exp.Bytes(), "backups.yaml": bk.Bytes(), "demo.yaml": []byte(conf)} {
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
 			log.Fatal(err)
@@ -326,4 +329,7 @@ func (d *demoHost) stamp(r *report.Report, start, now time.Time) {
 		r.Checks = append(r.Checks, c.result(d.n, now))
 	}
 	r.Backups = demoScan(d.n, d.hosts, now)
+	if hasDataLayer(d.hosts) {
+		r.Fetches = dataFetches(d.n, now)
+	}
 }

@@ -58,10 +58,10 @@ type Server struct {
 	backups   backupsFile
 	topology  topologyFile
 	patroni   patroniWatch
-	wl        workloadStore                  // from cluster agents (workloads.go)
-	seen      readingsSeen                   // when each of Cloudflare's, Patroni's and the mail round trip's readings was taken
-	natsSlow  map[string]int64               // last slow-consumer count per host/probe (under patroni.mu)
-	etcdFsync map[string]map[float64]float64 // last WAL fsync histogram per host (under patroni.mu)
+	wl        workloadStore          // from cluster agents (workloads.go)
+	seen      readingsSeen           // when each of Cloudflare's, Patroni's and the mail round trip's readings was taken
+	natsSlow  map[string]int64       // last slow-consumer count per host/probe (under patroni.mu)
+	etcdFsync map[string]*fsyncState // WAL fsync histogram and p99 per host (under patroni.mu)
 	drift     driftWatch
 
 	providers map[string]Provider // by id
@@ -154,7 +154,7 @@ func New(cfg *Config) (*Server, error) {
 	srv.akdns.db, srv.akdns.prefix = srv.db, "ak_dns:"
 	srv.patroni.reads = map[string]patroniRead{}
 	srv.natsSlow = map[string]int64{}
-	srv.etcdFsync = map[string]map[float64]float64{}
+	srv.etcdFsync = map[string]*fsyncState{}
 	srv.wl.src = map[string]*wsource{}
 	srv.syncWorkloads(true) // as stored: every copy's, or this one's before a restart
 	if err := srv.loadJoined(); err != nil {

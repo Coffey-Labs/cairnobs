@@ -174,7 +174,7 @@ func run(args []string) {
 	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by fleet-0040's agent (0: none)")
 	akamaiDir := fs.String("akamai", "", "serve a fake Akamai account on loopback, and write its .edgerc and the akamai: section for obs-beacond.yaml to this directory's akamai.yaml (\"\": none)")
 	vaultDir := fs.String("vault", "", "serve two fake Vault clusters over HTTPS on loopback, and write their vault: list for obs-beacond.yaml to this directory's vault.yaml (\"\": none)")
-	demo := fs.Bool("demo", false, "hosts report the demo's checks, units and backups (fleet config -demo, same number of agents)")
+	demo := fs.Bool("demo", false, "hosts report the demo's checks, units, backups and data layer, and fleet serves its Patroni cluster (fleet config -demo, same number of agents)")
 	probe := fs.Bool("probe", true, "time how long a change in cluster-00 takes to show on every copy (needs dev_signin)")
 	_ = fs.Parse(args)
 
@@ -254,6 +254,9 @@ func run(args []string) {
 	var demoAll []demoCheck
 	if *demo {
 		demoAll = demoChecks(len(agents))
+		if hasDataLayer(len(agents)) {
+			servePatroni(ctx)
+		}
 	}
 	var made, delivered, queued atomic.Int64
 	log.Printf("fleet: %d agents every %s, %d containers each, to %s, for %s", len(agents), *interval, *containers, *servers, *dur)

@@ -31,7 +31,7 @@ type DataLayerConfig struct {
 	Patroni     []string `yaml:"patroni"`      // each member's API, e.g. http://10.0.0.1:8008 (obs-beacond asks them over the mesh)
 	SyncStandby bool     `yaml:"sync_standby"` // there should always be one
 	// Where the leader normally is; elsewhere means a failover happened and
-	// someone should move it back (inbuxa-cluster switchover-home).
+	// someone should move it back (patronictl switchover).
 	PreferredLeader string        `yaml:"preferred_leader"`
 	LagWarnMB       int           `yaml:"lag_warn_mb"` // a replica further behind than this warns; default 16
 	DCSStale        time.Duration `yaml:"dcs_stale"`   // Patroni not hearing from etcd this long warns; default 60s
@@ -306,7 +306,7 @@ func (srv *Server) dataLayerView(now time.Time) (map[string]any, []Condition) {
 		}
 		if leader != "" && dl.PreferredLeader != "" && leader != dl.PreferredLeader {
 			add("patroni/home", "warning", fmt.Sprintf("PostgreSQL's leader is %s, not %s", leader, dl.PreferredLeader),
-				"A failover happened. Once things are calm, inbuxa-cluster switchover-home moves it back.", "")
+				"A failover happened. Once things are calm, a switchover (patronictl switchover) moves it back.", "")
 		}
 		if view != nil && len(view) < len(dl.Patroni) {
 			add("patroni/members", "warning", fmt.Sprintf("PostgreSQL has %d of %d members", len(view), len(dl.Patroni)), "A member has left the cluster.", "")
@@ -620,26 +620,46 @@ func (srv *Server) judgeEtcd(p ProbeConfig, host, body string, v *ProbeView, add
 		v.Status, v.Word = worst(v.Status, "warning"), fmt.Sprintf("%.0f%% of quota", size/quota*100)
 		add("etcd/quota/"+host, "warning", fmt.Sprintf("etcd on %s is at %.0f%% of its space quota", host, size/quota*100), "At 100% etcd stops taking writes; it needs compacting and defragmenting.", host)
 	}
-	// Disk sync time, over what happened since the last reading.
+	// Disk sync time, over the syncs between two readings. The page and the
+	// evaluator both judge every report, often more than once, so the
+	// figure moves on only when there are at least 5 new syncs to go by.
 	now := buckets["etcd_disk_wal_fsync_duration_seconds_bucket"]
 	srv.patroni.mu.Lock()
-	before, seen := srv.etcdFsync[host]
-	srv.etcdFsync[host] = now
-	srv.patroni.mu.Unlock()
-	if seen && now != nil {
-		if q, n := p99(now, before); n >= 5 {
-			facts["fsync_p99_ms"] = q * 1000
-			warn := p.FsyncWarnMS
-			if warn == 0 {
-				warn = 25
-			}
-			if math.IsInf(q, 1) || q*1000 > float64(warn) {
-				v.Status, v.Word = worst(v.Status, "warning"), "Slow disk syncs"
-				add("etcd/fsync/"+host, "warning", fmt.Sprintf("etcd on %s: slow disk syncs", host),
-					fmt.Sprintf("99%% of the last %d WAL syncs took up to %s (warns over %d ms): a slow or busy disk can cost etcd its leader.", int(n), fmtSecs(q), warn), host)
-			}
+	st := srv.etcdFsync[host]
+	if st == nil {
+		st = &fsyncState{}
+		srv.etcdFsync[host] = st
+	}
+	if now != nil {
+		switch q, n := p99(now, st.last); {
+		case st.last == nil || now[math.Inf(1)] < st.last[math.Inf(1)]: // first reading, or etcd restarted
+			st.last, st.ok = now, false
+		case n >= 5:
+			st.last, st.q, st.n, st.ok = now, q, n, true
 		}
 	}
+	q, n, ok := st.q, st.n, st.ok
+	srv.patroni.mu.Unlock()
+	if ok {
+		facts["fsync_p99_ms"] = q * 1000
+		warn := p.FsyncWarnMS
+		if warn == 0 {
+			warn = 25
+		}
+		if math.IsInf(q, 1) || q*1000 > float64(warn) {
+			v.Status, v.Word = worst(v.Status, "warning"), "Slow disk syncs"
+			add("etcd/fsync/"+host, "warning", fmt.Sprintf("etcd on %s: slow disk syncs", host),
+				fmt.Sprintf("99%% of the last %d WAL syncs took up to %s (warns over %d ms): a slow or busy disk can cost etcd its leader.", int(n), fmtSecs(q), warn), host)
+		}
+	}
+}
+
+// fsyncState is one host's etcd WAL sync histogram as last counted from,
+// and the p99 worked out then.
+type fsyncState struct {
+	last map[float64]float64
+	q, n float64
+	ok   bool
 }
 
 func fmtSecs(s float64) string {
