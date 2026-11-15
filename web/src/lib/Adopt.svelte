@@ -58,6 +58,8 @@
 	}
 	const isPattern = (p: string) => /[*?[]/.test(p);
 	const unit = (n: string) => (n.includes('.') ? n : n + '.service');
+	// A Windows host's services, as Windows names them (docs/windows.md).
+	const shown = (n: string) => (data?.windows ? n.replace(/\.service$/, '') : n);
 	const matched = (p: string) => (data?.containers ?? []).filter((c) => glob(p).test(c.name));
 
 	const expected = $derived(data?.expected);
@@ -77,7 +79,7 @@
 		rows = out;
 		const running = new Set(data.services ?? []);
 		const s: Svc[] = e.units.map((u) => ({ name: u, on: true, listed: true }));
-		for (const n of running) if (!s.some((x) => unit(x.name) === n)) s.push({ name: n, on: false, listed: false });
+		for (const n of running) if (!s.some((x) => unit(x.name) === n)) s.push({ name: shown(n), on: false, listed: false });
 		svcs = s;
 		addName = addSvc = svcFilter = saveError = '';
 		editing = true;
@@ -188,7 +190,7 @@
 			</form>
 			<div class="svcs">
 				{#each shownSvcs as s (s.name)}
-					<label class="tick"><input type="checkbox" bind:checked={s.on} /> <span class="mono">{s.name}</span>{#if data.services && !data.services.includes(unit(s.name))}{' '}<span class="gone">not running now</span>{/if}</label>
+					<label class="tick"><input type="checkbox" bind:checked={s.on} /> <span class="mono">{shown(s.name)}</span>{#if data.services && !data.services.includes(unit(s.name))}{' '}<span class="gone">not running now</span>{/if}</label>
 				{:else}
 					<p class="sub">{svcFilter ? 'None match.' : 'No services.'}</p>
 				{/each}

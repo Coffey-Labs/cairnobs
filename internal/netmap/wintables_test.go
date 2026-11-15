@@ -3,6 +3,7 @@ package netmap
 import (
 	"encoding/binary"
 	"net/netip"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +77,28 @@ func TestWinOwner(t *testing.T) {
 		if got := WinOwner(pid, svcs, exe); got != want {
 			t.Errorf("%d: %q, want %q", pid, got, want)
 		}
+	}
+}
+
+func TestKernelOwners(t *testing.T) {
+	sock := func(port uint16, pid uint64) NSSocket {
+		return NSSocket{Socket: Socket{Proto: "tcp", State: stListen, Local: netip.AddrPortFrom(netip.IPv4Unspecified(), port), Inode: pid}}
+	}
+	socks := []NSSocket{sock(445, 4), sock(5985, 4), sock(80, 4), sock(9999, 4), sock(80, 1200)}
+	KernelOwners(socks, true)
+	svcs, exe := map[uint32]string{1200: "nginx"}, map[uint32]string{4: "System"}
+	var got []string
+	for _, s := range socks {
+		got = append(got, WinSocketOwner(s.Inode, true, svcs, exe))
+	}
+	want := []string{"unit:LanmanServer.service", "unit:WinRM.service", "unit:W3SVC.service", "process:System", "unit:nginx.service"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("got %v\nwant %v", got, want)
+	}
+	// Without IIS, port 80 stays the kernel's.
+	plain := []NSSocket{sock(80, 4)}
+	KernelOwners(plain, false)
+	if o := WinSocketOwner(plain[0].Inode, false, svcs, exe); o != "process:System" {
+		t.Fatalf("no IIS: %q", o)
 	}
 }

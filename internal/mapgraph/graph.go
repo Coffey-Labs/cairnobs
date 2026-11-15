@@ -139,6 +139,15 @@ var plumbing = map[string]bool{
 	"unit:obs-beacon-agent.service": true, "unit:obs-beacon-agent-helper.service": true,
 	"unit:NetworkManager.service": true, "unit:dhcpcd.service": true, "process:dhclient": true,
 	"unit:kubelet.service": true,
+	// Windows (docs/windows.md): its services are units too.
+	"unit:Dhcp.service": true, "unit:Dnscache.service": true, "unit:EventLog.service": true,
+	"unit:KeyIso.service": true, "unit:RpcEptMapper.service": true, "unit:RpcSs.service": true,
+	"unit:Schedule.service": true, "unit:Spooler.service": true, "unit:W32Time.service": true,
+	"unit:iphlpsvc.service": true, "unit:NlaSvc.service": true, "unit:CDPSvc.service": true,
+	"unit:WinRM.service": true, "unit:TermService.service": true, "unit:SessionEnv.service": true,
+	"unit:mpssvc.service": true, "unit:Winmgmt.service": true, "unit:LanmanWorkstation.service": true,
+	"unit:NetBT.service": true, "unit:SSDPSRV.service": true, "unit:FDResPub.service": true,
+	"process:System": true, "process:services": true, "process:wininit": true, "process:lsass": true,
 }
 
 func isPlumbing(owner string) bool {

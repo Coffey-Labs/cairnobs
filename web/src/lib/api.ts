@@ -193,7 +193,7 @@ export interface HostExpectations { running: string[]; stopped: { match: string;
 /** What should run on a host, and what its agent says is there now (null: it can't say). */
 export interface ExpectedSettings {
 	source: Source; file: string; host: string; reported: boolean; expected: HostExpectations; ci_jobs: string[];
-	containers: { name: string; state: string; status: string }[] | null; containers_error?: string; services: string[] | null;
+	containers: { name: string; state: string; status: string }[] | null; containers_error?: string; services: string[] | null; windows?: boolean;
 }
 export interface AuditEntry { at: string; who: string; action: string; detail: string }
 export interface Audit { entries: AuditEntry[]; stored: boolean }

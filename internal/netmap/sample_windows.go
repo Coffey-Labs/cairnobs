@@ -63,7 +63,12 @@ func Local() *report.Map {
 	keep("services", err)
 	exe, err := processNames()
 	keep("processes", err)
-	owner := func(pid uint64) string { return WinOwner(uint32(pid), services, exe) }
+	iis := false
+	for _, name := range services {
+		iis = iis || name == "W3SVC"
+	}
+	KernelOwners(socks, iis)
+	owner := func(key uint64) string { return WinSocketOwner(key, iis, services, exe) }
 	m.Listen, m.Conns, m.Cut = Shrink(socks, 0, owner)
 	m.Error = strings.Join(errs, "; ")
 	return m
