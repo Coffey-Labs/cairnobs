@@ -13,6 +13,8 @@
 	let attention = $state<Attention[]>([]);
 	let error = $state('');
 	const name = $derived(page.params.name ?? '');
+	// Windows has no load average, and its services aren't systemd's (docs/windows.md).
+	const windows = $derived(host?.os?.startsWith('Windows') ?? false);
 
 	async function load(n: string) {
 		try {
@@ -43,7 +45,7 @@
 	<span class="tile"><Icon name="hosts" /></span>
 	<div>
 		<h1>{name}</h1>
-		<p>{#if host?.os}{host.os} · kernel {host.kernel} · {host.cpus} CPUs · {bytes(host.mem_total)} memory{:else if host}Waiting for this host's first report.{/if}</p>
+		<p>{#if host?.os}{host.os} · {windows ? 'build' : 'kernel'} {host.kernel} · {host.cpus} CPUs · {bytes(host.mem_total)} memory{:else if host}Waiting for this host's first report.{/if}</p>
 		{#if host?.vm}
 			<p class="vm">VM <a href={host.vm.href}>{host.vm.namespace ? host.vm.namespace + '/' : ''}{host.vm.name}</a> {#if host.vm.on_host}on <a href="/hosts/{host.vm.source}">{host.vm.source}</a>{:else}in {host.vm.title ?? host.vm.source}{/if}{#if host.vm.node}, on {host.vm.node}{/if} · <span class:bad={!['ok', 'updating', 'degraded'].includes(host.vm.state)}>{host.vm.word}</span></p>
 		{/if}
@@ -64,7 +66,7 @@
 		<ul class="attn">{#each attention as a}<li><Status s={a.severity} /> {a.title}{#if a.detail}<span class="sub"> · {a.detail}</span>{/if}</li>{/each}</ul>
 	{/if}
 	<div class="grid g4">
-		<Panel title="CPU"><div class="stat"><div class="val">{Math.round(host.cpu_pct)}<small>%</small></div><div class="sub">load {host.load.map((l) => l.toFixed(2)).join(' · ')}</div></div><Spark data={host.history.cpu} max={100} label="CPU, last hour" /></Panel>
+		<Panel title="CPU"><div class="stat"><div class="val">{Math.round(host.cpu_pct)}<small>%</small></div><div class="sub">{#if windows}{host.cpus} CPUs{:else}load {host.load.map((l) => l.toFixed(2)).join(' · ')}{/if}</div></div><Spark data={host.history.cpu} max={100} label="CPU, last hour" /></Panel>
 		<Panel title="Memory"><div class="stat"><div class="val">{Math.round(host.mem_pct)}<small>%</small></div><div class="sub">of {bytes(host.mem_total)} · swap {Math.round(host.swap_pct)}%</div></div><Spark data={host.history.mem} max={100} label="Memory, last hour" /></Panel>
 		<Panel title="Network out"><div class="stat"><div class="val">{rate(host.net.tx_bps)}</div><div class="sub">in {rate(host.net.rx_bps)}</div></div><Spark data={host.history.tx} label="Network out, last hour" /></Panel>
 		<Panel title="Up for"><div class="stat"><div class="val">{duration(host.uptime_s)}</div><div class="sub" title={hmz(host.last_seen ?? Date.now())}>last report {ago(host.last_seen)} · agent {host.agent}</div></div></Panel>
@@ -105,17 +107,17 @@
 	</div>
 	{#if host.units?.length}
 		<div class="mt">
-			<Panel title="System services" aside="systemd units Cairn OBS expects here" flush>
+			<Panel title="System services" aside={windows ? 'Windows services Cairn OBS expects here' : 'systemd units Cairn OBS expects here'} flush>
 				<div class="tbl-wrap flat">
 					<table class="tbl">
-						<thead><tr><th>State</th><th>Unit</th><th>systemd says</th><th class="r">Restarts</th><th class="r">Running for</th></tr></thead>
+						<thead><tr><th>State</th><th>{windows ? 'Service' : 'Unit'}</th><th>{windows ? 'Windows says' : 'systemd says'}</th>{#if !windows}<th class="r">Restarts</th>{/if}<th class="r">Running for</th></tr></thead>
 						<tbody>
 							{#each host.units as u (u.name)}
 								<tr>
 									<td><Status s={u.severity} word={u.word} /></td>
-									<td class="mono">{u.name}</td>
+									<td class="mono">{windows ? u.name.replace(/\.service$/, '') : u.name}</td>
 									<td class="sub">{u.active ? `${u.active} (${u.sub})` : '—'}</td>
-									<td class="r mono">{u.restarts ?? 0}</td>
+									{#if !windows}<td class="r mono">{u.restarts ?? 0}</td>{/if}
 									<td class="r sub">{u.since && u.active === 'active' ? duration((Date.now() - new Date(u.since).getTime()) / 1000) : '—'}</td>
 								</tr>
 							{/each}
