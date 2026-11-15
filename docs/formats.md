@@ -539,7 +539,9 @@ webmail does, password for a code, code plus PKCE for a token; the
 redirect URL is never visited), `host` (the agent host serving the mail
 server, so its maintenance window holds these alerts), `every` (5m),
 `wait` (4m, less than `every`), `round_trip_warn` (1m), `queue_warn` (50)
-and `queue_critical` (500).
+and `queue_critical` (500). `stand_in: true` is for a stand-in mail server
+on this machine, such as the fleet simulator's demo: SMTP and IMAP without
+TLS, and `smtp`, `imap` and `url` must all be on loopback.
 
 Each round signs in over SMTP submission, IMAP and JMAP, reads the size of
 the outgoing queue (`x:QueuedMessage/query`, server-wide), then sends the

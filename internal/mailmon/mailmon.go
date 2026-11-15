@@ -50,7 +50,12 @@ type Config struct {
 	QueueWarn     int           `yaml:"queue_warn"`      // messages waiting; default 50
 	QueueCritical int           `yaml:"queue_critical"`  // default 500
 
-	PlainIMAP bool `yaml:"-"` // tests talk to fakes without TLS
+	// StandIn: the mail server is a stand-in on this machine, such as the
+	// fleet simulator's demo (scripts/fleet): SMTP and IMAP without TLS,
+	// and smtp, imap and url must all be on loopback.
+	StandIn bool `yaml:"stand_in"`
+
+	PlainIMAP bool `yaml:"-"` // set by StandIn
 	PlainSMTP bool `yaml:"-"`
 }
 
@@ -72,6 +77,13 @@ func (c *Config) Defaults() error {
 		c.URL = "https://" + c.Server
 	}
 	c.URL = strings.TrimRight(c.URL, "/")
+	if c.StandIn {
+		u, err := url.Parse(c.URL)
+		if err != nil || !loopback(u.Hostname()) || !loopbackAddr(c.SMTP) || !loopbackAddr(c.IMAP) {
+			return errors.New("mail: stand_in needs smtp, imap and url on loopback (a stand-in on this machine)")
+		}
+		c.PlainIMAP, c.PlainSMTP = true, true
+	}
 	if c.Every == 0 {
 		c.Every = 5 * time.Minute
 	}
@@ -91,6 +103,16 @@ func (c *Config) Defaults() error {
 		c.QueueCritical = 500
 	}
 	return nil
+}
+
+func loopback(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && ip.IsLoopback()
+}
+
+func loopbackAddr(hostport string) bool {
+	h, _, err := net.SplitHostPort(hostport)
+	return err == nil && loopback(h)
 }
 
 // Snapshot is the latest round. Fails count rounds in a row that went
