@@ -24,6 +24,9 @@ done
 # A small build context: only what the image holds.
 ctx="$(mktemp -d)"; trap 'rm -rf "$ctx"' EXIT
 cp LICENSE THIRD_PARTY_NOTICES.md "$DIST"/obs-beacond-linux-{amd64,arm64} "$DIST"/obs-beacon-agent-linux-{amd64,arm64} "$ctx/"
+# Binaries downloaded from a release aren't executable, and the image keeps
+# the mode it's given.
+chmod 0755 "$ctx"/obs-beacond-linux-* "$ctx"/obs-beacon-agent-linux-*
 args=(--file deploy/container/Containerfile --platform linux/amd64,linux/arm64
       --build-arg "VERSION=$VERSION" --provenance=false)
 if [ -n "$IMAGE" ]; then
