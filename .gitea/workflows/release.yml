@@ -5,9 +5,9 @@
 # linux/arm64, the .deb and .rpm packages, the Windows agent zip and SHA256SUMS, attached to a
 # Release on this repo (scripts/build-release.sh builds them all).
 #
-# Private until launch: the Release lives only on this
-# private repo, so only people with access to it can download. There is no
-# announce job and no GitHub copy on purpose.
+# GitHub's copy of the Release and the server image on GHCR are made from
+# these same files by .github/workflows/release.yml, once this Release is
+# out.
 #
 # The tag must be annotated and on main, named vX.Y.Z or vX.Y.Z-rc.N; its
 # annotation is the release notes. A release candidate is a pre-release. The

@@ -19,5 +19,5 @@ configMapGenerator:
       - obs-beacond.yaml
 images:
   - name: obs-beacond
-    newName: registry.example.org/ops/obs-beacond # where scripts/build-image.sh pushed it
+    newName: ghcr.io/coffey-labs/cairnobs # or your own registry's copy (docs/kubernetes.md, The image)
     newTag: 0.1.0

@@ -15,9 +15,18 @@ its volume (formats.md, State). On PostgreSQL several copies can share
 the one database, and only one of them sends alerts: the `-ha` overlays
 (More than one copy, below).
 
-## Build the image
+## The image
 
-From a release's binaries:
+Each release's image is on GitHub's registry, for linux/amd64 and arm64:
+`ghcr.io/coffey-labs/cairnobs:0.1.0` (and `:latest`, the newest final
+release). To copy it into your own registry, OpenShift's internal one
+included:
+
+```sh
+skopeo copy --all docker://ghcr.io/coffey-labs/cairnobs:0.1.0 docker://registry.example.org/ops/obs-beacond:0.1.0
+```
+
+Or build it yourself from a release's binaries:
 
 ```sh
 scripts/build-release.sh v0.1.0 dist                        # or download a release into dist/
