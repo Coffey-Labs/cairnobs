@@ -118,6 +118,17 @@ func demoChecks(hosts int) []demoCheck {
 			result: ok("dns-mx", 12, func(r *report.CheckResult) { r.Answer = "10 mx1.example.com." })},
 		demoCheck{id: "smtp", name: "mx1.example.com SMTP", yaml: "tcp: mx1.example.com:25\n    contains: ESMTP", from: web,
 			result: ok("smtp", 35, func(r *report.CheckResult) { r.Answer = "220 mx1.example.com ESMTP ready" })},
+		demoCheck{id: "submission", name: "mail.example.com submission", yaml: "tcp: mail.example.com:587\n    contains: ESMTP", from: web,
+			result: ok("submission", 38, func(r *report.CheckResult) { r.Answer = "220 mail.example.com ESMTP ready" })},
+		demoCheck{id: "imaps", name: "mail.example.com IMAPS", yaml: "tcp: mail.example.com:993", from: web, result: ok("imaps", 41, nil)},
+		demoCheck{id: "rbl-mx1", name: "mx1.example.com on block lists", yaml: "rbl: 192.0.2.25", from: web[:1],
+			result: ok("rbl-mx1", 180, func(r *report.CheckResult) { r.Answer = "clean on 5 of 5" })},
+		// mx2 landed on a list that flags whole networks: a warning to look at, not a page.
+		demoCheck{id: "rbl-mx2", name: "mx2.example.com on block lists", yaml: "rbl: 192.0.2.26\n    severity: warning", from: web[:1],
+			result: func(from int, now time.Time) report.CheckResult {
+				return report.CheckResult{ID: "rbl-mx2", At: now.UTC(), Ms: 210, Answer: "clean on 4 of 5",
+					Error: "listed on dnsbl-1.uceprotect.net (127.0.0.2)"}
+			}},
 	)
 	// Every site's gateway pings every other's over WireGuard.
 	for s, gw := range gws {
@@ -268,8 +279,11 @@ func writeDemo(dir string, hosts int) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	conf := fmt.Sprintf("# The fleet demo (fleet config -demo): add these to obs-beacond.yaml.\nchecks: %s\nexpected: %s\nbackups: %s\n",
-		filepath.Join(abs, "checks.yaml"), filepath.Join(abs, "expected.yaml"), filepath.Join(abs, "backups.yaml"))
+	if err := os.WriteFile(filepath.Join(dir, "topology.yaml"), []byte(demoTopology), 0o644); err != nil {
+		log.Fatal(err)
+	}
+	conf := fmt.Sprintf("# The fleet demo (fleet config -demo): add these to obs-beacond.yaml.\nchecks: %s\nexpected: %s\nbackups: %s\ntopology: %s\n",
+		filepath.Join(abs, "checks.yaml"), filepath.Join(abs, "expected.yaml"), filepath.Join(abs, "backups.yaml"), filepath.Join(abs, "topology.yaml"))
 	if hasDataLayer(hosts) {
 		conf += dataLayerYAML()
 	}
@@ -333,3 +347,20 @@ func (d *demoHost) stamp(r *report.Report, start, now time.Time) {
 		r.Fetches = dataFetches(d.n, now)
 	}
 }
+
+// demoTopology names the demo's services: what each claims, what it needs
+// (lines on the service map; alerts group by them) and the checks that
+// judge it. The Mail page shows the mail service's checks.
+const demoTopology = `# The fleet demo's services (fleet config -demo). Format: docs/formats.md, "topology.yaml".
+services:
+  - {id: cloudflare, name: Cloudflare, tier: edge, cloudflare: true}
+  - {id: shop, name: Web shop, tier: public, needs: [cloudflare, apps], checks: [web-shop, web-billing]}
+  - {id: api, name: Public API, tier: public, needs: [cloudflare, apps], checks: [web-api]}
+  - {id: sites, name: Docs and status, tier: public, needs: [cloudflare], checks: [web-docs, web-status, web-legacy]}
+  - {id: mail, name: Mail, tier: public, needs: [postgres], checks: [dns-mx, smtp, submission, imaps, rbl-mx1, rbl-mx2]}
+  - {id: apps, name: App servers, tier: apps, needs: [haproxy, redis, nats], units: ["*/docker"], containers: ["*/app-*"]}
+  - {id: haproxy, name: HAProxy, tier: data, needs: [postgres], units: ["*/haproxy"]}
+  - {id: postgres, name: PostgreSQL (Patroni), tier: data, units: ["*/postgresql"]}
+  - {id: redis, name: Redis, tier: data, units: ["*/redis-server"]}
+  - {id: nats, name: NATS, tier: data, units: ["*/nats-server"]}
+`
