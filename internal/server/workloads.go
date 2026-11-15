@@ -1312,6 +1312,10 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 				v.Workloads++
 			}
 		}
+		// What a host agent reads is "host:source": say which host, title or not.
+		if host, _, ok := strings.Cut(s.name, ":"); ok && v.ReadBy == "" {
+			v.ReadBy = host
+		}
 		// The version first, then the pools, then operators, each by name.
 		slices.SortFunc(v.Parts, func(a, b ClusterPart) int {
 			order := func(n string) int {

@@ -13,9 +13,14 @@
 	type ClusterAgent = { name: string; source: 'config' | 'joined'; added?: string; added_by?: string; cert_until?: string; status: Severity | ''; word: string };
 	type Pending = { id: string; name: string; cluster: boolean; created_by: string; created: string; expires: string };
 	type Made = { name: string; command: string; expires: string };
+	// What a host agent reads (a vCenter, an array, an IBM i partition, an
+	// HMC), or obs-beacond itself (a Vault): set in that agent's agent.yaml
+	// or in obs-beacond.yaml, not here.
+	type ReadSource = { name: string; title?: string; read_by?: string; noun: string; status: Severity; word: string };
 
 	let clusters = $state<ClusterAgent[]>([]);
 	let pending = $state<Pending[]>([]);
+	let read = $state<ReadSource[]>([]);
 	let unavailable = $state('');
 	let error = $state('');
 	let busy = $state(false);
@@ -30,6 +35,9 @@
 			clusters = r.clusters;
 			pending = r.pending.filter((p) => p.cluster);
 			unavailable = r.cluster_join_unavailable;
+			const v = await get<{ clusters: ReadSource[] }>('/api/v1/clusters?nodes=0');
+			const own = new Set(r.clusters.map((c) => c.name));
+			read = v.clusters.filter((c) => c.read_by && !own.has(c.name)).sort((a, b) => a.name.localeCompare(b.name));
 			error = '';
 		} catch (e) {
 			if (e instanceof SignedOut) void live.checkSession();
@@ -170,6 +178,29 @@
 		</div>
 	</Panel>
 </div>
+{#if read.length}
+<div class="mt">
+	<Panel title="Read by an agent or by obs-beacond" aside={String(read.length)} flush>
+		<div class="tbl-wrap flat">
+			<table class="tbl">
+				<thead><tr><th>Source</th><th>What</th><th>Read by</th><th>State</th></tr></thead>
+				<tbody>
+					{#each read as c (c.name)}
+						<tr>
+							<td><a class="nm mono" href="/workloads?source={encodeURIComponent(c.name)}">{c.title || c.name}</a></td>
+							<td class="sub">{c.noun}</td>
+							<td>{#if c.read_by === 'obs-beacond'}<span class="sub">obs-beacond, in obs-beacond.yaml</span>{:else}<a class="mono" href="/hosts/{encodeURIComponent(c.read_by ?? '')}">{c.read_by}</a><span class="sub">, in its agent.yaml</span>{/if}</td>
+							<td><Status s={c.status} word={c.word} /></td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	</Panel>
+</div>
+<p class="foot-note">These are set where they're read, not here: a section of the reading host's agent.yaml (vsphere, nutanix, proxmox, pure, ibmi, hmc), or obs-beacond.yaml for what the server reads itself. Taking one out of there forgets it here.</p>
+{/if}
+
 <p class="foot-note">Removing a cluster revokes its agent's certificate at once and forgets what it sent. To take the agent out of the cluster: <span class="mono">curl -fsSL {manifest} | kubectl delete -f -</span>. Applied instead (<span class="mono">kubectl apply -f -</span>), it upgrades the agent to this server's version.</p>
 
 <style>
