@@ -71,11 +71,11 @@
 				{@const p = c.partition}
 				{@const cpu = c.usage ? (c.usage.cpu_pct ?? 0) : p.cpu_pct}
 				<div class="nums">
-					<div><b>{cpu != null ? Math.round(cpu) + '%' : '–'}</b><span>CPU, last minute{#if p.processing_units}{' '}of {p.processing_units} processing units{/if}</span></div>
+					<div><b>{cpu != null ? Math.round(cpu) + '%' : '–'}</b><span>CPU, last minute{#if p.processing_units}{' '}of {p.processing_units} processing {p.processing_units === 1 ? 'unit' : 'units'}{/if}</span></div>
 					<div><b class:hot={p.system_asp_pct >= 90}>{Math.round(p.system_asp_pct)}%</b><span>system ASP used</span></div>
 					<a href={href(c.name, { show: 'problems' })} class:bad={c.problems > 0}><b>{c.problems}</b><span>{c.problems === 1 ? 'problem' : 'problems'}</span></a>
 				</div>
-				<p class="sub pline">{p.active_jobs.toLocaleString('en-US')} jobs active of {p.jobs.toLocaleString('en-US')} in the system{#if p.model} · Power {p.model}{/if}</p>
+				<p class="sub pline">{p.active_jobs.toLocaleString('en-US')} jobs active of {p.jobs.toLocaleString('en-US')} in the system{#if p.model}{' · '}Power {p.model}{/if}</p>
 				{#if c.history}<PartitionCPU source={c.name} history={c.history} />{/if}
 			{:else}
 			<div class="nums">
