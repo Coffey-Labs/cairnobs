@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Coffey Labs LLC
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Announce a published release by hand: the forum's Cairn OBS Announcements
+# and Discord, as release.yml's announce job does for each new tag. A
+# release is announced at most once, so running it again is safe.
+name: announce
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, e.g. v0.1.0
+        required: true
+
+jobs:
+  announce:
+    runs-on: light
+    steps:
+      - uses: coffey-labs/actions/discourse-release@958b3a35a345744abd236ca5abf679cbedaca7a0
+        with:
+          api-key: ${{ secrets.DISCOURSE_RELEASE_KEY }}
+          discord-webhook: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          tag: ${{ inputs.tag }}

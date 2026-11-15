@@ -7,7 +7,9 @@
 #
 # GitHub's copy of the Release and the server image on GHCR are made from
 # these same files by .github/workflows/release.yml, once this Release is
-# out.
+# out. The announce job then posts it in the forum's Cairn OBS
+# Announcements (and Discord), once per release; announce.yml does the same
+# by hand for a tag.
 #
 # The tag must be annotated and on main, named vX.Y.Z or vX.Y.Z-rc.N; its
 # annotation is the release notes. A release candidate is a pre-release. The
@@ -107,3 +109,16 @@ jobs:
               -d '{"draft":false}' "$API/releases/$id"
           fi
           echo "released $TAG"
+
+  # A release made with the job's own token starts no `on: release`
+  # workflow, so the announcement is a job here. The forum category comes
+  # from release-map.json in coffey-labs/actions.
+  announce:
+    needs: [release]
+    runs-on: light
+    steps:
+      - uses: coffey-labs/actions/discourse-release@958b3a35a345744abd236ca5abf679cbedaca7a0
+        with:
+          api-key: ${{ secrets.DISCOURSE_RELEASE_KEY }}
+          discord-webhook: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          tag: ${{ github.ref_name }}
