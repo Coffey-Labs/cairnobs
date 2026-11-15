@@ -241,6 +241,20 @@ func TestEtcdProbe(t *testing.T) {
 	if c := read("host1", etcdMetrics(1, 1.1e6, [4]int{30, 80, 80, 80})); len(c) != 0 {
 		t.Fatalf("64 ms syncs under a 500 ms threshold: %s", keys(c))
 	}
+	// Judged again before the next report, as the page and the evaluator
+	// both do: the figure stays.
+	for range 2 {
+		v, _ := srv.dataLayerView(now)
+		var got any
+		for _, pv := range v["probes"].([]ProbeView) {
+			if pv.Kind == "etcd" && pv.Host == "host1" {
+				got = pv.Facts["fsync_p99_ms"]
+			}
+		}
+		if got != 64.0 {
+			t.Fatalf("p99 on a second look at the same report: %v, want 64", got)
+		}
+	}
 	// Then syncs slower than 512 ms, no leader, and nearly full.
 	c := read("host1", etcdMetrics(0, 1.8e9, [4]int{30, 80, 80, 120}))
 	if got := keys(c); got != "critical:dl/etcd/leader/host1 warning:dl/etcd/quota/host1 warning:dl/etcd/fsync/host1" {

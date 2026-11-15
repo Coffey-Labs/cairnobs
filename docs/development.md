@@ -38,6 +38,41 @@ run `npm run dev`; it serves on http://localhost:5180/ and passes `/api` and
 The web UI is built into `internal/webui/dist/` and embedded in obs-beacond, so
 after changing `web/` run `make` again before testing the binary.
 
+## The demo fleet
+
+For a UI with an enterprise's worth of everything on it (screenshots, the
+docs, working on pages at scale), `scripts/fleet` fakes the agents, the
+clusters and the outside services they'd watch. Build it with
+`go build -o bin/fleet ./scripts/fleet`, then:
+
+```
+fleet config -n 120 -out demo -demo
+```
+
+writes `demo/agents.yaml` and `demo/tokens`, and with `-demo` the checks,
+expected units, backups and data layer for three sites of 50 hosts:
+`demo/demo.yaml` has the lines to add to obs-beacond.yaml. Then run
+
+```
+fleet run -server http://127.0.0.1:8150 -tokens demo/tokens -demo \
+  -cloudflare demo/cf -mail demo/mail -channels demo/channels
+```
+
+with the same number of agents. Each of `-cloudflare`, `-mail`, `-channels`,
+`-akamai` and `-vault` serves a stand-in on loopback and writes the section
+for obs-beacond.yaml into its directory (`cloudflare.yaml`, `mail.yaml`,
+`channels.yaml`, …); add those once, and start fleet before obs-beacond so
+the first readings find them. `-channels` catches what the alert channels
+send (ntfy, Discord, PagerDuty and a webhook) and lists it on
+http://127.0.0.1:58450/. `fleet run -h` lists the rest: clusters, VMs,
+Proxmox, vSphere, Nutanix and Pure arrays.
+
+Some things are wrong on purpose, so every page has something to show: a
+container exited, a unit failed, a stale backup, PostgreSQL's leader away
+from home with a replica behind, an origin failing Cloudflare's health
+check, a zone on Flexible SSL, and so on. The mail server is healthy, to
+show what normal looks like.
+
 ## Dependencies and notices
 
 THIRD_PARTY_NOTICES.md lists every third-party component inside the

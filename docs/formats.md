@@ -446,7 +446,10 @@ them.
 token, re-read on every poll), `every` (5m), `zones` (default: all the
 token can read), `ssl_mode` (strict), `ssl_mode_zones` (per-zone exceptions, `zone: mode`), `cert_warn_days` (14) and
 `cert_critical_days` (3), `error_warn_pct` (5), `error_critical_pct` (25),
-`error_min` (20), `block_min` (100) and `block_factor` (10). Each poll
+`error_min` (20), `block_min` (100) and `block_factor` (10), and
+`stand_in`: a stand-in for Cloudflare on this machine, such as the fleet
+simulator's demo (`http://127.0.0.1:port` only; the token and every request
+go there instead). Each poll
 reads every zone's SSL mode, edge certificate packs, load balancers and
 DNS records, the account's pools with each origin's health from every
 region, each zone's last 15 minutes of requests (GraphQL analytics, ten
@@ -536,7 +539,9 @@ webmail does, password for a code, code plus PKCE for a token; the
 redirect URL is never visited), `host` (the agent host serving the mail
 server, so its maintenance window holds these alerts), `every` (5m),
 `wait` (4m, less than `every`), `round_trip_warn` (1m), `queue_warn` (50)
-and `queue_critical` (500).
+and `queue_critical` (500). `stand_in: true` is for a stand-in mail server
+on this machine, such as the fleet simulator's demo: SMTP and IMAP without
+TLS, and `smtp`, `imap` and `url` must all be on loopback.
 
 Each round signs in over SMTP submission, IMAP and JMAP, reads the size of
 the outgoing queue (`x:QueuedMessage/query`, server-wide), then sends the
