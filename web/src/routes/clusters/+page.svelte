@@ -87,7 +87,7 @@
 			{#if c.usage?.io && c.history}<ArrayIO source={c.name} history={c.history} io={c.usage.io} />{/if}
 			{#if c.usage?.leases != null && c.history}<VaultLeases source={c.name} history={c.history} leases={c.usage.leases} />{/if}
 			{#if kinds.some(([k]) => n(c, k))}
-			<table class="tbl kt">
+			<div class="ktw"><table class="tbl kt">
 				<thead><tr><th>Kind</th><th>All</th>{#each sevs as [, w]}<th>{w}</th>{/each}</tr></thead>
 				<tbody>
 					{#each kinds as [k, label]}
@@ -102,7 +102,7 @@
 						{/if}
 					{/each}
 				</tbody>
-			</table>
+			</table></div>
 			{/if}
 			{#if c.node_list.length}
 				<div class="nodes" aria-label="Nodes, the ones that need a look first">
@@ -127,7 +127,8 @@
 	.nums small { font-size: 14px; color: var(--muted-fg); }
 	.nums span { color: var(--muted-fg); font-size: 12px; }
 	.nums .bad b { color: var(--critical); }
-	.kt { margin-bottom: 14px; }
+	.ktw { margin-bottom: 14px; max-width: 100%; overflow-x: auto; }
+	@media (max-width: 700px) { .kt th, .kt td { padding-left: 6px; padding-right: 6px; } .kt th { font-size: 10.5px; letter-spacing: 0.02em; } }
 	.parts { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
 	.parts li { display: grid; grid-template-columns: minmax(180px, max-content) 1fr; gap: 12px; align-items: baseline; font-size: 13px; }
 	@media (max-width: 700px) { .parts li { grid-template-columns: 1fr; gap: 2px; } }
