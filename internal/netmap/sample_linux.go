@@ -58,7 +58,12 @@ func (s *Sampler) Sample() *report.Map {
 	}
 	socks, owner, err := s.sockets()
 	keep("sockets", err)
-	m.Listen, m.Conns, m.Cut = Shrink(socks, owner)
+	// The host's own network namespace is init's.
+	var hostNS uint64
+	if st, err := os.Stat(s.path("/proc/1/ns/net")); err == nil {
+		hostNS = st.Sys().(*syscall.Stat_t).Ino
+	}
+	m.Listen, m.Conns, m.Cut = Shrink(socks, hostNS, owner)
 	m.Error = strings.Join(errs, "; ")
 	return m
 }

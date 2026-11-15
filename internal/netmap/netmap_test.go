@@ -85,7 +85,7 @@ func TestShrink(t *testing.T) {
 	owners := map[uint64]string{100: "unit:ssh.service", 101: "process:sidecar", 102: "unit:ssh.service", 103: "unit:ssh.service",
 		104: "unit:ssh.service", 105: "container:aaaaaaaaaaaa", 106: "container:aaaaaaaaaaaa", 107: "unit:app.service",
 		108: "process:sidecar", 200: "unit:nginx.service", 201: "unit:nginx.service", 300: "container:bbbbbbbbbbbb"}
-	listen, conns, cut := Shrink(socks, func(i uint64) string { return owners[i] })
+	listen, conns, cut := Shrink(socks, 1, func(i uint64) string { return owners[i] })
 	if cut {
 		t.Error("cut, want whole")
 	}
@@ -93,7 +93,7 @@ func TestShrink(t *testing.T) {
 		{Owner: "unit:ssh.service", Proto: "tcp", Addr: "*", Port: 22},
 		{Owner: "unit:nginx.service", Proto: "tcp", Addr: "*", Port: 443},
 		{Owner: "process:sidecar", Proto: "tcp", Addr: "127.0.0.1", Port: 5432},
-		{Owner: "container:bbbbbbbbbbbb", Proto: "tcp", Addr: "172.17.0.2", Port: 5432},
+		{Owner: "container:bbbbbbbbbbbb", Proto: "tcp", Addr: "172.17.0.2", Port: 5432, Inside: true},
 	}
 	if !slices.Equal(listen, wantL) {
 		t.Errorf("listen =\n%v\nwant\n%v", listen, wantL)
@@ -125,7 +125,7 @@ func TestShrinkCaps(t *testing.T) {
 			Local:  netip.MustParseAddrPort("10.0.0.2:40000"),
 			Remote: netip.AddrPortFrom(netip.AddrFrom4([4]byte{10, 1, byte(i >> 8), byte(i)}), 443)}})
 	}
-	_, conns, cut := Shrink(socks, func(uint64) string { return "unit:x.service" })
+	_, conns, cut := Shrink(socks, 1, func(uint64) string { return "unit:x.service" })
 	if !cut || len(conns) != MaxConns {
 		t.Errorf("cut %v, %d conns; want cut at %d", cut, len(conns), MaxConns)
 	}
@@ -246,5 +246,29 @@ func TestMerge(t *testing.T) {
 	}
 	if len(a.Conns) != 1 || a.Conns[0].Count != 3 {
 		t.Error("Merge changed its input")
+	}
+}
+
+// inbuxa in a namespace of its own, with its own public address, reaching
+// HAProxy on the host's mesh address (ours on host2, 2026-11-14): the host
+// sees both ends. Counted once, going out, never as the Internet coming in.
+func TestShrinkAcrossNamespaces(t *testing.T) {
+	mail, mesh := netip.MustParseAddrPort("95.216.2.52:49890"), netip.MustParseAddrPort("10.77.0.2:5000")
+	socks := []NSSocket{
+		{NS: 1, Socket: Socket{Proto: "tcp", State: stListen, Inode: 1, Local: netip.MustParseAddrPort("0.0.0.0:5000")}},
+		{NS: 1, Socket: Socket{Proto: "tcp", State: stEstablished, Inode: 2, Local: mesh, Remote: mail}},
+		{NS: 3, Socket: Socket{Proto: "tcp", State: stEstablished, Inode: 3, Local: mail, Remote: mesh}},
+		// A real client from the Internet on the same port stays.
+		{NS: 1, Socket: Socket{Proto: "tcp", State: stEstablished, Inode: 4, Local: mesh, Remote: netip.MustParseAddrPort("8.8.8.8:5555")}},
+	}
+	owners := map[uint64]string{1: "unit:haproxy.service", 2: "unit:haproxy.service", 3: "unit:inbuxa.service", 4: "unit:haproxy.service"}
+	_, conns, _ := Shrink(socks, 1, func(i uint64) string { return owners[i] })
+	want := []report.Conn{
+		{Owner: "unit:haproxy.service", Dir: "in", Port: 5000, Count: 1},
+		{Owner: "unit:inbuxa.service", Dir: "out", Remote: "10.77.0.2", Port: 5000, Count: 1, Inside: true},
+	}
+	slices.SortFunc(conns, func(a, b report.Conn) int { return strings.Compare(a.Owner, b.Owner) })
+	if !slices.Equal(conns, want) {
+		t.Errorf("conns =\n%v\nwant\n%v", conns, want)
 	}
 }

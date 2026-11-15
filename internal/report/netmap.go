@@ -50,6 +50,11 @@ type Listener struct {
 	Proto string `json:"proto"` // tcp or udp
 	Addr  string `json:"addr"`  // "*" for every address
 	Port  int    `json:"port"`
+	// Inside is true for a listener in a network namespace of its own (a
+	// container's, say), not the host's: reachable at that namespace's
+	// addresses or through a published port, never at the host's own.
+	// Agents before 0.1.0-rc.3 don't send it.
+	Inside bool `json:"inside,omitempty"`
 }
 
 // Conn is a group of established TCP connections with the same owner,
@@ -66,4 +71,7 @@ type Conn struct {
 	Remote string `json:"remote,omitempty"`
 	Port   int    `json:"port"` // out: the far end's port; in: our listening port
 	Count  int    `json:"count"`
+	// Inside: held in a network namespace of its own (see Listener.Inside),
+	// so its loopback is that namespace's, not the host's.
+	Inside bool `json:"inside,omitempty"`
 }
