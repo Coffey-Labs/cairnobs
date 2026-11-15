@@ -23,7 +23,7 @@ import (
 
 // Config is obs-beacond's config file.
 type Config struct {
-	Listen      string         `yaml:"listen"`       // the web UI and browser API, e.g. 127.0.0.1:8150 behind nginx
+	Listen      string         `yaml:"listen"`       // the web UI and browser API, e.g. 127.0.0.1:8150 behind nginx, or unix:/run/obs/web.sock
 	AgentListen string         `yaml:"agent_listen"` // agents only, e.g. :8461; TLS with obs-beacond's own CA (agent_tls). Empty: agents use listen, with tokens
 	AgentTLS    AgentTLSConfig `yaml:"agent_tls"`
 	Join        JoinConfig     `yaml:"join"` // adding hosts from the UI
@@ -145,6 +145,9 @@ func LoadConfig(p string) (*Config, error) {
 	if c.EmergencyListen != "" && !loopback(c.EmergencyListen) {
 		return nil, fmt.Errorf("%s: emergency_listen must be a loopback address (it's reached through an SSH tunnel), not %s", p, c.EmergencyListen)
 	}
+	if _, ok := unixListen(c.Listen); ok && (c.TLS.Cert != "" || c.TLS.ACME != nil) {
+		return nil, fmt.Errorf("%s: listen on a unix socket is plain HTTP for a proxy on the same machine; the proxy does TLS", p)
+	}
 	if c.DevSignin && !loopback(c.Listen) {
 		return nil, fmt.Errorf("%s: dev_signin is only allowed on a loopback address, not %s", p, c.Listen)
 	}
@@ -219,6 +222,12 @@ func LoadConfig(p string) (*Config, error) {
 		c.Agents[i] = a
 	}
 	return &c, nil
+}
+
+// unixListen is the socket's path when listen is unix:PATH.
+func unixListen(addr string) (string, bool) {
+	p, ok := strings.CutPrefix(addr, "unix:")
+	return p, ok && p != ""
 }
 
 func loopback(addr string) bool {

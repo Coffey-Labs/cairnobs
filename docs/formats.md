@@ -28,6 +28,12 @@ CA and writes its certificate to `agent-ca.pem` in `data_dir` (State);
 Without `agent_listen`, agents report to `listen` with their tokens (no TLS
 of obs-beacond's own there: that listener usually sits behind a proxy).
 
+With a proxy on the same machine, `listen` can be a unix socket,
+`listen: unix:/run/obs-beacon/web.sock`: plain HTTP, no port to keep off
+the network, and the socket's folder decides who can connect (obs-beacond
+makes the socket itself writable by anyone). Agents can't reach a socket,
+so set `agent_listen` too. `tls` doesn't go with it; the proxy does TLS.
+
 ### HTTPS for the web interface
 
 `listen` serves plain HTTP unless `tls` says otherwise; passkeys and secure
