@@ -30,13 +30,17 @@ type Config struct {
 	// The emergency door: a loopback-only listener, reached through an SSH
 	// tunnel, where emergency accounts (and only they) sign in. Every use
 	// alerts all channels. Needs the local directory.
-	EmergencyListen string        `yaml:"emergency_listen"`
-	DevSignin       bool          `yaml:"dev_signin"`  // local development only; refused off loopback
-	StaleAfter      time.Duration `yaml:"stale_after"` // a host is silent after this long without a report
-	Expected        string        `yaml:"expected"`    // expected-containers file, optional
-	Checks          string        `yaml:"checks"`      // active checks file (checks.yaml), optional
-	Topology        string        `yaml:"topology"`    // corrections to the maps (topology.yaml), optional
-	Backups         string        `yaml:"backups"`     // what each host's backups should be (backups.yaml), optional
+	EmergencyListen string `yaml:"emergency_listen"`
+	DevSignin       bool   `yaml:"dev_signin"` // local development only; refused off loopback
+	// DemoSignin lets anyone in to look around as a demo visitor: they see
+	// what an admin sees and can change nothing (docs/demo.md). For a
+	// public demo of a simulated fleet, never for a real one.
+	DemoSignin bool          `yaml:"demo_signin"`
+	StaleAfter time.Duration `yaml:"stale_after"` // a host is silent after this long without a report
+	Expected   string        `yaml:"expected"`    // expected-containers file, optional
+	Checks     string        `yaml:"checks"`      // active checks file (checks.yaml), optional
+	Topology   string        `yaml:"topology"`    // corrections to the maps (topology.yaml), optional
+	Backups    string        `yaml:"backups"`     // what each host's backups should be (backups.yaml), optional
 
 	// Cairn OBS's own database (sessions, incidents, audit log). Without it
 	// everything lives in memory and a restart forgets it.

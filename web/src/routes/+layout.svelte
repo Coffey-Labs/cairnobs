@@ -25,7 +25,7 @@
 {:else if live.session}
 	<Shell>{@render children()}</Shell>
 {:else if live.signin}
-	<SignIn dev={live.signin.dev} providers={live.signin.providers} />
+	<SignIn dev={live.signin.dev} demo={!!live.signin.demo} providers={live.signin.providers} />
 {:else if live.error}
 	<p class="page">{live.error}</p>
 {/if}

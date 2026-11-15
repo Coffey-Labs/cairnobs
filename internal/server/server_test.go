@@ -250,3 +250,62 @@ func TestExpectedReloadsWhenTheFileChanges(t *testing.T) {
 		t.Fatalf("after a bad edit: %v", got)
 	}
 }
+
+// A demo visitor sees what an admin sees and changes nothing: every
+// request that isn't a read is refused before its handler, but signing out
+// (docs/demo.md).
+func TestDemoSignin(t *testing.T) {
+	srv, _ := testServer(t, false)
+	h := srv.Handler()
+	if rec := post(h, "/auth/demo", "", nil, map[string]string{"X-Beacon": "1"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("demo sign-in off: %d", rec.Code)
+	}
+	srv.cfg.DemoSignin = true
+	if rec := get(h, "/api/v1/session", nil); !strings.Contains(rec.Body.String(), `"demo":true`) {
+		t.Errorf("sign-in options don't offer the demo: %s", rec.Body)
+	}
+	if rec := post(h, "/auth/demo", "", nil, nil); rec.Code != http.StatusForbidden {
+		t.Errorf("no X-Beacon: %d", rec.Code)
+	}
+	cookie := post(h, "/auth/demo", "", nil, map[string]string{"X-Beacon": "1"}).Result().Cookies()[0]
+	rec := get(h, "/api/v1/session", cookie)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"role":"admin"`) || !strings.Contains(rec.Body.String(), `"demo":true`) ||
+		!strings.Contains(rec.Body.String(), `"user":"Demo visitor"`) {
+		t.Fatalf("session: %d %s", rec.Code, rec.Body)
+	}
+	// Setup can be read, as an admin reads it.
+	if rec := get(h, "/api/v1/settings/checks", cookie); rec.Code != http.StatusOK {
+		t.Errorf("reading setup: %d %s", rec.Code, rec.Body)
+	}
+	// The people who run the demo stay private: stand-ins on Users, an
+	// empty audit log.
+	if rec := get(h, "/api/v1/users", cookie); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "avery@example.com") {
+		t.Errorf("users: %d %s", rec.Code, rec.Body)
+	}
+	if rec := get(h, "/api/v1/audit", cookie); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"entries":[]`) {
+		t.Errorf("audit: %d %s", rec.Code, rec.Body)
+	}
+	for _, w := range [][2]string{{"POST", "/api/v1/settings/checks/import"}, {"PUT", "/api/v1/settings/checks/x"},
+		{"DELETE", "/api/v1/settings/channels/x"}, {"PUT", "/api/v1/incidents/1/note"}, {"POST", "/api/v1/agents/join"}} {
+		req := httptest.NewRequest(w[0], w[1], strings.NewReader(`{}`))
+		req.Header.Set("X-Beacon", "1")
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "This is the demo") {
+			t.Errorf("%s %s: %d %s", w[0], w[1], rec.Code, rec.Body)
+		}
+	}
+	if rec := post(h, "/auth/signout", "", nil, map[string]string{"X-Beacon": "1", "Cookie": sessionCookie + "=" + cookie.Value}); rec.Code != http.StatusNoContent {
+		t.Errorf("sign out: %d", rec.Code)
+	}
+	if rec := get(h, "/api/v1/session", cookie); rec.Code != http.StatusUnauthorized {
+		t.Errorf("after signing out: %d", rec.Code)
+	}
+	// Turned off, a visitor's session ends.
+	cookie = post(h, "/auth/demo", "", nil, map[string]string{"X-Beacon": "1"}).Result().Cookies()[0]
+	srv.cfg.DemoSignin = false
+	if rec := get(h, "/api/v1/overview", cookie); rec.Code != http.StatusUnauthorized {
+		t.Errorf("demo off, visitor still in: %d", rec.Code)
+	}
+}

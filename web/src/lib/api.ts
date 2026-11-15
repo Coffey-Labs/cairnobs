@@ -221,8 +221,8 @@ export interface Container {
 	logs?: string[];
 }
 export interface Provider { id: string; label: string; kind?: 'redirect' | 'passkey'; note?: string; passkeys?: boolean; passwords?: boolean }
-export interface SigninOptions { signin: { dev: boolean; providers: Provider[] } }
-export interface Session { user: string; email?: string; role: string; provider?: string; dev: boolean; version: string; door?: boolean }
+export interface SigninOptions { signin: { dev: boolean; demo?: boolean; providers: Provider[] } }
+export interface Session { user: string; email?: string; role: string; provider?: string; dev: boolean; demo?: boolean; version: string; door?: boolean }
 
 export class SignedOut extends Error {
 	constructor(public options: SigninOptions) {

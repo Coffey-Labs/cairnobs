@@ -38,6 +38,34 @@ type session struct {
 	ident   *Identity
 }
 
+// demoProvider marks a demo visitor's session (config.DemoSignin). No
+// provider can have it: their ids have no spaces.
+const demoProvider = "demo sign-in"
+
+// demo says whether the session is a demo visitor's: it sees everything
+// and changes nothing.
+func (s session) demo() bool { return s.Provider == demoProvider }
+
+// demoUsers is what a demo visitor sees on Configure → Users: made-up
+// people, so the page shows what it does without naming whoever runs the
+// demo.
+func demoUsers() map[string]any {
+	day := func(n int) time.Time { return time.Now().Add(-time.Duration(n) * 24 * time.Hour).Truncate(time.Hour) }
+	users := []userView{
+		{User: state.User{ID: "demo-1", Name: "Avery Admin", Email: "avery@example.com", Role: RoleAdmin, Created: day(400), LastSignIn: day(0), Password: true}},
+		{User: state.User{ID: "demo-2", Name: "Sam Operator", Email: "sam@example.com", Role: RoleOperator, Created: day(210), LastSignIn: day(1), Password: true}},
+		{User: state.User{ID: "demo-3", Name: "Riley Viewer", Email: "riley@example.com", Role: RoleViewer, Created: day(30), LastSignIn: day(6), Password: true}},
+		{User: state.User{ID: "demo-4", Name: "Break glass", Email: "breakglass@example.com", Role: RoleAdmin, Created: day(400), Emergency: true, Password: true}},
+		{User: state.User{ID: "demo-5", Name: "Jordan New", Email: "jordan@example.com", Role: RoleOperator, Created: day(0)}, PendingSetup: true},
+	}
+	for i := range users {
+		if users[i].Passkeys == nil {
+			users[i].Passkeys = []state.Passkey{}
+		}
+	}
+	return map[string]any{"configured": true, "users": users, "origin": "", "door": "", "door_listen": "", "passkeys": true, "passwords": true}
+}
+
 // sessions are kept in memory, keyed by the SHA-256 of the cookie, and
 // written through to the database when there is one, so a restart doesn't
 // sign anyone out. Neither place holds a usable cookie.

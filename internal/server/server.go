@@ -350,6 +350,7 @@ func (srv *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/v1/session", srv.handleSession)
 	mux.HandleFunc("POST /auth/dev", srv.handleDevSignin)
+	mux.HandleFunc("POST /auth/demo", srv.handleDemoSignin)
 	mux.HandleFunc("POST /auth/passkey/begin", srv.handlePasskeyBegin)
 	mux.HandleFunc("POST /auth/passkey/finish", srv.handlePasskeyFinish)
 	mux.HandleFunc("POST /auth/setup/info", srv.handleSetupInfo)
@@ -522,12 +523,31 @@ func (srv *Server) needSession(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "missing X-Beacon header", http.StatusForbidden)
 			return
 		}
+		// A demo visitor sees everything and changes nothing: every request
+		// that isn't a read is refused here, before any handler, but signing
+		// out.
+		if s.demo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != "/auth/signout" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "This is the demo: it shows everything and changes nothing."})
+			return
+		}
+		// The demo's accounts and audit log are the people who run it: a
+		// visitor sees stand-ins instead.
+		if s.demo() {
+			switch r.URL.Path {
+			case "/api/v1/users":
+				writeJSON(w, http.StatusOK, demoUsers())
+				return
+			case "/api/v1/audit":
+				writeJSON(w, http.StatusOK, map[string]any{"entries": []state.Entry{}, "stored": true})
+				return
+			}
+		}
 		next(w, r)
 	}
 }
 
 func (srv *Server) signinOptions() map[string]any {
-	return map[string]any{"signin": map[string]any{"dev": srv.cfg.DevSignin, "providers": srv.providerList()}}
+	return map[string]any{"signin": map[string]any{"dev": srv.cfg.DevSignin, "demo": srv.cfg.DemoSignin, "providers": srv.providerList()}}
 }
 
 func (srv *Server) handleSession(w http.ResponseWriter, r *http.Request) {
@@ -540,7 +560,7 @@ func (srv *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, srv.signinOptions())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": s.User, "email": s.Email, "role": s.Role, "provider": s.Provider, "dev": s.Dev, "version": version.Version, "door": atDoor(r)})
+	writeJSON(w, http.StatusOK, map[string]any{"user": s.User, "email": s.Email, "role": s.Role, "provider": s.Provider, "dev": s.Dev, "demo": s.demo(), "version": version.Version, "door": atDoor(r)})
 }
 
 func (srv *Server) handleDevSignin(w http.ResponseWriter, r *http.Request) {
@@ -554,6 +574,22 @@ func (srv *Server) handleDevSignin(w http.ResponseWriter, r *http.Request) {
 	}
 	srv.sessions.create(w, r, "Developer (local)", true)
 	srv.audit("Developer (local)", "signed in", "development sign-in")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDemoSignin lets a visitor in to the demo (config.DemoSignin): an
+// admin's view, every change refused (needSession). Not audited: a public
+// demo's visitors would bury everything else in the log.
+func (srv *Server) handleDemoSignin(w http.ResponseWriter, r *http.Request) {
+	if !srv.cfg.DemoSignin {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Header.Get("X-Beacon") != "1" {
+		http.Error(w, "missing X-Beacon header", http.StatusForbidden)
+		return
+	}
+	srv.sessions.put(w, r, session{User: "Demo visitor", Role: RoleAdmin, Provider: demoProvider})
 	w.WriteHeader(http.StatusNoContent)
 }
 

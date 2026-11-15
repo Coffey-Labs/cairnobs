@@ -175,6 +175,7 @@
 	</span>
 	<div class="right">
 		{#if live.session?.dev}<span class="dev-badge" title="Signed in with development sign-in (loopback only)">Dev sign-in</span>{/if}
+		{#if live.session?.demo}<span class="dev-badge demo-badge" title="A simulated fleet. You see what an admin sees, and nothing you do changes it.">Demo</span>{/if}
 		<button class="iconbtn" aria-label="Switch theme" onclick={toggleTheme}><Icon name={dark ? 'sun' : 'moon'} /></button>
 		<button class="iconbtn" aria-label="Account menu" aria-expanded={menu} onclick={(e) => { e.stopPropagation(); menu = !menu; }}><Icon name="user" /></button>
 		{#if menu}
@@ -233,6 +234,7 @@
 	@keyframes ping { 75%, 100% { transform: scale(2.4); opacity: 0; } }
 	.right { margin-left: auto; display: flex; align-items: center; gap: 8px; position: relative; }
 	.dev-badge { font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--warning); border: 1px solid color-mix(in oklab, var(--warning) 50%, transparent); padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+	.demo-badge { color: var(--accent-fg); border-color: color-mix(in oklab, var(--primary) 50%, transparent); }
 	.menu { position: absolute; right: 0; top: 46px; width: 240px; background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px; z-index: 60; }
 	.menu .who { padding: 8px 10px 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; font-size: 13px; }
 	.menu .who small { display: block; color: var(--muted-fg); font-size: 12px; }
