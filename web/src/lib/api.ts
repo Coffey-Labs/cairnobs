@@ -69,7 +69,9 @@ export interface Cluster {
 }
 /** An IBM i partition now: CPU over the last minute (none until there's a minute to tell), its system ASP and jobs. */
 export interface PartitionNums { cpu_pct?: number; system_asp_pct: number; active_jobs: number; jobs: number; model?: string; processing_units?: number;
-	subsystems: number; subsystems_active: number; interfaces: number; interfaces_active: number }
+	subsystems: number; subsystems_active: number; interfaces: number; interfaces_active: number;
+	/** The Power server it runs on, when an HMC lists it. */
+	server?: { name: string; state: string; word: string; hmc: string; partition: string; href: string } }
 /** One of an OpenShift or OKD cluster's own parts: its version, a machine config pool, an operator. */
 export interface ClusterPart { name: string; title: string; state: string; word: string; severity: Severity }
 export interface ClusterNode { name: string; state: string; severity: Severity; word: string; since?: string; facts?: Record<string, unknown> }

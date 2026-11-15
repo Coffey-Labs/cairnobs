@@ -75,12 +75,12 @@
 					<div><b class:hot={p.system_asp_pct >= 90}>{Math.round(p.system_asp_pct)}%</b><span>system ASP used</span></div>
 					<a href={href(c.name, { show: 'problems' })} class:bad={c.problems > 0}><b>{c.problems}</b><span>{c.problems === 1 ? 'problem' : 'problems'}</span></a>
 				</div>
-				<p class="sub pline">{p.active_jobs.toLocaleString('en-US')} jobs active of {p.jobs.toLocaleString('en-US')} in the system{#if p.subsystems}{' · '}{p.subsystems_active} of {p.subsystems} subsystems active{/if}{#if p.interfaces}{' · '}{p.interfaces_active} of {p.interfaces} interfaces active{/if}{#if p.model}{' · '}Power {p.model}{/if}</p>
+				<p class="sub pline">{p.active_jobs.toLocaleString('en-US')} jobs active of {p.jobs.toLocaleString('en-US')} in the system{#if p.subsystems}{' · '}{p.subsystems_active} of {p.subsystems} subsystems active{/if}{#if p.interfaces}{' · '}{p.interfaces_active} of {p.interfaces} interfaces active{/if}{#if p.server}{' · on '}<a href={p.server.href} title={`${p.server.word}; partition ${p.server.partition} on the HMC`}>{p.server.name}</a>{#if p.model}{' '}(Power {p.model}){/if}{:else if p.model}{' · '}Power {p.model}{/if}</p>
 				{#if c.history}<PartitionCPU source={c.name} history={c.history} />{/if}
 			{:else}
 			<div class="nums">
 				<a href={href(c.name, { kind: 'node' })}><b>{c.nodes_ready}<small>/{c.nodes}</small></b><span>{(c.node_noun || 'Node').toLowerCase()}s ready</span></a>
-				<a href={href(c.name, {})}><b>{c.workloads}</b><span>{c.noun === 'Array' ? 'volumes' : c.noun === 'Vault' || c.noun === 'OpenBao' ? 'certificates' : 'workloads'}</span></a>
+				<a href={href(c.name, {})}><b>{c.workloads}</b><span>{c.noun === 'Array' ? 'volumes' : c.noun === 'HMC' ? 'partitions' : c.noun === 'Vault' || c.noun === 'OpenBao' ? 'certificates' : 'workloads'}</span></a>
 				<a href={href(c.name, { show: 'problems' })} class:bad={c.problems > 0}><b>{c.problems}</b><span>{c.problems === 1 ? 'problem' : 'problems'}</span></a>
 			</div>
 			{/if}

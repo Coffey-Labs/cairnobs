@@ -542,7 +542,7 @@ func (s wsnap) noun() string {
 	switch d := s.distribution(); {
 	case strings.HasPrefix(d, "Vault"), d == "OpenBao":
 		return strings.TrimSuffix(d, " Enterprise")
-	case d == "vCenter", d == "Prism Central":
+	case d == "vCenter", d == "Prism Central", d == hmcDistribution:
 		return d
 	case strings.HasPrefix(d, "Purity"):
 		return "Array"
@@ -553,11 +553,14 @@ func (s wsnap) noun() string {
 }
 
 // nodeNoun is what its nodes are: a FlashArray's are controllers, a
-// FlashBlade's blades; a vCenter's and Prism Central's, hosts.
+// FlashBlade's blades; a vCenter's and Prism Central's, hosts; an HMC's,
+// Power servers.
 func (s wsnap) nodeNoun() string {
 	switch d := s.distribution(); {
 	case d == "vCenter", d == "Prism Central":
 		return "Host"
+	case d == hmcDistribution:
+		return "Server"
 	case d == "Purity//FB":
 		return "Blade"
 	case strings.HasPrefix(d, "Vault"), d == "OpenBao":
@@ -1098,6 +1101,66 @@ func expectSubsystems(recs []report.Workload, want []string) []report.Workload {
 // (ibmi.Distribution, said again here to keep the reader out of obs-beacond).
 const ibmiDistribution = "IBM i"
 
+// hmcDistribution is what an HMC's own record says it is (hmc.Distribution).
+const hmcDistribution = "HMC"
+
+// PowerServer is the Power server an IBM i partition runs on, as an HMC
+// lists it (docs/ibmi.md, step 4): found by the server's serial number and
+// the partition's number, which both the partition and the HMC say.
+type PowerServer struct {
+	Name      string `json:"name"`
+	State     string `json:"state"`
+	Word      string `json:"word"`
+	HMC       string `json:"hmc"`       // the HMC's source
+	Partition string `json:"partition"` // what the HMC calls the partition
+	Href      string `json:"href"`      // the partition on Workloads
+}
+
+// powerIndex is every partition the HMCs list, by "serial/number".
+func powerIndex(snaps []wsnap) map[string]PowerServer {
+	out := map[string]PowerServer{}
+	dup := map[string]bool{}
+	for _, s := range snaps {
+		if s.host || s.distribution() != hmcDistribution {
+			continue
+		}
+		servers := map[string]report.Workload{}
+		for _, r := range s.recs {
+			if r.Kind == report.KindNode {
+				servers[r.Name] = r
+			}
+		}
+		for _, r := range s.recs {
+			serial, _ := r.Facts["server_serial"].(string)
+			id := factInt(r.Facts["partition_id"])
+			if r.Kind != report.KindVM || serial == "" || id <= 0 {
+				continue
+			}
+			k := fmt.Sprintf("%s/%d", strings.ToUpper(serial), id)
+			if _, ok := out[k]; ok {
+				dup[k] = true // two HMCs of a pair, both read: either will do
+				continue
+			}
+			sv := servers[r.Node]
+			out[k] = PowerServer{Name: r.Node, State: sv.State, Word: sv.Word, HMC: s.name, Partition: r.Name, Href: workloadHref(s.name, "", r.Name)}
+		}
+	}
+	return out
+}
+
+// factInt is a number fact, as an agent's JSON or a reader's own record has it.
+func factInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	}
+	return 0
+}
+
 // PartitionView is what the Clusters page shows of an IBM i partition in
 // place of nodes: its CPU over the last minute, its system ASP and jobs.
 type PartitionView struct {
@@ -1113,11 +1176,13 @@ type PartitionView struct {
 	SubsystemsActive int `json:"subsystems_active"`
 	Interfaces       int `json:"interfaces"`
 	InterfacesActive int `json:"interfaces_active"`
+	// Server is the Power server it runs on, when an HMC lists it.
+	Server *PowerServer `json:"server,omitempty"`
 }
 
 // partitionView reads a partition's own record's facts, and counts its
 // subsystems and interfaces.
-func partitionView(r report.Workload, recs []report.Workload) *PartitionView {
+func partitionView(r report.Workload, recs []report.Workload, power map[string]PowerServer) *PartitionView {
 	f := func(k string) float64 {
 		switch v := r.Facts[k].(type) {
 		case float64:
@@ -1133,6 +1198,11 @@ func partitionView(r report.Workload, recs []report.Workload) *PartitionView {
 		p.CPUPct = &c
 	}
 	p.Model, _ = r.Facts["model"].(string)
+	if serial, _ := r.Facts["serial"].(string); serial != "" {
+		if ps, ok := power[fmt.Sprintf("%s/%d", strings.ToUpper(serial), factInt(r.Facts["partition_id"]))]; ok {
+			p.Server = &ps
+		}
+	}
 	for _, x := range recs {
 		up := x.State == report.StateOK
 		switch {
@@ -1173,7 +1243,9 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 		}
 	}
 	out := []ClusterView{}
-	for _, s := range srv.workloadSnapshot() {
+	all := srv.workloadSnapshot()
+	power := powerIndex(all)
+	for _, s := range all {
 		if s.host {
 			continue // a host's VMs: on its page and Workloads, not Clusters
 		}
@@ -1228,7 +1300,7 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 						v.History = historyKey(r)
 					}
 					if r.Facts["distribution"] == ibmiDistribution {
-						v.Partition = partitionView(r, s.recs)
+						v.Partition = partitionView(r, s.recs, power)
 					}
 				}
 			case report.KindNode:
