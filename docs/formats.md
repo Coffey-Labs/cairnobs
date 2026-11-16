@@ -784,7 +784,12 @@ makes up its state: `checks` (ids), `containers` and `units`
 `cloudflare: true`. Each service claims the containers and units its
 patterns match, which take their place under its own `id` and `name`;
 one nothing matches is still drawn, as declared. A service's state is the
-worst of its parts, and its history is kept for the Reports page.
+worst of its parts, and its history is kept for the Reports page. One
+exception: a unit or container the service has on several hosts is
+redundant, so a copy that's down while others still run makes the service
+degraded ("1 of 6 redis-server.service down"), not down; when every copy
+is down, or there's only one, the service is down. Each copy's own alert
+is unchanged.
 
 Up to 0.1.0-rc.3 this file also drew two hand-drawn maps, with `mesh_ip`,
 `mesh_check`, `network.mail`, a remote host's `via`, `link` and

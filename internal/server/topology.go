@@ -253,6 +253,7 @@ func (srv *Server) serviceStates(now time.Time) (_ []ServiceView, ok bool) {
 		// Parts still waiting for their first result don't grey out a
 		// service whose other parts have answered.
 		v.Status, v.Word = "good", "OK"
+		spare := redundantDown(v.Signals)
 		bad, answered := 0, 0
 		off := 0
 		for _, sg := range v.Signals {
@@ -264,7 +265,11 @@ func (srv *Server) serviceStates(now time.Time) (_ []ServiceView, ok bool) {
 				off++
 				continue
 			}
-			v.Status = worst(v.Status, sg.Status)
+			st := sg.Status
+			if st == "critical" && spare[sg.Kind+"/"+sg.Name] != "" {
+				st = "warning" // other copies carry on (#52)
+			}
+			v.Status = worst(v.Status, st)
 			if sg.Status == "warning" || sg.Status == "critical" {
 				bad++
 			}
@@ -280,9 +285,45 @@ func (srv *Server) serviceStates(now time.Time) (_ []ServiceView, ok bool) {
 		if bad > 0 {
 			v.Word = plural(bad, "problem", "problems")
 		}
+		if v.Status == "warning" && bad == 1 {
+			for _, w := range spare {
+				v.Word = w
+			}
+		}
 		services = append(services, v)
 	}
 	return services, true
+}
+
+// redundantDown is, for each unit or container a service has several
+// copies of (one name on several hosts), the word for the copies that are
+// down while others still run: "1 of 6 redis-server down". Those make the
+// service degraded, not down; when every copy is down, or there's only
+// one, it's down (#52).
+func redundantDown(sigs []Signal) map[string]string {
+	type count struct{ all, down int }
+	n := map[string]*count{}
+	for _, sg := range sigs {
+		if sg.Kind != "unit" && sg.Kind != "container" || sg.Status == "waiting" || sg.Status == "off" {
+			continue
+		}
+		k := sg.Kind + "/" + sg.Name
+		if n[k] == nil {
+			n[k] = &count{}
+		}
+		n[k].all++
+		if sg.Status == "critical" {
+			n[k].down++
+		}
+	}
+	out := map[string]string{}
+	for k, c := range n {
+		if c.down > 0 && c.down < c.all {
+			_, name, _ := strings.Cut(k, "/")
+			out[k] = fmt.Sprintf("%d of %d %s down", c.down, c.all, name)
+		}
+	}
+	return out
 }
 
 func nonNilSlice[T any](s []T) []T {
