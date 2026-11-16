@@ -49,6 +49,20 @@ func role(pos int) string {
 	return "mq"
 }
 
+// demoContainers is how many containers host n runs in the demo: only app
+// servers run Docker, each about most, give or take four, not every host
+// the same.
+func demoContainers(n, most int) int {
+	if role(n%siteSize) != "app" {
+		return 0
+	}
+	c := max(1, most-4+seedInt(hostName(n)+" containers", time.Time{}, 9))
+	if n == demoExited || n == demoStoppedOnPurp {
+		c = max(c, 10) // their stories need app-04 and app-09
+	}
+	return c
+}
+
 // demoUnits are the systemd units host n must keep active.
 func demoUnits(n int) []string {
 	base := []string{"ssh", "chrony"} // Debian's and Ubuntu's names
@@ -268,7 +282,11 @@ func writeDemo(dir string, hosts, windows int) {
 	var exp bytes.Buffer
 	exp.WriteString("# The fleet demo's hosts: what must keep running (fleet config -demo).\nhosts:\n")
 	for n := range hosts {
-		fmt.Fprintf(&exp, "  %s:\n    running: [\"app-*\"]\n    units: [", hostName(n))
+		fmt.Fprintf(&exp, "  %s:\n", hostName(n))
+		if role(n%siteSize) == "app" {
+			exp.WriteString("    running: [\"app-*\"]\n")
+		}
+		exp.WriteString("    units: [")
 		for k, u := range demoUnits(n) {
 			if k > 0 {
 				exp.WriteString(", ")
