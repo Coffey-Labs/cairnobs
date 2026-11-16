@@ -692,6 +692,14 @@ func (srv *Server) servicesView(focus string, steps int, now time.Time) (*MapVie
 		for _, s := range srv.workloadSnapshot() {
 			kinds[s.name] = s.kindLabel()
 		}
+		// A cluster's box takes the cluster's own state too, the one the
+		// Clusters page and the network map show (#38), not only its
+		// services'.
+		clusters := map[string]ClusterView{}
+		_, conds := srv.view(now)
+		for _, c := range srv.clusterViews(now, conds) {
+			clusters[c.Name] = c
+		}
 		for _, gid := range order {
 			b := fold(gid, "group", names[gid], members[gid], status)
 			for i, m := range b.Problems {
@@ -699,7 +707,8 @@ func (srv *Server) servicesView(focus string, steps int, now time.Time) (*MapVie
 			}
 			b.Layer = layer[gid]
 			if c, ok := strings.CutPrefix(gid, "group:cluster:"); ok {
-				b.Sub = cmp.Or(kinds[c], "Kubernetes cluster")
+				cv, known := clusters[c]
+				clusterBox(&b, kinds[c], cv, known, members[gid], status)
 			}
 			v.Boxes = append(v.Boxes, b)
 		}
@@ -874,6 +883,33 @@ func (srv *Server) handleMapFind(w http.ResponseWriter, r *http.Request) {
 
 // k8sCluster is the cluster a service on the map comes from, if it's from
 // one: its parts are all that cluster's (docs/maps.md, step 7).
+// clusterBox says what a cluster's box on the service map is, and gives it
+// the cluster's own state when that's worse than its services' (#38): the
+// state the Clusters page and the network map show. VMs someone stopped are
+// grey on their own but don't grey a cluster whose other services run.
+func clusterBox(b *MapBox, kind string, cv ClusterView, known bool, members []string, status map[string]string) {
+	b.Sub = cmp.Or(kind, "Kubernetes cluster")
+	if b.Status == "waiting" {
+		idle, running := 0, 0
+		for _, m := range members {
+			switch status[m] {
+			case "waiting", "":
+				idle++
+			case "good":
+				running++
+			}
+		}
+		if running > 0 {
+			b.Status = "good"
+			b.Sub += fmt.Sprintf(" · %d not running", idle)
+		}
+	}
+	if known && statusOrder[cv.Status] > statusOrder[b.Status] {
+		b.Status = cv.Status
+		b.Sub += " · " + cv.Word // why it isn't green when its services are
+	}
+}
+
 func k8sCluster(s mapgraph.Service) (string, bool) {
 	if s.Source != "kubernetes" || len(s.Parts) == 0 {
 		return "", false
