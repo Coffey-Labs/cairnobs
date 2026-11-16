@@ -172,14 +172,11 @@
 		{/if}
 
 		{#if !needs.length && !later.length && !taken.length}
-			<section class="card calm" aria-label="Nothing needs you">
-				<span class="big-ok"><Icon name="good" size={36} /></span>
-				<div>
-					<h2>Nothing needs you right now</h2>
-					<p>Cairn OBS tells the alert channels if that changes.{watch?.filling.length ? ` Next to look at: ${watch.filling[0].host}'s ${watch.filling[0].mount}, which fills ${days(watch.filling[0].full_days)}.` : ''}</p>
-				</div>
+			<p class="calm" role="status">
+				<span class="ok"><Icon name="good" size={16} /></span>
+				<span>Nothing needs you right now. Cairn OBS tells the alert channels if that changes.{watch?.filling.length ? ` Next to look at: ${watch.filling[0].host}'s ${watch.filling[0].mount}, which fills ${days(watch.filling[0].full_days)}.` : ''}</span>
 				<a href="/reports">This week’s report</a>
-			</section>
+			</p>
 		{/if}
 
 		{#if services.length}
@@ -201,13 +198,17 @@
 			</section>
 		{/if}
 
-		{#if today}
+		{#if today && !today.events.length}
+			<p class="quiet-line">
+				<b>Since you last looked</b>
+				<span>{today.last_visit ? `(${ago(today.since, now)}, at ${hm(today.since)})` : '(the last 12 hours)'}: nothing opened or closed.</span>
+			</p>
+		{:else if today}
 			<section aria-labelledby="since">
 				<div class="sh">
 					<h2 id="since">Since you last looked</h2>
 					<p>{today.last_visit ? `You were last here ${ago(today.since, now)}, at ${hm(today.since)}` : 'The last 12 hours'}</p>
 				</div>
-				{#if today.events.length}
 					<ol class="card rows events">
 						{#each today.events as e (e.id)}
 							{@const [word, tone] = outcome(e)}
@@ -223,9 +224,6 @@
 						{today.opened} opened, {today.resolved} closed{today.fixed_itself ? ` (${today.fixed_itself} on their own)` : ''}. {today.told ? `${today.told} ${today.told === 1 ? 'alert' : 'alerts'} went out to people.` : 'Nobody was alerted.'}
 						{#if today.opened + today.resolved > today.events.length}<a href="/alerts">Everything on the Alerts page</a>{/if}
 					</p>
-				{:else}
-					<p class="card quiet">Nothing opened or closed since then.</p>
-				{/if}
 			</section>
 		{/if}
 
@@ -317,12 +315,13 @@
 	.more { align-self: flex-start; }
 
 	/* A section, so it takes the column layout above unless told otherwise. */
-	section.calm { padding: 26px; flex-direction: row; flex-wrap: wrap; gap: 18px; align-items: center; }
-	.calm > div { flex: 1 1 320px; }
-	.calm h2 { font-size: 21px; }
-	.calm p { margin: 6px 0 0; color: color-mix(in oklab, var(--foreground) 85%, var(--muted-fg)); }
-	.big-ok { color: var(--good); display: inline-flex; }
-	.big-ok :global(svg) { width: 32px; height: 32px; }
+	/* Quiet states take one line: the headline already says it. */
+	.calm, .quiet-line { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; }
+	.calm { padding: 10px 14px; border: 1px solid var(--border); border-left: 3px solid var(--good); border-radius: 8px; color: color-mix(in oklab, var(--foreground) 85%, var(--muted-fg)); }
+	.calm > span:nth-child(2) { flex: 1 1 280px; }
+	.calm .ok { color: var(--good); display: inline-flex; }
+	.quiet-line { color: var(--muted-fg); }
+	.quiet-line b { color: var(--foreground); font-weight: 600; }
 
 	.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 	.tile { display: flex; flex-direction: column; gap: 10px; padding: 16px; color: var(--foreground); min-width: 0; }
