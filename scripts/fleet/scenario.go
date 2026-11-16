@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"hash/fnv"
+	"time"
+)
 
 // What goes wrong in the demo, and when (#35). A real fleet is mostly
 // fine: a few things stay wrong until someone gets to them, and the rest
@@ -9,10 +13,10 @@ import "time"
 //   - three stories, each a cause with its effects:
 //     1. fa-prod-01 lost a drive: the array is degraded and its writes are
 //     slow while the drive's data is rebuilt (all the time);
-//     2. checkout errors: every 2 hours phx1-db03, a PostgreSQL replica,
+//     2. checkout errors: about every 2 hours phx1-db03, a PostgreSQL replica,
 //     falls behind, HAProxy takes it out, and the shop's checkout answers
 //     with errors until it catches up (20 minutes);
-//     3. the legacy datacenter: every 4 hours its server stops answering
+//     3. the legacy datacenter: about every 4 hours its server stops answering
 //     Akamai's liveness test, GTM has nowhere to send the legacy property,
 //     and its CP code fails (30 minutes);
 //   - a few lasting warnings anyone would have: a failover nobody moved
@@ -27,8 +31,16 @@ import "time"
 // picks up where the clock is, and the history the demo starts with can
 // be worked out for any time in the past.
 
-// spell is when one problem is happening: for on, once every every, at
-// into each period. A zero every means all the time.
+// spell is when one problem happens: about once every every, about at
+// into each period, for about on. A zero every means all the time.
+//
+// Not like a clock (#57): each period's start moves by up to an eighth of
+// the period, its length is 70% to 130% of on, and half the periods have
+// none, four in five at night in Phoenix, where the fleet's main site is.
+// That still starts something every 20 minutes or so, while 30 days of
+// history hold about 1,400 incidents rather than 3,700. All of it is
+// seeded by the spell and the period, so it's the same whenever it's
+// worked out.
 type spell struct {
 	every, at, on time.Duration
 }
@@ -36,26 +48,75 @@ type spell struct {
 // always is a problem that's there all the time.
 var always = spell{}
 
+// occurrence is one spell, from start to end.
+type occurrence struct{ start, end time.Time }
+
+var phoenix = time.FixedZone("MST", -7*3600)
+
+// nth is the spell in period n, counting from the Unix epoch; false when
+// that period has none.
+func (s spell) nth(n int64) (occurrence, bool) {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "%d %d %d %d", s.every, s.at, s.on, n)
+	x := h.Sum64() // FNV leaves short, alike inputs' high bits alike: mix them
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	x ^= x >> 31
+	frac := func(shift uint) float64 { return float64((x>>shift)&0xffff) / 0x10000 }
+	on := time.Duration(float64(s.on) * (0.7 + 0.6*frac(0)))
+	at := s.at + time.Duration((2*frac(16)-1)*float64(s.every/8))
+	at = max(0, min(at, s.every-on)) // inside its own period
+	start := time.Unix(0, n*int64(s.every)).Add(at)
+	skip := 0.5
+	if hr := start.In(phoenix).Hour(); hr < 7 || hr >= 22 {
+		skip = 0.8
+	}
+	if frac(32) < skip {
+		return occurrence{}, false
+	}
+	return occurrence{start, start.Add(on)}, true
+}
+
+func (s spell) period(t time.Time) int64 { return t.UnixNano() / int64(s.every) }
+
 func (s spell) active(t time.Time) bool {
 	if s.every == 0 {
 		return true
 	}
-	p := time.Duration(t.UnixNano()) % s.every
-	return p >= s.at && p < s.at+s.on
+	o, ok := s.nth(s.period(t))
+	return ok && !t.Before(o.start) && t.Before(o.end)
 }
 
-// began is when the current spell started, or the last one if it's over;
-// a long time ago for a problem that's always there.
-func (s spell) began(t time.Time) time.Time {
+// last is the spell going on at t, or the last one before it; for a
+// problem that's always there, one that began long ago and hasn't ended.
+func (s spell) last(t time.Time) occurrence {
 	if s.every == 0 {
-		return t.Add(-9 * 24 * time.Hour)
+		return occurrence{t.Add(-9 * 24 * time.Hour), t.Add(100 * 365 * 24 * time.Hour)}
 	}
-	p := time.Duration(t.UnixNano()) % s.every
-	start := t.Add(-p + s.at)
-	if start.After(t) {
-		start = start.Add(-s.every)
+	for n := s.period(t); ; n-- {
+		if o, ok := s.nth(n); ok && !o.start.After(t) {
+			return o
+		}
 	}
-	return start
+}
+
+// began is when the current spell started, or the last one if it's over.
+func (s spell) began(t time.Time) time.Time { return s.last(t).start }
+
+// between is every spell that starts from from to to, oldest first.
+func (s spell) between(from, to time.Time) []occurrence {
+	if s.every == 0 {
+		return nil
+	}
+	var out []occurrence
+	for n := s.period(from); n <= s.period(to); n++ {
+		if o, ok := s.nth(n); ok && !o.start.Before(from) && !o.start.After(to) {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // The spells, by story. Periods aren't multiples of each other, so the

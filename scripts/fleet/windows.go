@@ -74,13 +74,16 @@ func newWindowsHost(name string, interval time.Duration) *host {
 // them.
 func (wh *winHost) stamp(h *host, r *report.Report, now time.Time) {
 	w := wh.w
-	crashes, lastCrash := 0, time.Time{}
+	crashes, lastCrash, firstCrash := 0, time.Time{}, time.Time{}
 	if w.name == "win-fs01" {
 		// It goes down without shutting down cleanly and is straight back:
 		// up since the last time.
 		lastCrash = spellFSCrash.began(now)
-		for t := lastCrash; now.Sub(t) < 24*time.Hour; t = t.Add(-spellFSCrash.every) {
-			crashes++
+		day := spellFSCrash.between(now.Add(-24*time.Hour+time.Nanosecond), now)
+		crashes = max(1, len(day))
+		firstCrash = lastCrash
+		if len(day) > 0 {
+			firstCrash = day[0].start
 		}
 		h.start = lastCrash
 		r.Uptime = max(0, now.Sub(h.start).Seconds())
@@ -89,10 +92,10 @@ func (wh *winHost) stamp(h *host, r *report.Report, now time.Time) {
 	for _, u := range w.units {
 		un := report.Unit{Name: u + ".service", Load: "loaded", Active: "active", Sub: "running", Since: h.start.UTC().Add(time.Minute).Truncate(time.Second)}
 		if w.name == "win-sql01" && u == "SQLSERVERAGENT" {
-			if b := spellSQLAgent.began(now); spellSQLAgent.active(now) {
+			if o := spellSQLAgent.last(now); spellSQLAgent.active(now) {
 				un.Active, un.Sub, un.Since = "failed", "dead", time.Time{}
-			} else if b.After(h.start) { // someone started it again
-				un.Since = b.Add(spellSQLAgent.on).UTC().Truncate(time.Second)
+			} else if o.start.After(h.start) { // someone started it again
+				un.Since = o.end.UTC().Truncate(time.Second)
 			}
 		}
 		r.Units = append(r.Units, un)
@@ -104,7 +107,7 @@ func (wh *winHost) stamp(h *host, r *report.Report, now time.Time) {
 	}
 	switch w.name {
 	case "win-fs01":
-		first := lastCrash.Add(-time.Duration(crashes-1) * spellFSCrash.every)
+		first := firstCrash
 		group("System", "Microsoft-Windows-Kernel-Power", 41, "critical", crashes, now.Sub(first), now.Sub(h.start),
 			"The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.")
 		group("System", "disk", 7, "error", 14, 19*time.Hour, 2*time.Hour, `The device, \Device\Harddisk1\DR1, has a bad block.`)
