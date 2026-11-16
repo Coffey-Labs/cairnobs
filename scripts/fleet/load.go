@@ -96,7 +96,7 @@ func memAt(name string, t time.Time) float64 {
 
 // diskAt is how full (0 … 1) a host's disk k is at t: a level of its own,
 // growing slowly over a cycle of one to three months until a clean-up
-// brings it back. fleet-0023's log volume is the one that fills: from 58%
+// brings it back. phx1-app20's log volume is the one that fills: from 58%
 // to 86% in ten days, so it warns now and then.
 func diskAt(name string, k int, t time.Time) float64 {
 	what := []string{"root", "data"}[min(k, 1)]

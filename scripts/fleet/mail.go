@@ -12,7 +12,7 @@ import (
 )
 
 // The demo's mail server (fleet run -mail DIR): a stand-in on loopback for
-// the Mail page's round trip, served by fleet-0048. Healthy on purpose,
+// the Mail page's round trip, served by phx1-mq04. Healthy on purpose,
 // with deliveries taking a few seconds and a small outgoing queue, so the
 // page shows what normal looks like.
 const mailPort = 58440 // SMTP; IMAP and JMAP on the next two

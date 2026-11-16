@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cairnobs/cairnobs/internal/report"
@@ -23,9 +24,9 @@ import (
 //	          check); billing.example.com's certificate ends in 9 days;
 //	          the ping to the last site loses 3%; mx2 lands on a block
 //	          list now and then
-//	units     fleet-0041's redis-server fails now and then, and is
+//	units     phx1-cache02's redis-server fails now and then, and is
 //	          restarted
-//	containers fleet-0007's app-04 exits now and then; fleet-0008's app-09
+//	containers phx1-app05's app-04 exits now and then; phx1-app06's app-09
 //	          is stopped on purpose
 //	backups   site 1's pg-dump is late now and then; site 2's shrinks to a
 //	          third now and then; site 3's backup disk is 93% full; site
@@ -50,7 +51,10 @@ func role(pos int) string {
 
 // demoUnits are the systemd units host n must keep active.
 func demoUnits(n int) []string {
-	base := []string{"ssh", "chrony"}
+	base := []string{"ssh", "chrony"} // Debian's and Ubuntu's names
+	if strings.HasPrefix(distroFor(n).os, "Red Hat") {
+		base = []string{"sshd", "chronyd"}
+	}
 	switch role(n % siteSize) {
 	case "gateway":
 		return append(base, "wg-quick@wg0")
@@ -277,10 +281,10 @@ func writeDemo(dir string, hosts, windows int) {
 		}
 	}
 	exp.WriteString(winExpected(windows))
-	if hosts > ibmiHost {
+	{
 		// The IBM i partitions' subsystems that must be active (run -ibmi):
 		// prod2's ORDERS isn't, and ha1, the standby, expects none.
-		src := hostName(ibmiHost)
+		src := ibmiCollector.name
 		fmt.Fprintf(&exp, "clusters:\n  %s:prod1:\n    subsystems: [QINTER, QBATCH, QUSRWRK, ORDLIB/ORDERS]\n", src)
 		fmt.Fprintf(&exp, "  %s:prod2:\n    subsystems: [QINTER, QBATCH, QUSRWRK, ORDLIB/ORDERS]\n", src)
 		fmt.Fprintf(&exp, "  %s:dev1:\n    subsystems: [QINTER, QBATCH]\n", src)

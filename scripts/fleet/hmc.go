@@ -10,7 +10,7 @@ import (
 
 // The HMC that manages the IBM i partitions' Power servers, as a host
 // agent with an hmc: section sends it (docs/ibmi.md, step 4): the same
-// agent as the partitions (fleet-0041) reads it, so -ibmi brings it too.
+// agent as the partitions (phx1-ibmi01) reads it, so -ibmi brings it too.
 // The records are the reader's own, made from a snapshot as the HMC would
 // answer.
 const hmcName = "hmc1"

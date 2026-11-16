@@ -17,7 +17,7 @@ import (
 // dozen zones, a load-balanced pool per site whose origins are the sites'
 // load balancers, and the last 15 minutes of traffic. obs-beacond reads it
 // through cloudflare's stand_in (http on loopback only). Problems on
-// purpose: legacy.example still uses Flexible SSL; now and then fleet-0052
+// purpose: legacy.example still uses Flexible SSL; now and then iad1-lb02
 // fails its pool's health check from eastern North America; and while
 // the shop's database replica is behind (scenario.go, story 2) 7% of
 // shop.example's requests fail, most on checkout.shop.example.

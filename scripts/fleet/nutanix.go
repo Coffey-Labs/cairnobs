@@ -8,12 +8,11 @@ import (
 )
 
 // A Prism Central, as a host agent with a nutanix: section sends it
-// (docs/cluster-watcher.md, step 9): fleet-0100's agent reads it.
+// (docs/cluster-watcher.md, step 9): phx1-virt01's agent reads it.
 const (
 	prismCentral = "pc-01.example.org"
 	ntnxClusters = 3
-	ahvPerPE     = 6   // AHV hosts in each cluster
-	nutanixHost  = 100 // the fleet host whose agent reads it
+	ahvPerPE     = 6 // AHV hosts in each cluster
 	// nutanixGuestEvery: host 11 in every 20 is Prism Central's VM number i/20.
 	nutanixGuestEvery = 20
 )

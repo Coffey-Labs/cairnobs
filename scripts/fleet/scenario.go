@@ -9,7 +9,7 @@ import "time"
 //   - three stories, each a cause with its effects:
 //     1. fa-prod-01 lost a drive: the array is degraded and its writes are
 //     slow while the drive's data is rebuilt (all the time);
-//     2. checkout errors: every 2 hours fleet-0032, a PostgreSQL replica,
+//     2. checkout errors: every 2 hours phx1-db03, a PostgreSQL replica,
 //     falls behind, HAProxy takes it out, and the shop's checkout answers
 //     with errors until it catches up (20 minutes);
 //     3. the legacy datacenter: every 4 hours its server stops answering
@@ -113,14 +113,14 @@ var pastProblems = []past{
 	{s: spellReplicaBehind, key: "cloudflare/errors/shop.example", sev: "warning", href: "/cloudflare",
 		title:  "shop.example: 7% of requests failing",
 		detail: "Most on checkout.shop.example: 503s while HAProxy had one PostgreSQL replica for the shop's reads.",
-		note:   "fleet-0032 fell 40 MB behind during the nightly vacuum and HAProxy took it out; the one replica left couldn't carry checkout's reads. Moving the vacuum out of business hours."},
-	{s: spellAppExits, key: "container/fleet-0007/app-04", sev: "critical", host: "fleet-0007", href: "/containers",
-		title: "app-04 on fleet-0007: not running"},
-	{s: spellDRPaths, key: "cluster/fleet-0040:fa-dr-01/connection/fa-prod-01", sev: "critical", host: "fleet-0040:fa-dr-01", href: "/clusters",
-		title: "Replication to fa-prod-01 in fa-dr-01 (fleet-0040): connected, but its paths aren't redundant"},
-	{s: spellLBFlaps, key: "cloudflare/origin/site-1-web/fleet-0052", sev: "warning", host: "fleet-0052", href: "/cloudflare",
-		title: "fleet-0052 is failing site-1-web's health check"},
-	{s: spellLBFlaps, key: "akamai/server/api.shop.example.akadns.net/203.0.2.11", sev: "warning", host: "fleet-0101", href: "/akamai",
+		note:   hostName(pgLagging) + " fell 40 MB behind during the nightly vacuum and HAProxy took it out; the one replica left couldn't carry checkout's reads. Moving the vacuum out of business hours."},
+	{s: spellAppExits, key: "container/" + hostName(demoExited) + "/app-04", sev: "critical", host: hostName(demoExited), href: "/containers",
+		title: "app-04 on " + hostName(demoExited) + ": not running"},
+	{s: spellDRPaths, key: "cluster/" + storageCollector.name + ":fa-dr-01/connection/fa-prod-01", sev: "critical", host: storageCollector.name + ":fa-dr-01", href: "/clusters",
+		title: "Replication to fa-prod-01 in fa-dr-01 (" + storageCollector.name + "): connected, but its paths aren't redundant"},
+	{s: spellLBFlaps, key: "cloudflare/origin/site-1-web/" + hostName(52), sev: "warning", host: hostName(52), href: "/cloudflare",
+		title: hostName(52) + " is failing site-1-web's health check"},
+	{s: spellLBFlaps, key: "akamai/server/api.shop.example.akadns.net/203.0.2.11", sev: "warning", host: hostName(101), href: "/akamai",
 		title: "203.0.2.11 in Singapore is failing GTM's liveness test for api.shop.example.akadns.net"},
 	{s: spellVaultEdgeDown, key: "node/obs-beacond:vault-edge/vault-edge-e3", sev: "critical", host: "obs-beacond:vault-edge",
 		href: "/workloads?source=obs-beacond%3Avault-edge&q=vault-edge-e3", title: "Server vault-edge-e3 in vault-edge (obs-beacond) is down"},
@@ -128,6 +128,6 @@ var pastProblems = []past{
 		href: "/workloads?source=cluster-00&ns=ns-07&q=app-097", title: "deployment/app-097 in ns-07 (cluster-00): 1 of 10 pods: 1 restarting (CrashLoopBackOff)"},
 	{s: spellLegacy502, key: "check/web-legacy", sev: "warning", href: "/checks", title: "legacy.example.com is down"},
 	{s: spellBlocklisted, key: "check/rbl-mx2", sev: "warning", href: "/checks", title: "mx2.example.com on block lists is down"},
-	{s: spellLateBackup, key: "backup/fleet-0050/received/fleet-0080/pg-dump", sev: "serious", host: "fleet-0050", href: "/backups",
-		title: "fleet-0080's pg-dump backup on fleet-0050 is 26 hours old"},
+	{s: spellLateBackup, key: "backup/" + hostName(50) + "/received/" + hostName(80) + "/pg-dump", sev: "serious", host: hostName(50), href: "/backups",
+		title: hostName(80) + "'s pg-dump backup on " + hostName(50) + " is 26 hours old"},
 }

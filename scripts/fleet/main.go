@@ -85,6 +85,14 @@ func config(args []string) {
 		fmt.Fprintf(&agents, "  - { name: %s, token_sha256: %s, cluster: true }\n", name, hex.EncodeToString(sum[:]))
 		fmt.Fprintf(&tokens, "%s %s\n", name, tok)
 	}
+	for _, c := range collectors {
+		b := make([]byte, 24)
+		_, _ = rand.Read(b)
+		tok := hex.EncodeToString(b)
+		sum := sha256.Sum256([]byte(tok))
+		fmt.Fprintf(&agents, "  - { name: %s, token_sha256: %s }\n", c.name, hex.EncodeToString(sum[:]))
+		fmt.Fprintf(&tokens, "%s %s\n", c.name, tok)
+	}
 	for _, w := range winServers[:min(max(*windows, 0), len(winServers))] {
 		b := make([]byte, 24)
 		_, _ = rand.Read(b)
@@ -99,15 +107,13 @@ func config(args []string) {
 	if err := os.WriteFile(filepath.Join(*out, "tokens"), tokens.Bytes(), 0o600); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%d agents, %d cluster agents and %d Windows servers: %s/agents.yaml goes into obs-beacond.yaml; %s/tokens is for fleet run\n",
-		*n, *clusters, min(max(*windows, 0), len(winServers)), *out, *out)
+	fmt.Printf("%d agents, %d cluster agents, %d collectors and %d Windows servers: %s/agents.yaml goes into obs-beacond.yaml; %s/tokens is for fleet run\n",
+		*n, *clusters, len(collectors), min(max(*windows, 0), len(winServers)), *out, *out)
 	if *demo {
 		writeDemo(*out, *n, *windows)
 		fmt.Printf("the demo: %s/demo.yaml has the lines for obs-beacond.yaml; run fleet with -demo and the same -n\n", *out)
 	}
 }
-
-func hostName(i int) string { return fmt.Sprintf("fleet-%04d", i) }
 
 type stats struct {
 	mu   sync.Mutex
@@ -179,11 +185,11 @@ func run(args []string) {
 	fs.DurationVar(&shape.nodeDown, "node-down", 0, "after this long, cluster-00's node-01 goes down (0: never)")
 	fs.DurationVar(&shape.nodeDownFor, "node-down-for", time.Minute, "how long node-01 stays down")
 	fs.BoolVar(&shape.openshift, "openshift", false, "make cluster-01 OpenShift, mid-update, with one operator degraded")
-	pveGuests := fs.Int("proxmox", 0, "this many VMs and containers in a Proxmox cluster read by fleet-0060's agent (0: none)")
-	vsphereVMs := fs.Int("vsphere", 0, "this many VMs in a vCenter read by fleet-0080's agent (0: none)")
-	ntnxVMs := fs.Int("nutanix", 0, "this many VMs in a Prism Central read by fleet-0100's agent (0: none)")
-	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by fleet-0040's agent (0: none)")
-	ibmiN := fs.Int("ibmi", 0, "this many IBM i partitions (up to 4), and the HMC of their Power servers, all read by fleet-0041's agent (0: none)")
+	pveGuests := fs.Int("proxmox", 0, "this many VMs and containers in a Proxmox cluster read by phx1-virt01's agent (0: none)")
+	vsphereVMs := fs.Int("vsphere", 0, "this many VMs in a vCenter read by phx1-virt01's agent (0: none)")
+	ntnxVMs := fs.Int("nutanix", 0, "this many VMs in a Prism Central read by phx1-virt01's agent (0: none)")
+	pureN := fs.Int("pure", 0, "this many Pure arrays (up to 5: four FlashArrays with 600 volumes each, then a FlashBlade), all read by phx1-stor01's agent (0: none)")
+	ibmiN := fs.Int("ibmi", 0, "this many IBM i partitions (up to 4), and the HMC of their Power servers, all read by phx1-ibmi01's agent (0: none)")
 	akamaiDir := fs.String("akamai", "", "serve a fake Akamai account on loopback, and write its .edgerc and the akamai: section for obs-beacond.yaml to this directory's akamai.yaml (\"\": none)")
 	chanDir := fs.String("channels", "", "catch alerts on loopback as ntfy, Discord, PagerDuty, a webhook and an email relay, and write their secrets and the alerts: and reports: sections for obs-beacond.yaml to this directory's channels.yaml (\"\": none)")
 	mailDir := fs.String("mail", "", "serve a fake mail server on loopback, and write its password and the mail: section for obs-beacond.yaml to this directory's mail.yaml (\"\": none)")
@@ -198,6 +204,7 @@ func run(args []string) {
 
 	type agent struct{ host, token string }
 	var agents, clusterAgents, winAgents []agent
+	collAgents := map[string]agent{}
 	f, err := os.Open(*tokFile)
 	if err != nil {
 		log.Fatal(err)
@@ -208,6 +215,8 @@ func run(args []string) {
 		switch {
 		case ok && strings.HasPrefix(h, "cluster-"):
 			clusterAgents = append(clusterAgents, agent{h, t})
+		case ok && isCollector(h):
+			collAgents[h] = agent{h, t}
 		case ok && strings.HasPrefix(h, winPrefix):
 			if _, known := winServerFor(h); known {
 				winAgents = append(winAgents, agent{h, t})
@@ -283,20 +292,28 @@ func run(args []string) {
 	var made, delivered, queued atomic.Int64
 	log.Printf("fleet: %d agents every %s, %d containers each, to %s, for %s", len(agents), *interval, *containers, *servers, *dur)
 	all := append(slices.Clone(agents), winAgents...)
+	for _, c := range collectors {
+		if a, ok := collAgents[c.name]; ok {
+			all = append(all, a)
+		}
+	}
 	hosts := make([]*host, len(all))
 	for i, a := range all {
 		var h *host
+		c, isColl := collectorFor(a.host)
 		switch {
+		case isColl: // collectors.go
+			h = newCollectorHost(c, *interval)
 		case i >= len(agents): // a Windows server (windows.go)
 			h = newWindowsHost(a.host, *interval)
 		default:
 			h = newHost(i, a.host, *containers, *interval)
 		}
-		if *demo && h.win == nil {
+		if *demo && h.win == nil && !isColl {
 			h.demo = newDemoHost(fleetIndex(i, a.host), len(agents), demoAll)
 			h.demo.setup(&h.r)
 		}
-		if *withMap && h.win == nil {
+		if *withMap && h.win == nil && !isColl {
 			h.m = fakeMap(i, a.host, h.r.Containers)
 			h.certs, h.files = hostCerts(i, a.host)
 		}
@@ -311,30 +328,31 @@ func run(args []string) {
 	for _, a := range clusterAgents {
 		sims = append(sims, sim{newCluster(a.host, a.token, shape), a.host == "cluster-00"})
 	}
-	if *pveGuests > 0 && len(agents) > proxmoxHost {
-		a := agents[proxmoxHost]
+	virt, virtOK := collAgents[virtCollector.name]
+	if *pveGuests > 0 && virtOK {
+		a := virt
 		sims = append(sims, sim{c: newProxmox(a.host, a.token, *pveGuests)})
 		log.Printf("fleet: Proxmox cluster %s, %d nodes, %d guests, read by %s", proxmoxCluster, proxmoxNodes, *pveGuests, a.host)
 	}
-	if *vsphereVMs > 0 && len(agents) > vcenterHost {
-		a := agents[vcenterHost]
+	if *vsphereVMs > 0 && virtOK {
+		a := virt
 		sims = append(sims, sim{c: newVSphere(a.host, a.token, *vsphereVMs)})
 		log.Printf("fleet: vCenter %s, %d ESXi hosts, %d VMs, read by %s", vcenterName, esxiHosts, *vsphereVMs, a.host)
 	}
-	if *ntnxVMs > 0 && len(agents) > nutanixHost {
-		a := agents[nutanixHost]
+	if *ntnxVMs > 0 && virtOK {
+		a := virt
 		sims = append(sims, sim{c: newNutanix(a.host, a.token, *ntnxVMs)})
 		log.Printf("fleet: Prism Central %s, %d clusters of %d AHV hosts, %d VMs, read by %s", prismCentral, ntnxClusters, ahvPerPE, *ntnxVMs, a.host)
 	}
-	if n := min(*pureN, len(pureArrays)); n > 0 && len(agents) > pureHost {
-		a := agents[pureHost]
+	if a, ok := collAgents[storageCollector.name]; ok && *pureN > 0 {
+		n := min(*pureN, len(pureArrays))
 		for k := range n {
 			sims = append(sims, sim{c: newPure(a.host, a.token, k)})
 		}
 		log.Printf("fleet: %d Pure arrays (%v), read by %s", n, pureArrays[:n], a.host)
 	}
-	if n := min(*ibmiN, len(ibmiPartitions)); n > 0 && len(agents) > ibmiHost {
-		a := agents[ibmiHost]
+	if a, ok := collAgents[ibmiCollector.name]; ok && *ibmiN > 0 {
+		n := min(*ibmiN, len(ibmiPartitions))
 		for k := range n {
 			sims = append(sims, sim{c: newIBMi(a.host, a.token, k)})
 		}
@@ -584,7 +602,8 @@ type host struct {
 	certsSent time.Time
 }
 
-// hypervisorEvery says which fake hosts run libvirt: host 1 in every 20,
+// hypervisorEvery says which fake hosts run libvirt: host 1 in every 20
+// that is an app server (isHypervisor),
 // with libvirtVMs VMs. Hosts 2, 6, 10, 14 and 18 in the same 20 are its
 // first five VMs, with their domain UUIDs as SMBIOS UUIDs.
 const (
@@ -688,18 +707,6 @@ func newHost(i int, name string, containers int, interval time.Duration) *host {
 		},
 		Sources: []string{}, // what it reads beside itself, as the agent says
 	}
-	switch i {
-	case proxmoxHost:
-		h.r.Sources = []string{"proxmox"}
-	case vcenterHost:
-		h.r.Sources = []string{vcenterName}
-	case nutanixHost:
-		h.r.Sources = []string{prismCentral}
-	case pureHost:
-		h.r.Sources = pureArrays // what its pure: section lists, read or not
-	case ibmiHost:
-		h.r.Sources = append(append([]string{}, ibmiPartitions...), hmcName)
-	}
 	list := make([]report.Container, containers)
 	for c := range list {
 		list[c] = report.Container{ID: fmt.Sprintf("%012x", mrand.Uint64()), Name: fmt.Sprintf("app-%02d", c), Image: fmt.Sprintf("registry.example.org/app-%02d:1.%d", c, c%7),
@@ -709,10 +716,10 @@ func newHost(i int, name string, containers int, interval time.Duration) *host {
 	switch {
 	case i%vmHostEvery == 0:
 		h.r.Machine = vmUUID("cluster-00", i/vmHostEvery)
-	case i%hypervisorEvery == 1:
+	case isHypervisor(i):
 		h.vms = hypervisorVMs(i, time.Now())
 		h.r.CPUs, h.r.Mem.Total = 64, 512<<30
-	case i%vmHostEvery == 2:
+	case i%vmHostEvery == 2 && isHypervisor(i/hypervisorEvery*hypervisorEvery+1):
 		h.r.Machine = vmUUID("libvirt-"+hostName(i/hypervisorEvery*hypervisorEvery+1), (i%hypervisorEvery-2)/vmHostEvery)
 	case i%proxmoxGuestEvery == 3:
 		h.r.Machine = vmUUID("proxmox-"+proxmoxCluster, i/proxmoxGuestEvery)

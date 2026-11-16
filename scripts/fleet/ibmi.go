@@ -12,10 +12,9 @@ import (
 )
 
 // IBM i partitions, as a host agent with an ibmi: section sends them
-// (docs/ibmi.md): fleet-0041's agent reads them, each a source of its own.
+// (docs/ibmi.md): phx1-ibmi01's agent reads them, each a source of its own.
 // The records are the reader's own, made from snapshots as the views
 // would answer.
-const ibmiHost = 41
 
 // ibmiPartitions are the partitions, in the order -ibmi N takes them.
 var ibmiPartitions = []string{"prod1", "prod2", "ha1", "dev1"}

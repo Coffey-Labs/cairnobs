@@ -11,9 +11,8 @@ import (
 )
 
 // FlashArrays, as a host agent with a pure: section sends them
-// (docs/pure.md): fleet-0040's agent reads them all, each a source of its
+// (docs/pure.md): phx1-stor01's agent reads them all, each a source of its
 // own.
-const pureHost = 40 // the fleet host whose agent reads them
 
 // pureArrays are the arrays, in the order -pure N takes them.
 var pureArrays = []string{"fa-prod-01", "fa-prod-02", "fa-dr-01", "fa-vdi-01", "fb-prod-01"}

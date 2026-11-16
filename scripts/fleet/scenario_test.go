@@ -98,7 +98,7 @@ func TestFlapSet(t *testing.T) {
 // partition.
 func TestIBMiFlapsLittle(t *testing.T) {
 	for k, part := range ibmiPartitions[:2] {
-		c := newIBMi("fleet-0041", "t", k)
+		c := newIBMi(ibmiCollector.name, "t", k)
 		if n := len(c.episodes); n == 0 || n > 4 {
 			t.Errorf("%s: %d records flap", part, n)
 		}

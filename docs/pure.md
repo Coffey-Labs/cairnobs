@@ -95,7 +95,7 @@ PVCs on it going wrong, as one incident.
   simulator: `-pure 4` makes fa-prod-01 and -02 (an ActiveCluster pod,
   sync and async replication; a failed drive and a volume over its space
   on -01), fa-dr-01 (an unbalanced connection) and fa-vdi-01 (a
-  controller updating), 600 volumes each, all read by fleet-0040. Not
+  controller updating), 600 volumes each, all read by phx1-stor01. Not
   against a real array.
 - **Performance:** step 4, below.
 

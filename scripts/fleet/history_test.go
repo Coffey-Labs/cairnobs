@@ -11,7 +11,7 @@ import (
 	"github.com/cairnobs/cairnobs/internal/state"
 )
 
-// Hosts stay under the warnings (disks 80%, memory 90%), but fleet-0023's
+// Hosts stay under the warnings (disks 80%, memory 90%), but phx1-app20's
 // log volume, which crosses 80% for a while every ten days (#40).
 func TestLoadStaysCalm(t *testing.T) {
 	now := time.Date(2026, 11, 16, 5, 0, 0, 0, time.UTC)
@@ -37,7 +37,7 @@ func TestLoadStaysCalm(t *testing.T) {
 		}
 	}
 	if over == 0 || over > 30*24/3 {
-		t.Errorf("fleet-0023's log volume is over 80%% for %d of 720 hours", over)
+		t.Errorf("phx1-app20's log volume is over 80%% for %d of 720 hours", over)
 	}
 	// Not all alike, as every disk at 33% was.
 	if diskAt(hostName(1), 0, now) == diskAt(hostName(2), 0, now) {

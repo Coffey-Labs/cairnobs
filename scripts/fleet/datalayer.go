@@ -19,8 +19,8 @@ import (
 // (pgAddr), so obs-beacond can match a member to its API as it does over a
 // real network; the status pages come in the hosts' reports, as an agent's
 // fetches do.
-// Problems on purpose: the leader is fleet-0031, not its usual fleet-0030
-// (a failover nobody moved back), and every so often fleet-0032 falls 40
+// Problems on purpose: the leader is phx1-db02, not its usual phx1-db01
+// (a failover nobody moved back), and every so often phx1-db03 falls 40
 // MB behind and HAProxy takes it out of the replicas' pool until it
 // catches up (scenario.go, story 2).
 const patroniPort = 58420
