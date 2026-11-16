@@ -50,6 +50,16 @@ jobs:
             || { echo "$TAG is not on main" >&2; exit 1; }
           [ "$(git cat-file -t "refs/tags/$TAG")" = tag ] \
             || { echo "$TAG is a lightweight tag; its annotation is the release notes" >&2; exit 1; }
+      - name: The Kubernetes base deploys this release
+        # A final release's tree must deploy its own image: v0.1.4 went out
+        # with newTag 0.1.3 because the bump hadn't merged when it was tagged.
+        # Pre-releases keep pointing at the last final one.
+        run: |
+          set -eu
+          case "$TAG" in *-*) exit 0 ;; esac
+          got="$(sed -n 's/^ *newTag: *//p' deploy/kubernetes/base/kustomization.yaml)"
+          [ "$got" = "${TAG#v}" ] \
+            || { echo "deploy/kubernetes/base/kustomization.yaml has newTag: $got; $TAG needs ${TAG#v}. Merge that change, then tag." >&2; exit 1; }
       - name: Node
         run: |
           set -euo pipefail
