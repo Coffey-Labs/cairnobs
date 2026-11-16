@@ -170,7 +170,7 @@ func run(args []string) {
 	tokFile := fs.String("tokens", "tokens", "from fleet config")
 	n := fs.Int("n", 0, "agents to run (0: every token)")
 	interval := fs.Duration("interval", 15*time.Second, "between one agent's reports")
-	containers := fs.Int("containers", 10, "containers per host (the cluster watcher's pods come later)")
+	containers := fs.Int("containers", 10, "containers per host; with -demo, only app servers run them, about this many each, give or take four")
 	withMap := fs.Bool("map", true, "send map samples: sites of 50 hosts, WireGuard between sites, apps talking to databases")
 	dur := fs.Duration("for", 5*time.Minute, "how long")
 	every := fs.Duration("print", 30*time.Second, "how often to print")
@@ -307,7 +307,11 @@ func run(args []string) {
 		case i >= len(agents): // a Windows server (windows.go)
 			h = newWindowsHost(a.host, *interval)
 		default:
-			h = newHost(i, a.host, *containers, *interval)
+			n := *containers
+			if *demo {
+				n = demoContainers(fleetIndex(i, a.host), n)
+			}
+			h = newHost(i, a.host, n, *interval)
 		}
 		if *demo && h.win == nil && !isColl {
 			h.demo = newDemoHost(fleetIndex(i, a.host), len(agents), demoAll)
