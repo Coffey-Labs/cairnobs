@@ -29,6 +29,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -636,6 +637,35 @@ func (srv *Server) evaluate(now time.Time) bool {
 type IncidentView struct {
 	Incident
 	Logs []string `json:"logs,omitempty"`
+	// Source is where the problem is, for the Alerts page's filter (#42):
+	// hosts, clusters, certificates, checks, mail, data, backups,
+	// cloudflare or akamai.
+	Source string `json:"source"`
+}
+
+// incidentSource is the part of Cairn OBS an incident's key is from.
+func incidentSource(key string) string {
+	first, rest, _ := strings.Cut(key, "/")
+	if first == "batch" { // alike problems folded into one: what they are
+		first, _, _ = strings.Cut(rest, "/")
+	}
+	switch first {
+	case "cluster", "node", "pod", "job", "pvc", "workload", "vm", "vms", "vmdisk", "vmmigration", "storage":
+		return "clusters"
+	case "cert", "certinv", "certends":
+		return "certificates"
+	case "check":
+		return "checks"
+	case "mail":
+		return "mail"
+	case "dl":
+		return "data"
+	case "backup":
+		return "backups"
+	case "cloudflare", "akamai":
+		return first
+	}
+	return "hosts" // silent, disk, memory, unit, container, drift, event…
 }
 
 func (srv *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
@@ -654,14 +684,18 @@ func (srv *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
 	}
 	open := make([]IncidentView, 0, len(snapOpen))
 	for _, inc := range snapOpen {
-		open = append(open, IncidentView{Incident: inc, Logs: logs[inc.Key]})
+		open = append(open, IncidentView{Incident: inc, Logs: logs[inc.Key], Source: incidentSource(inc.Key)})
+	}
+	past := make([]IncidentView, 0, len(recent))
+	for _, inc := range recent {
+		past = append(past, IncidentView{Incident: inc, Source: incidentSource(inc.Key)})
 	}
 	chans := []map[string]string{}
 	for _, ch := range srv.alerts.chans() {
 		chans = append(chans, map[string]string{"id": ch.ID(), "type": ch.Type(), "min": ch.Min()})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"open": open, "recent": recent, "channels": chans,
+		"open": open, "recent": past, "channels": chans,
 		"for_s": int(srv.alerts.cfg.For / time.Second), "repeat_s": int(srv.alerts.cfg.Repeat / time.Second), "stored": srv.db != nil,
 		"maintenance": srv.maintenanceView(time.Now()), "maintenance_source": srv.maintenanceSource(), "channels_source": srv.channelsSource(),
 	})
