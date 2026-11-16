@@ -362,7 +362,13 @@ One PR each, in order:
    and ingresses aren't judged; what they send to is. A part links to
    its workload rather than to a host. On the overview each cluster is
    one box, opening into its services; they aren't listed as found,
-   since the API says they're there. On kind (2026-11-13), with the
+   since the API says they're there. The box says what the cluster is
+   (Kubernetes, OpenShift or Proxmox cluster, vCenter, HMC) and is never
+   in better shape than the cluster itself, as the Clusters page and the
+   network map show it: a cluster with a failed job and every service
+   fine is yellow, with the reason ("· 1 problem"). VMs someone stopped
+   don't turn a running cluster's box grey; it says how many aren't
+   running. On kind (2026-11-13), with the
    ClusterRole before this step, the agent logged a 403 for each new
    kind and carried on; with it, Routes were a quiet 404. Ten Services
    and two Ingresses came through right: ready counts, a crash-looping

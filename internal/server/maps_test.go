@@ -354,7 +354,9 @@ func TestClusterOnTheServiceMap(t *testing.T) {
 		report.Workload{Kind: report.KindService, ID: "s1", Name: "web", Namespace: "shop", State: report.StateOK, Word: "2 ready endpoints",
 			Facts: map[string]any{"type": "ClusterIP", "cluster_ips": "10.96.0.10", "ports": "80", "backends": "deployment/web"}},
 		report.Workload{Kind: report.KindIngress, ID: "i1", Name: "ingress/shop", Namespace: "shop", State: report.StateOK, Word: "shop.example.org → web",
-			Facts: map[string]any{"hosts": "shop.example.org", "backends": "web:80", "tls": true}})
+			Facts: map[string]any{"hosts": "shop.example.org", "backends": "web:80", "tls": true}},
+		// A failed job: the cluster has a problem, its services none.
+		report.Workload{Kind: report.KindJob, ID: "j9", Name: "job/nightly-report", Namespace: "batch", State: report.StateDown, Word: "Failed: BackoffLimitExceeded"})
 	sendBatch(t, a, clusterTok, report.Workloads{Full: "begin", Records: recs})
 	sendBatch(t, a, clusterTok, report.Workloads{Full: "end"})
 	a.store.Put("node1", report.Report{V: report.Version, Map: &report.Map{
@@ -372,12 +374,22 @@ func TestClusterOnTheServiceMap(t *testing.T) {
 		t.Errorf("overview boxes: %s", ids)
 	}
 	for _, b := range v.Boxes {
-		if b.ID == "group:cluster:prod" && (b.Sub != "Kubernetes cluster" || b.Count != 3) {
+		if b.ID == "group:cluster:prod" && (!strings.HasPrefix(b.Sub, "Kubernetes cluster") || b.Count != 3) {
 			t.Errorf("cluster box: %+v", b)
 		}
 	}
 	if l := lineKeys(v); !strings.Contains(l, ">group:cluster:prod needs") {
 		t.Errorf("overview lines: %s", l)
+	}
+	// The box is never better than the cluster itself, as the Clusters page
+	// and the network map show it (#38).
+	_, conds := a.view(now)
+	for _, c := range a.clusterViews(now, conds) {
+		for _, b := range v.Boxes {
+			if b.ID == "group:cluster:"+c.Name && statusOrder[b.Status] < statusOrder[c.Status] {
+				t.Errorf("service map says %s, the cluster %s (%s)", b.Status, c.Status, c.Word)
+			}
+		}
 	}
 
 	v, ok = a.servicesView("group:cluster:prod", 1, now)
@@ -435,5 +447,31 @@ func TestClusterOnTheServiceMap(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &fixes)
 	if len(fixes.Items) != 1 || fixes.Items[0].Text != "nginx needs web (prod) on :80" {
 		t.Errorf("corrections: %s", rec.Body)
+	}
+}
+
+// A cluster's box on the service map: never better than the cluster (#38),
+// and not grey for a few stopped VMs when the rest run.
+func TestClusterBox(t *testing.T) {
+	status := map[string]string{"a": "good", "b": "good", "c": "waiting"}
+	b := MapBox{Status: "good"}
+	clusterBox(&b, "", ClusterView{Status: "warning", Word: "1 problem"}, true, []string{"a", "b"}, status)
+	if b.Status != "warning" || b.Sub != "Kubernetes cluster · 1 problem" {
+		t.Errorf("cluster with a problem, services fine: %+v", b)
+	}
+	b = MapBox{Status: "waiting"}
+	clusterBox(&b, "Proxmox cluster", ClusterView{Status: "good", Word: "Current"}, true, []string{"a", "b", "c"}, status)
+	if b.Status != "good" || b.Sub != "Proxmox cluster · 1 not running" {
+		t.Errorf("one VM stopped: %+v", b)
+	}
+	b = MapBox{Status: "waiting"}
+	clusterBox(&b, "vCenter", ClusterView{}, false, []string{"c"}, status)
+	if b.Status != "waiting" || b.Sub != "vCenter" {
+		t.Errorf("nothing running: %+v", b)
+	}
+	b = MapBox{Status: "critical"}
+	clusterBox(&b, "", ClusterView{Status: "warning", Word: "1 problem"}, true, []string{"a"}, status)
+	if b.Status != "critical" || b.Sub != "Kubernetes cluster" {
+		t.Errorf("services worse than the cluster: %+v", b)
 	}
 }
