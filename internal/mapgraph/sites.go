@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cairnobs/cairnobs/internal/netmap"
 )
@@ -105,6 +106,7 @@ func (b *builder) sites() ([]Site, []HostNode) {
 		}
 		sites = append(sites, s)
 	}
+	nameByHosts(sites)
 	if b.cor.SiteName != "" {
 		best, most := -1, 0
 		for i, s := range sites {
@@ -476,4 +478,40 @@ func (u *union) size(x string) int {
 		return n
 	}
 	return 1
+}
+
+// nameByHosts names a site after the prefix most of its hosts' names share
+// before the first "-", as fleets named by site do (phx1-app05,
+// phx1-db01): at least three hosts, four in five of them, and no other
+// site with the same prefix. A name from topology.yaml or the map's
+// corrections still wins; otherwise a site is named after its network.
+func nameByHosts(sites []Site) {
+	prefix := func(hs []string) string {
+		if len(hs) < 3 {
+			return ""
+		}
+		count := map[string]int{}
+		for _, h := range hs {
+			if p, _, ok := strings.Cut(h, "-"); ok && p != "" {
+				count[p]++
+			}
+		}
+		for p, n := range count {
+			if n*5 >= len(hs)*4 && strings.ContainsFunc(p, unicode.IsLetter) {
+				return p
+			}
+		}
+		return ""
+	}
+	names := make([]string, len(sites))
+	seen := map[string]int{}
+	for i, s := range sites {
+		names[i] = prefix(s.Hosts)
+		seen[names[i]]++
+	}
+	for i, n := range names {
+		if n != "" && seen[n] == 1 {
+			sites[i].Name = n
+		}
+	}
 }

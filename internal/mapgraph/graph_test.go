@@ -319,3 +319,31 @@ func TestContainerLoopbackStaysInside(t *testing.T) {
 		t.Errorf("edges %+v, want none", g.Edges)
 	}
 }
+
+// A site whose hosts are named for it takes that name; a prefix two sites
+// share, a mixed site and a small one keep their network's (#59).
+func TestSiteNamedByHosts(t *testing.T) {
+	sites := []Site{
+		{Name: "10.100.0.0/24", Hosts: []string{"phx1-app01", "phx1-app02", "phx1-db01", "phx1-lb01", "build-box"}},
+		{Name: "10.100.1.0/24", Hosts: []string{"iad1-app01", "iad1-db01", "iad1-gw01"}},
+		{Name: "10.100.2.0/24", Hosts: []string{"fleet-0001", "fleet-0002", "fleet-0003"}},
+		{Name: "10.100.3.0/24", Hosts: []string{"fleet-0101", "fleet-0102", "fleet-0103"}},
+		{Name: "10.100.4.0/24", Hosts: []string{"ams1-app01", "ams1-db01", "web-1", "web-2"}},
+		{Name: "10.100.5.0/24", Hosts: []string{"fra1-app01", "fra1-db01"}},
+		{Name: "10.100.6.0/24", Hosts: []string{"10-0-0-1", "10-0-0-2", "10-0-0-3"}},
+	}
+	nameByHosts(sites)
+	var got []string
+	for _, s := range sites {
+		got = append(got, s.Name)
+	}
+	want := []string{"phx1", "iad1", "10.100.2.0/24", "10.100.3.0/24", "10.100.4.0/24", "10.100.5.0/24", "10.100.6.0/24"}
+	if !slices.Equal(got, want) {
+		t.Errorf("names %v, want %v", got, want)
+	}
+	// A name set by hand still wins.
+	hosts, cor := world()
+	if g := Build(hosts, cor, t0); g.Sites[0].Name != "Lisbon" {
+		t.Errorf("by hand: %s", g.Sites[0].Name)
+	}
+}
