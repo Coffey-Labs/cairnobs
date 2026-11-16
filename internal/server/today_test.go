@@ -151,3 +151,34 @@ func TestWithIncidents(t *testing.T) {
 		t.Errorf("others: %+v %+v", got[1].Incident, got[2].Incident)
 	}
 }
+
+func TestFleetGrid(t *testing.T) {
+	for _, c := range [][3]string{{"phx1-app05", "phx1", "app"}, {"web-02", "", "web"}, {"host3", "", "host"}, {"db1.example.com", "", "db"}, {"phx1-07", "phx1", "other"}, {"win-dc01", "", "win"}, {"lb-edge-01", "", "lb"}} {
+		if got := hostRole(c[0], c[1]); got != c[2] {
+			t.Errorf("hostRole(%s, %s) = %s, want %s", c[0], c[1], got, c[2])
+		}
+	}
+	hosts := []HostView{
+		{Name: "phx1-app02", Status: "good"}, {Name: "phx1-app01", Status: "warning", Word: "disk 91%"},
+		{Name: "phx1-db01", Status: "good"}, {Name: "lon1-app01", Status: "good"},
+		{Name: "bench", Status: "good", Silent: true}, {Name: "phx1-stor01", Status: "good"},
+	}
+	siteOf := map[string]string{"phx1-app01": "s1", "phx1-app02": "s1", "phx1-db01": "s1", "lon1-app01": "s2"}
+	names := map[string]string{"s1": "phx1", "s2": "lon1"}
+	got := fleetGrid(hosts, siteOf, names)
+	if len(got) != 3 || got[0].Name != "phx1" || got[1].Name != "lon1" || got[2].Name != "Elsewhere" {
+		t.Fatalf("sites = %+v", got)
+	}
+	if got[0].Hosts != 4 {
+		t.Errorf("phx1-stor01 should join phx1 by its name: %+v", got[0])
+	}
+	if r := got[0].Roles; len(r) != 3 || r[0].Role != "app" || r[0].Hosts[0].Name != "phx1-app01" || r[1].Role != "db" || r[2].Role != "stor" {
+		t.Errorf("phx1 roles = %+v", r)
+	}
+	if tr := got[0].Trouble; len(tr) != 1 || tr[0].Name != "phx1-app01" {
+		t.Errorf("phx1 trouble = %+v", tr)
+	}
+	if tr := got[2].Trouble; len(tr) != 1 || tr[0].Status != "critical" {
+		t.Errorf("a silent host is trouble: %+v", tr)
+	}
+}

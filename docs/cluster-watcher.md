@@ -327,12 +327,13 @@ hide a real outage.
 Built on the paged, server-side lists from #69. No page ever lists
 everything at once.
 
-- **Dashboard:** one line per cluster: its version, state and a summary
+- **Clusters page:** one line per cluster: its version, state and a summary
   in its kind's terms: "31/32 nodes ready · 3,300 workloads" for
   Kubernetes, "2/2 controllers ready · 600 volumes · 71% used" for an
   array, "CPU 41% · system ASP 85% · 4 of 5 subsystems active" for an
   IBM i partition. The network map's cluster boxes use the same line.
-  The "needs attention" list takes workloads too, capped as for hosts.
+  The dashboard counts the clusters with a problem, and its "needs you"
+  and "can wait" lists take workloads too, capped as for hosts.
 - **Clusters:** in sections by kind (Kubernetes, Virtualization, Storage,
   IBM i, Secrets), the ones that need a look first in each, with a jump
   list counting each kind and its problems. Filters for kind, "need a

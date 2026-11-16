@@ -2,12 +2,22 @@
 	import Icon from '$lib/Icon.svelte';
 	import Status from '$lib/Status.svelte';
 	import Pager from '$lib/Pager.svelte';
+	import FleetGrid from '$lib/FleetGrid.svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { get, SignedOut, type HostRow } from '$lib/api';
 	import { live } from '$lib/live.svelte';
 	import { ago, pct } from '$lib/format';
 
-	// The hosts list, filtered and paged by obs-beacond: a fleet can be
-	// thousands of hosts.
+	// Squares by site and role first (#72); the list, filtered and paged by
+	// obs-beacond, a click away: a fleet can be thousands of hosts.
+	const view = $derived(page.url.searchParams.get('view') === 'list' ? 'list' : 'grid');
+	function setView(v: string) {
+		const u = new URL(page.url);
+		if (v === 'list') u.searchParams.set('view', 'list');
+		else u.searchParams.delete('view');
+		void goto(u, { replaceState: true, noScroll: true, keepFocus: true });
+	}
 	const limit = 100;
 	let rows = $state<HostRow[]>([]);
 	let total = $state(0);
@@ -41,6 +51,7 @@
 		}
 	}
 	$effect(() => {
+		if (view !== 'list') return;
 		const args = [q, status, offset] as const;
 		void load(...args);
 		const t = setInterval(() => void load(...args), 10_000);
@@ -62,9 +73,19 @@
 
 <div class="phead">
 	<span class="tile"><Icon name="hosts" /></span>
-	<div><h1>Hosts</h1><p>Every host with an agent, the ones that need a look first. Adding and removing hosts is under Configure.</p></div>
-	{#if live.seesAll}<div class="acts"><a class="btn sm" href="/configure/hosts"><Icon name="settings" /> Configure</a></div>{/if}
+	<div><h1>Hosts</h1><p>Every host with an agent, grouped by site and role so the odd one out stands out. Adding and removing hosts is under Configure.</p></div>
+	<div class="acts">
+		<span role="group" aria-label="Show as" class="views">
+			<button class="chip" class:on={view === 'grid'} aria-pressed={view === 'grid'} onclick={() => setView('grid')}>By site</button>
+			<button class="chip" class:on={view === 'list'} aria-pressed={view === 'list'} onclick={() => setView('list')}>List</button>
+		</span>
+		{#if live.seesAll}<a class="btn sm" href="/configure/hosts"><Icon name="settings" /> Configure</a>{/if}
+	</div>
 </div>
+
+{#if view === 'grid'}
+	<FleetGrid />
+{:else}
 
 {#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
 
@@ -97,8 +118,10 @@
 	</table>
 </div>
 <Pager bind:offset {limit} {total} what="hosts" />
+{/if}
 <p class="foot-note">Refreshes every 10 seconds.</p>
 
 <style>
 	.bad { color: var(--critical); }
+	.views { display: inline-flex; gap: 6px; }
 </style>
