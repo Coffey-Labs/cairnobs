@@ -82,6 +82,15 @@ restarted demo carries on where the clock is. Incidents open and resolve
 through the day, and a dozen or two are open at any moment. The mail
 server is healthy, to show what normal looks like.
 
+What a host uses is a function of its name and the clock
+(`scripts/fleet/load.go`), not a dice roll, so `-history <database>
+-state-key <file>` can write the last 30 days (`-history-days`) before
+anything reports (`history.go`): hosts' and workloads' hours, mail rounds,
+statuses, and an incident for each past spell of the problems in
+`pastProblems` (scenario.go), whose keys and titles are obs-beacond's
+own. When you change what a spell's problem says in obs-beacond, change
+its line there too.
+
 ## Dependencies and notices
 
 THIRD_PARTY_NOTICES.md lists every third-party component inside the

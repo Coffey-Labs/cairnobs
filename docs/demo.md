@@ -46,6 +46,11 @@ obs-beacond and the simulator, so nothing in it can reach anything else:
 - `fleet config -demo` writes the server's pieces; `fleet run -demo` runs
   the fleet (add `-ibmi 4` for IBM i and the HMC). Start the fleet first so
   its stand-ins are up for obs-beacond's first readings.
+- `fleet run -history <database> -state-key <obs-beacond's state key>`
+  first writes the last 30 days into obs-beacond's (SQLite) database, so
+  the graphs, reports and incident history aren't empty on a fresh demo
+  (below). It takes under a minute, before the stand-ins start, so wait
+  for them that long; it leaves a database that already has history alone.
 - The root is read-only and the state is in tmpfs, so restarting the
   container is a fresh demo; restart it on a timer (weekly is plenty) so
   history doesn't pile up.
@@ -59,3 +64,13 @@ problems that come and go through the day, so incidents open, resolve and
 show up under Recently resolved. Because the plan runs on the clock, two
 visitors an hour apart see different problems, and a restarted demo shows
 the same ones the old one would have.
+
+The demo starts with a month behind it, worked out from the same plan and
+clock (`scripts/fleet/history.go`): every host's hourly CPU, memory and
+disks (a working day in its site's time zone, quieter weekends, memory
+that creeps until a weekly restart, disks that fill until a clean-up), the
+clusters' workloads, the arrays' I/O, the IBM i partitions' CPU, the
+Vaults' leases, the mail monitor's rounds, availability for the reports,
+and an incident for each time a problem came and went, with notes on the
+stories saying what the cause was. Its incident numbers carry on from
+there.

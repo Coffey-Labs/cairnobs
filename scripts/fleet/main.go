@@ -191,6 +191,9 @@ func run(args []string) {
 	vaultDir := fs.String("vault", "", "serve two fake Vault clusters over HTTPS on loopback, and write their vault: list for obs-beacond.yaml to this directory's vault.yaml (\"\": none)")
 	demo := fs.Bool("demo", false, "hosts report the demo's checks, units, backups and data layer, and fleet serves its Patroni cluster (fleet config -demo, same number of agents)")
 	probe := fs.Bool("probe", true, "time how long a change in cluster-00 takes to show on every copy (needs dev_signin)")
+	histDB := fs.String("history", "", "first write the last days into this obs-beacond database (SQLite; history.go), unless it has some already (\"\": none)")
+	histKey := fs.String("state-key", "", "the database's state_key_file, for -history")
+	histDays := fs.Int("history-days", 30, "how many days -history writes")
 	_ = fs.Parse(args)
 
 	type agent struct{ host, token string }
@@ -279,26 +282,83 @@ func run(args []string) {
 	}
 	var made, delivered, queued atomic.Int64
 	log.Printf("fleet: %d agents every %s, %d containers each, to %s, for %s", len(agents), *interval, *containers, *servers, *dur)
+	all := append(slices.Clone(agents), winAgents...)
+	hosts := make([]*host, len(all))
+	for i, a := range all {
+		var h *host
+		switch {
+		case i >= len(agents): // a Windows server (windows.go)
+			h = newWindowsHost(a.host, *interval)
+		default:
+			h = newHost(i, a.host, *containers, *interval)
+		}
+		if *demo && h.win == nil {
+			h.demo = newDemoHost(fleetIndex(i, a.host), len(agents), demoAll)
+			h.demo.setup(&h.r)
+		}
+		if *withMap && h.win == nil {
+			h.m = fakeMap(i, a.host, h.r.Containers)
+			h.certs, h.files = hostCerts(i, a.host)
+		}
+		hosts[i] = h
+	}
+	// The clusters, made now so the history can be written from them.
+	type sim struct {
+		c     *fakeCluster
+		probe bool
+	}
+	var sims []sim
+	for _, a := range clusterAgents {
+		sims = append(sims, sim{newCluster(a.host, a.token, shape), a.host == "cluster-00"})
+	}
+	if *pveGuests > 0 && len(agents) > proxmoxHost {
+		a := agents[proxmoxHost]
+		sims = append(sims, sim{c: newProxmox(a.host, a.token, *pveGuests)})
+		log.Printf("fleet: Proxmox cluster %s, %d nodes, %d guests, read by %s", proxmoxCluster, proxmoxNodes, *pveGuests, a.host)
+	}
+	if *vsphereVMs > 0 && len(agents) > vcenterHost {
+		a := agents[vcenterHost]
+		sims = append(sims, sim{c: newVSphere(a.host, a.token, *vsphereVMs)})
+		log.Printf("fleet: vCenter %s, %d ESXi hosts, %d VMs, read by %s", vcenterName, esxiHosts, *vsphereVMs, a.host)
+	}
+	if *ntnxVMs > 0 && len(agents) > nutanixHost {
+		a := agents[nutanixHost]
+		sims = append(sims, sim{c: newNutanix(a.host, a.token, *ntnxVMs)})
+		log.Printf("fleet: Prism Central %s, %d clusters of %d AHV hosts, %d VMs, read by %s", prismCentral, ntnxClusters, ahvPerPE, *ntnxVMs, a.host)
+	}
+	if n := min(*pureN, len(pureArrays)); n > 0 && len(agents) > pureHost {
+		a := agents[pureHost]
+		for k := range n {
+			sims = append(sims, sim{c: newPure(a.host, a.token, k)})
+		}
+		log.Printf("fleet: %d Pure arrays (%v), read by %s", n, pureArrays[:n], a.host)
+	}
+	if n := min(*ibmiN, len(ibmiPartitions)); n > 0 && len(agents) > ibmiHost {
+		a := agents[ibmiHost]
+		for k := range n {
+			sims = append(sims, sim{c: newIBMi(a.host, a.token, k)})
+		}
+		sims = append(sims, sim{c: newHMC(a.host, a.token)})
+		log.Printf("fleet: %d IBM i partitions (%v) and the HMC %s, read by %s", n, ibmiPartitions[:n], hmcName, a.host)
+	}
+	if *histDB != "" {
+		past := pastFleet{hosts: hosts, vaults: *vaultDir != "", mail: *mailDir != ""}
+		for _, s := range sims {
+			past.clusters = append(past.clusters, s.c)
+		}
+		for _, c := range demoAll {
+			past.checks = append(past.checks, c.id)
+		}
+		if err := writeHistory(*histDB, *histKey, *histDays, past, time.Now()); err != nil {
+			log.Fatalf("fleet: history: %v", err)
+		}
+	}
 	var wg sync.WaitGroup
-	for i, a := range append(slices.Clone(agents), winAgents...) {
+	for i, a := range all {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var h *host
-			switch {
-			case i >= len(agents): // a Windows server (windows.go)
-				h = newWindowsHost(a.host, *interval)
-			default:
-				h = newHost(i, a.host, *containers, *interval)
-			}
-			if *demo && h.win == nil {
-				h.demo = newDemoHost(fleetIndex(i, a.host), len(agents), demoAll)
-				h.demo.setup(&h.r)
-			}
-			if *withMap && h.win == nil {
-				h.m = fakeMap(i, a.host, h.r.Containers)
-				h.certs, h.files = hostCerts(i, a.host)
-			}
+			h := hosts[i]
 			// Agents start at random points in the interval, as a fleet does.
 			select {
 			case <-ctx.Done():
@@ -362,35 +422,16 @@ func run(args []string) {
 			log.Fatalf("fleet: %v", err)
 		}
 	}
-	for _, a := range clusterAgents {
+	for _, s := range sims {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c := newCluster(a.host, a.token, shape)
 			var probed func(string, time.Time)
-			if cookies != nil && a.host == "cluster-00" {
+			if cookies != nil && s.probe {
 				probed = func(word string, at time.Time) { watchProbe(ctx, client, urls, cookies, word, at, shown) }
 			}
-			runCluster(ctx, c, client, pick, batches, probed)
+			runCluster(ctx, s.c, client, pick, batches, probed)
 		}()
-	}
-	if *pveGuests > 0 && len(agents) > proxmoxHost {
-		a := agents[proxmoxHost]
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runCluster(ctx, newProxmox(a.host, a.token, *pveGuests), client, pick, batches, nil)
-		}()
-		log.Printf("fleet: Proxmox cluster %s, %d nodes, %d guests, read by %s", proxmoxCluster, proxmoxNodes, *pveGuests, a.host)
-	}
-	if *vsphereVMs > 0 && len(agents) > vcenterHost {
-		a := agents[vcenterHost]
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runCluster(ctx, newVSphere(a.host, a.token, *vsphereVMs), client, pick, batches, nil)
-		}()
-		log.Printf("fleet: vCenter %s, %d ESXi hosts, %d VMs, read by %s", vcenterName, esxiHosts, *vsphereVMs, a.host)
 	}
 	if *vaultDir != "" {
 		serveVaults(ctx, *vaultDir)
@@ -406,42 +447,6 @@ func run(args []string) {
 	}
 	if *akamaiDir != "" {
 		serveAkamai(ctx, *akamaiDir)
-	}
-	if *ntnxVMs > 0 && len(agents) > nutanixHost {
-		a := agents[nutanixHost]
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runCluster(ctx, newNutanix(a.host, a.token, *ntnxVMs), client, pick, batches, nil)
-		}()
-		log.Printf("fleet: Prism Central %s, %d clusters of %d AHV hosts, %d VMs, read by %s", prismCentral, ntnxClusters, ahvPerPE, *ntnxVMs, a.host)
-	}
-	if n := min(*pureN, len(pureArrays)); n > 0 && len(agents) > pureHost {
-		a := agents[pureHost]
-		for k := range n {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				runCluster(ctx, newPure(a.host, a.token, k), client, pick, batches, nil)
-			}()
-		}
-		log.Printf("fleet: %d Pure arrays (%v), read by %s", n, pureArrays[:n], a.host)
-	}
-	if n := min(*ibmiN, len(ibmiPartitions)); n > 0 && len(agents) > ibmiHost {
-		a := agents[ibmiHost]
-		for k := range n {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				runCluster(ctx, newIBMi(a.host, a.token, k), client, pick, batches, nil)
-			}()
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runCluster(ctx, newHMC(a.host, a.token), client, pick, batches, nil)
-		}()
-		log.Printf("fleet: %d IBM i partitions (%v) and the HMC %s, read by %s", n, ibmiPartitions[:n], hmcName, a.host)
 	}
 	if *ui > 0 && len(agents) > 0 {
 		wg.Add(1)
@@ -726,13 +731,15 @@ func (h *host) next(now time.Time) report.Report {
 	r := h.r
 	r.Time = now.UTC()
 	r.Uptime = now.Sub(h.start).Seconds()
-	r.CPU = 5 + 30*mrand.Float64()
-	r.Load = [3]float64{r.CPU / 25, r.CPU / 30, r.CPU / 35}
-	r.Mem.Available = uint64(float64(r.Mem.Total) * (0.3 + 0.4*mrand.Float64()))
-	r.Net = report.Net{RxBps: 1e5 * mrand.Float64(), TxBps: 5e4 * mrand.Float64()}
+	r.CPU = math.Round(cpuNow(r.Host, now)*10) / 10 // load.go
+	cores := float64(max(r.CPUs, 1))
+	r.Load = [3]float64{cores * r.CPU / 100, cores * cpuAt(r.Host, now.Add(-5*time.Minute)) / 100, cores * cpuAt(r.Host, now.Add(-15*time.Minute)) / 100}
+	r.Mem.Available = uint64(float64(r.Mem.Total) * (1 - memAt(r.Host, now)/100))
+	busy := 0.2 + workday(r.Host, now)
+	r.Net = report.Net{RxBps: 4e5 * busy * (1 + 0.3*jitter(r.Host, now)), TxBps: 1.5e5 * busy * (1 + 0.3*jitter(r.Host+" tx", now))}
 	disks := slices.Clone(r.Disks)
 	for i := range disks {
-		disks[i].Used = disks[i].Size / 3
+		disks[i].Used = uint64(float64(disks[i].Size) * diskAt(r.Host, i, now))
 		disks[i].Avail = disks[i].Size - disks[i].Used
 	}
 	r.Disks = disks

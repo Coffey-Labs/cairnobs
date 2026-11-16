@@ -89,3 +89,45 @@ var (
 	spellFSCrash       = spell{every: 8 * time.Hour, at: 7 * time.Hour, on: time.Hour}
 	spellActivation    = spell{every: 3 * time.Hour, at: 20 * time.Minute, on: 80 * time.Minute}
 )
+
+// past is a problem as obs-beacond titles it, for the incidents the demo's
+// history starts with (history.go): one for each time its spell came and
+// went before the demo started. The keys and titles are obs-beacond's
+// own, so the past and the present read alike.
+type past struct {
+	s                     spell
+	key, sev, title, host string
+	href, detail, note    string // note: what someone wrote afterwards, on the first of the stories' incidents in a day
+}
+
+var pastProblems = []past{
+	{s: spellLegacyDC, key: "akamai/property/legacy.corp.example.akadns.net", sev: "critical", href: "/akamai",
+		title:  "Akamai GTM: legacy.corp.example.akadns.net has no live datacenter",
+		detail: "Every datacenter's server is failing the liveness test, so GTM answers with all of them, or none.",
+		note:   "Ashburn lost its upstream link for half an hour. The legacy app has one datacenter, so GTM had nowhere else to send it."},
+	{s: spellLegacyDC, key: "akamai/traffic/400019", sev: "critical", href: "/akamai",
+		title:  "Akamai: 30% of CP code 400019's requests are failing with 5xx",
+		detail: "Edge errors for the legacy property: its origin is the Ashburn server GTM can't reach."},
+	{s: spellLegacyDC, key: "akamai/server/legacy.corp.example.akadns.net/198.51.100.50", sev: "warning", href: "/akamai",
+		title: "198.51.100.50 in Ashburn is failing GTM's liveness test for legacy.corp.example.akadns.net"},
+	{s: spellReplicaBehind, key: "cloudflare/errors/shop.example", sev: "warning", href: "/cloudflare",
+		title:  "shop.example: 7% of requests failing",
+		detail: "Most on checkout.shop.example: 503s while HAProxy had one PostgreSQL replica for the shop's reads.",
+		note:   "fleet-0032 fell 40 MB behind during the nightly vacuum and HAProxy took it out; the one replica left couldn't carry checkout's reads. Moving the vacuum out of business hours."},
+	{s: spellAppExits, key: "container/fleet-0007/app-04", sev: "critical", host: "fleet-0007", href: "/containers",
+		title: "app-04 on fleet-0007: not running"},
+	{s: spellDRPaths, key: "cluster/fleet-0040:fa-dr-01/connection/fa-prod-01", sev: "critical", host: "fleet-0040:fa-dr-01", href: "/clusters",
+		title: "Replication to fa-prod-01 in fa-dr-01 (fleet-0040): connected, but its paths aren't redundant"},
+	{s: spellLBFlaps, key: "cloudflare/origin/site-1-web/fleet-0052", sev: "warning", host: "fleet-0052", href: "/cloudflare",
+		title: "fleet-0052 is failing site-1-web's health check"},
+	{s: spellLBFlaps, key: "akamai/server/api.shop.example.akadns.net/203.0.2.11", sev: "warning", host: "fleet-0101", href: "/akamai",
+		title: "203.0.2.11 in Singapore is failing GTM's liveness test for api.shop.example.akadns.net"},
+	{s: spellVaultEdgeDown, key: "node/obs-beacond:vault-edge/vault-edge-e3", sev: "critical", host: "obs-beacond:vault-edge",
+		href: "/workloads?source=obs-beacond%3Avault-edge&q=vault-edge-e3", title: "Server vault-edge-e3 in vault-edge (obs-beacond) is down"},
+	{s: spellCrashloop, key: "workload/cluster-00/ns-07/deployment/app-097", sev: "warning", host: "cluster-00",
+		href: "/workloads?source=cluster-00&ns=ns-07&q=app-097", title: "deployment/app-097 in ns-07 (cluster-00): 1 of 10 pods: 1 restarting (CrashLoopBackOff)"},
+	{s: spellLegacy502, key: "check/web-legacy", sev: "warning", href: "/checks", title: "legacy.example.com is down"},
+	{s: spellBlocklisted, key: "check/rbl-mx2", sev: "warning", href: "/checks", title: "mx2.example.com on block lists is down"},
+	{s: spellLateBackup, key: "backup/fleet-0050/received/fleet-0080/pg-dump", sev: "serious", host: "fleet-0050", href: "/backups",
+		title: "fleet-0080's pg-dump backup on fleet-0050 is 26 hours old"},
+}
