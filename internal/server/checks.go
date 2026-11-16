@@ -269,7 +269,7 @@ func (srv *Server) judgeChecks(now time.Time) ([]CheckView, []Condition) {
 				sev = "warning"
 			}
 			if sev != "" {
-				conds = append(conds, Condition{Key: "cert/" + s.ID, Severity: sev,
+				conds = append(conds, Condition{Key: "cert/" + s.ID, Severity: sev, Ends: soonest,
 					Title:  fmt.Sprintf("%s certificate expires in %s", s.Name, plural(days, "day", "days")),
 					Detail: fmt.Sprintf("Seen on %s; it expires %s.", s.Target(), soonest.UTC().Format("2006-01-02 15:04 UTC")), Href: href})
 				if v.Status == "good" {

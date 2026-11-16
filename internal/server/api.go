@@ -217,6 +217,9 @@ type Condition struct {
 	Affected string      `json:"affected,omitempty"` // what else this takes down (root-cause grouping)
 	Grouped  []GroupedBy `json:"grouped,omitempty"`  // the learned dependencies that grouped it, when any did
 	Map      string      `json:"map,omitempty"`      // where it is on the maps: a page path with its focus
+	// Ends is when the certificate a condition is about ends, for one that
+	// is: certSeverity keeps it a warning until it's close (#34).
+	Ends time.Time `json:"-"`
 }
 
 // view judges every host now: what the UI shows, and the conditions the
@@ -364,6 +367,7 @@ func (srv *Server) view(now time.Time) ([]HostView, []Condition) {
 	conds = append(conds, dlConds...)
 	conds = append(conds, srv.workloadConditions(now)...)
 	conds = append(conds, srv.certConditions(now)...)
+	certSeverity(conds, now, srv.certCritical())
 	if byHost, _ := srv.vmLinks(); len(byHost) > 0 {
 		explainSilent(conds, byHost)
 		for i := range hosts {

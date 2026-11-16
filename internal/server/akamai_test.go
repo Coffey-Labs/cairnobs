@@ -92,7 +92,7 @@ func TestAkamaiCPS(t *testing.T) {
 	srv := akServer(t, akamai.Snapshot{Checked: now, Domains: []akamai.Domain{}, Enrollments: []akamai.Enrollment{
 		{ID: 1001, CN: "www.example.com", Validation: "dv", Deployed: []report.Cert{cert("www.example.com", "aa", "RSA 2048", 60*day), cert("www.example.com", "ab", "ECDSA P-256", 60*day)}},
 		{ID: 1002, CN: "shop.example.com", Validation: "third-party", Pending: 1, Waiting: "third-party-csr", Deployed: []report.Cert{cert("shop.example.com", "bb", "RSA 2048", 10*day)}},
-		{ID: 1003, CN: "api.example.com", Validation: "dv", Deployed: []report.Cert{cert("api.example.com", "cc", "RSA 2048", 3*day)}},
+		{ID: 1003, CN: "api.example.com", Validation: "dv", Deployed: []report.Cert{cert("api.example.com", "cc", "RSA 2048", day)}},
 		{ID: 1004, CN: "new.example.com", Validation: "dv", Pending: 1, Deployed: []report.Cert{}},
 	}})
 	got := srv.akamaiConditions(now)
@@ -100,7 +100,7 @@ func TestAkamaiCPS(t *testing.T) {
 		t.Fatalf("%s", k)
 	}
 	if !strings.Contains(got[0].Detail, "third-party certificate") || !strings.Contains(got[1].Detail, "signed by your certificate authority") ||
-		!strings.Contains(got[2].Detail, "stalled") || !strings.HasPrefix(got[2].Title, "Akamai certificate for api.example.com: ends in 3 days") {
+		!strings.Contains(got[2].Detail, "stalled") || !strings.HasPrefix(got[2].Title, "Akamai certificate for api.example.com: ends in ") || !strings.Contains(got[2].Title, " hours") {
 		t.Errorf("%+v", got)
 	}
 	rows := srv.certificates(now)

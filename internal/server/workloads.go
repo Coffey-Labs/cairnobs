@@ -855,7 +855,8 @@ func judgeRecords(s wsnap, now time.Time, firing func(key string) bool, ad adopt
 				if on, _ := r.Facts["served_on"].(string); on != "" {
 					detail = append(detail, "Served on "+on+".")
 				}
-				add(Condition{Key: "cert/" + src + "/" + r.ID, Severity: sev, Detail: strings.Join(detail, " "),
+				ends, _ := time.Parse(time.RFC3339, fmt.Sprint(r.Facts["ends"]))
+				add(Condition{Key: "cert/" + src + "/" + r.ID, Severity: sev, Detail: strings.Join(detail, " "), Ends: ends,
 					Title: fmt.Sprintf("%s %s%s in %s: %s", what, r.Name, from, name, lowerFirst(r.Word)), Href: workloadHref(src, r.Namespace, r.Name)}, ad.alert(r, r.Alert), r.Kind)
 			}
 		case report.KindVM:

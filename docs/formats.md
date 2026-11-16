@@ -321,6 +321,21 @@ Without `alerts.channels` in obs-beacond.yaml, channels are added under
 Configure › Alerts instead (see "Settings edited in the UI"). Writing the key,
 even as `channels: []`, makes the file the place for them.
 
+### Certificates
+
+`certificates.critical_within` (default `48h`) is how close to its end a
+certificate's alert becomes critical, whichever source saw it: hosts'
+ports and files, site checks, Cloudflare, Akamai CPS, Vault and the
+clusters' cert-manager. Before that it's a warning, from when its source
+starts warning (21 days for most; checks.yaml's `tls_warn_days` and
+Cloudflare's `cert_warn_days` set theirs). A certificate that has ended is
+critical. The Certificates page judges by the same window.
+
+```yaml
+certificates:
+  critical_within: 72h
+```
+
 ### State
 
 `database` is obs-beacond's own database: sessions, incidents (open ones and

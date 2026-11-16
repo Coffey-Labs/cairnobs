@@ -66,7 +66,7 @@ func TestCertificates(t *testing.T) {
 	srv.store.Put("node1", results(now.Add(time.Second)), now.Add(time.Second)) // kept between scans
 
 	conds := srv.certConditions(now)
-	if len(conds) != 1 || conds[0].Key != "certinv/"+mine.Fingerprint || conds[0].Severity != "critical" || conds[0].Host != "node1" ||
+	if len(conds) != 1 || conds[0].Key != "certinv/"+mine.Fingerprint || conds[0].Severity != "warning" || conds[0].Host != "node1" || // 4 days: a warning (#34)
 		conds[0].Detail != "Served on node1:8443 · admin, node1:25 (smtp STARTTLS) · postfix." {
 		t.Errorf("conditions: %+v", conds)
 	}
@@ -136,7 +136,7 @@ func TestCertFiles(t *testing.T) {
 	for _, c := range srv.certificates(now) {
 		rows[c.Fingerprint] = c
 	}
-	if c := rows[old.Fingerprint]; c == nil || c.Status != "critical" || len(c.NotReloaded) != 1 || c.NotReloaded[0] != "node1:8443 · admin" ||
+	if c := rows[old.Fingerprint]; c == nil || c.Status != "warning" || len(c.NotReloaded) != 1 || c.NotReloaded[0] != "node1:8443 · admin" ||
 		!strings.HasPrefix(c.Renewed, "node1:/etc/letsencrypt/live/admin/cert.pem (ends ") {
 		t.Errorf("the admin's: %+v", c)
 	}
@@ -154,14 +154,14 @@ func TestCertFiles(t *testing.T) {
 	if len(conds) != 3 {
 		t.Errorf("%d conditions: %+v", len(conds), conds)
 	}
-	if c := conds["certinv/"+old.Fingerprint]; c.Severity != "critical" || c.Host != "node1" || !strings.HasSuffix(c.Title, "; renewed but not reloaded") ||
+	if c := conds["certinv/"+old.Fingerprint]; c.Severity != "warning" || c.Host != "node1" || !strings.HasSuffix(c.Title, "; renewed but not reloaded") ||
 		!strings.Contains(c.Detail, "but node1:8443 · admin still serves this one: reload the service.") {
 		t.Errorf("the admin's: %+v", c)
 	}
 	if c := conds["certinv/"+shop.Fingerprint]; c.Severity != "warning" || c.Title != "Certificate shop.example.org renewed but not reloaded" {
 		t.Errorf("the shop's, which a check alerts on: %+v", c)
 	}
-	if c := conds["certinv/"+ending.Fingerprint]; c.Severity != "critical" || c.Detail != "In node1:/etc/pki/tls/certs/ending.crt; no port serves it." {
+	if c := conds["certinv/"+ending.Fingerprint]; c.Severity != "warning" || c.Detail != "In node1:/etc/pki/tls/certs/ending.crt; no port serves it." {
 		t.Errorf("a file ending in 3 days: %+v", c)
 	}
 
@@ -262,5 +262,31 @@ func TestCertWrong(t *testing.T) {
 		if row.Status != "warning" || len(row.Wrong) != 1 {
 			t.Errorf("row: %+v", *row)
 		}
+	}
+}
+
+// A certificate's alert is a warning until it's within critical_within of
+// its end, whichever source judged it critical (#34).
+func TestCertSeverity(t *testing.T) {
+	now := time.Date(2026, 11, 16, 5, 0, 0, 0, time.UTC)
+	conds := []Condition{
+		{Key: "four days", Severity: "critical", Ends: now.Add(4 * 24 * time.Hour)},
+		{Key: "a day", Severity: "critical", Ends: now.Add(24 * time.Hour)},
+		{Key: "ended", Severity: "critical", Ends: now.Add(-time.Hour)},
+		{Key: "not a certificate", Severity: "critical"},
+		{Key: "warning", Severity: "warning", Ends: now.Add(10 * 24 * time.Hour)},
+	}
+	certSeverity(conds, now, defaultCertCritical)
+	want := []string{"warning", "critical", "critical", "critical", "warning"}
+	for i, c := range conds {
+		if c.Severity != want[i] {
+			t.Errorf("%s: %s, want %s", c.Key, c.Severity, want[i])
+		}
+	}
+	if st, _ := certStatus(report.Cert{NotBefore: now.Add(-300 * 24 * time.Hour), NotAfter: now.Add(4 * 24 * time.Hour)}, now, defaultCertCritical); st != "warning" {
+		t.Errorf("certStatus four days out: %s", st)
+	}
+	if st, _ := certStatus(report.Cert{NotBefore: now.Add(-300 * 24 * time.Hour), NotAfter: now.Add(4 * 24 * time.Hour)}, now, 7*24*time.Hour); st != "critical" {
+		t.Errorf("certStatus four days out, critical_within 7d: %s", st)
 	}
 }

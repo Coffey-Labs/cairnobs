@@ -74,6 +74,8 @@ type Config struct {
 	Mail *mailmon.Config `yaml:"mail"`
 	// Reports' timezone and the weekly digest.
 	Reports *ReportsConfig `yaml:"reports"`
+	// How close to its end a certificate becomes critical, from any source.
+	Certificates CertificatesConfig `yaml:"certificates"`
 	// Vault and OpenBao clusters obs-beacond reads itself (docs/vault.md).
 	Vault []vault.Config `yaml:"vault"`
 }
@@ -141,6 +143,12 @@ func LoadConfig(p string) (*Config, error) {
 	}
 	if c.StaleAfter == 0 {
 		c.StaleAfter = 60 * time.Second
+	}
+	if c.Certificates.CriticalWithin < 0 {
+		return nil, fmt.Errorf("%s: certificates.critical_within can't be negative", p)
+	}
+	if c.Certificates.CriticalWithin == 0 {
+		c.Certificates.CriticalWithin = defaultCertCritical
 	}
 	if c.EmergencyListen != "" && !loopback(c.EmergencyListen) {
 		return nil, fmt.Errorf("%s: emergency_listen must be a loopback address (it's reached through an SSH tunnel), not %s", p, c.EmergencyListen)

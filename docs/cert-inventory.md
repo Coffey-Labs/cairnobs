@@ -78,16 +78,21 @@ where is it used?"
 
 ## What's judged
 
-- **Ends:** 21 days a warning, 7 critical, as site checks and Vault; a
+- **Ends:** a warning from 21 days, critical within the last 48 hours
+  (`certificates.critical_within` in obs-beacond.yaml, formats.md); a
   short-lived certificate (under 7 days' life, ACME's 6-day ones
-  included) by a third and a tenth of its life.
+  included) by a third and a tenth of its life. The window is the same
+  for every source's alerts: a source that judges a certificate critical
+  earlier (site checks and Vault at 7 days, Cloudflare at 3) pages only
+  inside it, and warns until then. Four days left is a job for working
+  hours; a page every 15 minutes for it gets the whole tool muted.
 - **Served but wrong** (from handshakes only): a name the certificate
   doesn't cover, an incomplete chain (missing intermediate), a
   self-signed certificate on a port that had a CA-signed one. Warnings.
 - **Weak** (question 6): SHA-1 signatures, RSA under 2048 bits.
   Warnings, or only shown.
 - **Not judged:** CA bundles, and certificates in files no service
-  serves, unless they end within 7 days (a renewed file nobody reloaded
+  serves, until 7 days before they end (a renewed file nobody reloaded
   is the classic outage: question 4).
 
 ## Scale
@@ -162,7 +167,7 @@ modification time changes.
   `**` is any number of directories (eight at most) and `{a,b}` either;
   5,000 files and 1 MiB a file at most.
 - **Places** of kind `file`, "node1:/etc/letsencrypt/live/shop/cert.pem".
-  A certificate only in files is judged at 7 days, not 21: a file no
+  A certificate only in files warns from 7 days, not 21: a file no
   port serves may be nobody's. Its alert says "no port serves it".
 - **Windows** (2026-11-15): a Windows agent has no helper and no
   files to glob; it reads the machine's certificate stores itself,
