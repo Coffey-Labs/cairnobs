@@ -29,7 +29,8 @@ Turning `demo_signin` off ends every demo session at its next check.
 Demo sign-in lets in anyone who can reach the page. Use it only on an
 obs-beacond whose agents are the simulator. The sign-in providers you
 configure still work beside it, so you can sign in as yourself to change the
-demo's settings.
+demo's settings. They're folded under **Sign in as yourself**, so visitors
+aren't invited to type real credentials into a demo.
 
 ## Shape of a demo host
 

@@ -20,6 +20,10 @@
 	const reason = $derived(MESSAGES[page.url.searchParams.get('signin') ?? ''] ?? '');
 	const back = $derived(page.url.pathname === '/' ? '' : '?return=' + encodeURIComponent(page.url.pathname + page.url.search));
 
+	// On the demo, the ways to sign in as yourself are folded away, so
+	// visitors aren't invited to type real credentials (#45).
+	let yourself = $state(false);
+	const others = $derived(!demo || yourself);
 	const redirects = $derived(providers.filter((p) => p.kind !== 'passkey'));
 	const local = $derived(providers.find((p) => p.kind === 'passkey'));
 	const passkey = $derived(local && local.passkeys !== false ? local : undefined);
@@ -90,8 +94,14 @@
 		{#if demo}
 			<p class="demo">This is the demo: a simulated enterprise of hosts, clusters, VMs, arrays and IBM i, failing in the ways real ones do. Look at anything, setup included; nothing you do changes it.</p>
 			<button class="btn pri wide" onclick={demoSignin} disabled={busy}><Icon name="eye" /> Look around</button>
-			<p class="fine"><a href="https://cairnobs.org/">What Cairn OBS is</a></p>
+			<p class="more"><a href="https://cairnobs.org/">What Cairn OBS is <span aria-hidden="true">→</span></a></p>
+			{#if providers.length && !yourself}
+				<button class="btn yours" onclick={() => (yourself = true)} aria-expanded="false">Sign in as yourself</button>
+			{:else if providers.length}
+				<div class="or"><span>Sign in as yourself</span></div>
+			{/if}
 		{/if}
+		{#if others}
 		{#each redirects as p (p.id)}
 			<a class="btn pri wide" href="/auth/{p.id}/login{back}" data-sveltekit-reload data-sveltekit-preload-data="off"><Icon name="lock" /> {p.label}</a>
 			{#if p.note}<p class="fine">{p.note}</p>{/if}
@@ -108,6 +118,7 @@
 				<label>Code from your authenticator app <input bind:value={pw.code} inputmode="numeric" autocomplete="one-time-code" pattern={'[0-9 ]{6,7}'} maxlength="7" required /></label>
 				<button class="btn {passkey ? '' : 'pri'} wide" type="submit" disabled={busy}><Icon name="lock" /> Sign in</button>
 			</form>
+		{/if}
 		{/if}
 		{#if !providers.length && !demo}<p class="fine">No sign-in provider is configured.</p>{/if}
 		{#if dev}
@@ -134,7 +145,10 @@
 	.dev p { font-size: 12px; color: var(--muted-fg); margin: 0 0 10px; }
 	.err { color: var(--critical); font-size: 13px; }
 	.demo { font-size: 13.5px; line-height: 1.55; text-align: center; margin: 0 0 6px; }
-	.fine a { color: inherit; }
+	.more { text-align: center; margin: 2px 0 6px; font-size: 13.5px; }
+	.more a { color: var(--primary); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, var(--primary) 40%, transparent); }
+	.more a:hover { text-decoration-color: var(--primary); }
+	.yours { justify-self: center; height: 32px; font-size: 12.5px; color: var(--muted-fg); margin-top: 6px; background: none; }
 	.or { display: flex; align-items: center; gap: 10px; color: var(--muted-fg); font-size: 12px; margin: 6px 0; }
 	.or::before, .or::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 	.pw { display: grid; gap: 10px; }
