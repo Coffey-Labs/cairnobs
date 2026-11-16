@@ -4,7 +4,7 @@
 	import Icon from './Icon.svelte';
 	import type { IconName } from './icons';
 	import Mark from './Mark.svelte';
-	import { post } from './api';
+	import { post, type Features } from './api';
 	import { live } from './live.svelte';
 	import { hms, zone } from './format';
 
@@ -39,7 +39,22 @@
 	// control plane, for admins. The switch remembers where you were.
 	const admin = $derived(live.seesAll); // operators see Configure read-only
 	const configuring = $derived(path === '/configure' || path.startsWith('/configure/'));
-	const f = $derived(live.overview?.features);
+	// Until the first overview arrives, the sections from last time, so a
+	// page loaded straight from its address doesn't flash a short sidebar
+	// that then grows (#44). A convenience: without storage it just waits.
+	const remembered = (() => {
+		try {
+			return (JSON.parse(localStorage.getItem('cairnobs.features') ?? 'null') as Features | null) ?? undefined;
+		} catch {
+			return undefined;
+		}
+	})();
+	const f = $derived(live.overview?.features ?? remembered);
+	$effect(() => {
+		const now = live.overview?.features;
+		if (!now) return;
+		try { localStorage.setItem('cairnobs.features', JSON.stringify(now)); } catch { /* private window, storage off */ }
+	});
 	let lastWatch = $state('/');
 	let lastConfigure = $state('/configure');
 	$effect(() => {
