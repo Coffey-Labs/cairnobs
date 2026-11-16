@@ -20,7 +20,9 @@ import (
 // real network; the status pages come in the hosts' reports, as an agent's
 // fetches do.
 // Problems on purpose: the leader is fleet-0031, not its usual fleet-0030
-// (a failover nobody moved back), and fleet-0032 is 40 MB behind.
+// (a failover nobody moved back), and every so often fleet-0032 falls 40
+// MB behind and HAProxy takes it out of the replicas' pool until it
+// catches up (scenario.go, story 2).
 const patroniPort = 58420
 
 var (
@@ -85,7 +87,9 @@ func servePatroni(ctx context.Context) {
 					case pgHome:
 						role = "sync_standby"
 					case pgLagging:
-						lag = `,"lag":41943040`
+						if spellReplicaBehind.active(time.Now()) {
+							lag = `,"lag":41943040`
+						}
 					}
 					ms = append(ms, fmt.Sprintf(`{"name":%q,"role":%q,"state":%q,"host":%q,"port":5432,"timeline":7%s}`, hostName(m), role, state, pgAddr(m), lag))
 				}
@@ -131,7 +135,8 @@ func dataFetches(n int, now time.Time) []report.Fetch {
 			fmt.Fprintf(&b, "%s,BACKEND,0,UP,1\n", name)
 		}
 		backend("pg-primary", func(m int) bool { return m == pgLeader }, pgMembers)
-		backend("pg-replicas", func(m int) bool { return m != pgLeader }, pgMembers)
+		behind := spellReplicaBehind.active(now)
+		backend("pg-replicas", func(m int) bool { return m != pgLeader && !(behind && m == pgLagging) }, pgMembers)
 		var apps []int
 		for p := 3; p < 13; p++ {
 			apps = append(apps, p)

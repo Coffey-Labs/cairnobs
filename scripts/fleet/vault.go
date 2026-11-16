@@ -31,9 +31,11 @@ import (
 //   - vault-prod: Vault Enterprise, three healthy Raft servers, DR
 //     replication streaming to its secondary, a license 300 days out, an
 //     audit device, and a PKI mount (pki_int) with 400 services'
-//     certificates (some ending soon) and 2,000 short-lived ones.
-//   - vault-edge: OpenBao, three Raft servers with one failed (no failure
-//     tolerance left), and an intermediate CA 12 days from its end.
+//     certificates (one ending within a week, its renewal overdue) and
+//     2,000 short-lived ones.
+//   - vault-edge: OpenBao, three Raft servers, one of which fails now and
+//     then and leaves no failure tolerance (scenario.go), and an
+//     intermediate CA 12 days from its end.
 //
 // They listen on vaultPort and the port after it; -vault's directory
 // keeps their certificate and key, so vault.yaml (written there) stays
@@ -74,7 +76,7 @@ func serveVaults(ctx context.Context, dir string) {
 		newFakeVault("vault-prod", "1.21.4+ent", true, "pki_int", now, 300*24*time.Hour, 400, 2000,
 			[]fakeRaft{{"v1", "leader", "alive"}, {"v2", "voter", "alive"}, {"v3", "voter", "alive"}}, 1, 18_000),
 		newFakeVault("vault-edge", "2.4.1", false, "pki_edge", now, 12*24*time.Hour, 40, 0,
-			[]fakeRaft{{"e1", "leader", "alive"}, {"e2", "voter", "alive"}, {"e3", "voter", "failed"}}, 0, 900),
+			[]fakeRaft{{"e1", "leader", "alive"}, {"e2", "voter", "alive"}, {"e3", "voter", "alive"}}, 1, 900),
 	}
 	var yaml strings.Builder
 	yaml.WriteString("vault:\n")
@@ -153,14 +155,11 @@ func newFakeVault(name, version string, ent bool, mount string, now time.Time, c
 	day := 24 * time.Hour
 	for i := range services {
 		cn := fmt.Sprintf("svc-%03d.%s.internal", i, strings.TrimPrefix(name, "vault-"))
-		// Most a long way from their end; a few within the warning's 21
-		// days, fewer within the critical 7.
+		// Most a long way from their end; one of vault-prod's within a
+		// week, its renewal overdue.
 		left := time.Duration(25+(i*37)%340) * day
-		switch {
-		case i%97 == 5:
-			left = 5 * day
-		case i%41 == 7:
-			left = 15 * day
+		if name == "vault-prod" && i == 102 {
+			left = 6 * day
 		}
 		for k, end := range []time.Duration{left - 30*day, left} { // the one it replaced, then the renewal
 			x, p := sign(&x509.Certificate{Subject: pkix.Name{CommonName: cn}, DNSNames: []string{cn}, NotBefore: now.Add(end - 365*day), NotAfter: now.Add(end)},
@@ -209,8 +208,11 @@ func (v *fakeVault) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "sys/leader":
 		out = map[string]any{"ha_enabled": true, "is_self": true, "leader_address": "https://" + v.servers[0].id + "." + v.name + ":8200"}
 	case p == "sys/storage/raft/autopilot/state":
-		servers, voters, healthy := map[string]any{}, []string{}, true
+		servers, voters, healthy, ft := map[string]any{}, []string{}, true, v.ft
 		for _, s := range v.servers {
+			if v.name == "vault-edge" && s.id == "e3" && spellVaultEdgeDown.active(now) {
+				s.node, s.status, ft = "failed", "voter", 0
+			}
 			ok := s.node == "alive"
 			healthy = healthy && ok
 			sv := map[string]any{"id": s.id, "name": v.name + "-" + s.id, "address": s.id + ":8201", "node_status": s.node, "healthy": ok,
@@ -221,7 +223,7 @@ func (v *fakeVault) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			servers[s.id] = sv
 			voters = append(voters, s.id)
 		}
-		out = data(map[string]any{"healthy": healthy, "failure_tolerance": v.ft, "voters": voters, "servers": servers})
+		out = data(map[string]any{"healthy": healthy, "failure_tolerance": ft, "voters": voters, "servers": servers})
 	case p == "auth/token/lookup-self":
 		out = data(map[string]any{"display_name": "token-obs-beacond", "policies": []string{"default", "obs-monitor"}, "ttl": 20 * 3600,
 			"creation_ttl": 24 * 3600, "renewable": true, "type": "service"})

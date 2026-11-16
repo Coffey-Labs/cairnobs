@@ -17,11 +17,10 @@ import (
 // dozen zones, a load-balanced pool per site whose origins are the sites'
 // load balancers, and the last 15 minutes of traffic. obs-beacond reads it
 // through cloudflare's stand_in (http on loopback only). Problems on
-// purpose: legacy.example still uses Flexible SSL, partners.example's edge
-// certificate ends in 9 days, media.example's advanced certificate is
-// stuck validating, fleet-0052 fails its pool's health check from eastern
-// North America, and 7% of shop.example's requests fail, most on
-// checkout.shop.example.
+// purpose: legacy.example still uses Flexible SSL; now and then fleet-0052
+// fails its pool's health check from eastern North America; and while
+// the shop's database replica is behind (scenario.go, story 2) 7% of
+// shop.example's requests fail, most on checkout.shop.example.
 const cloudflarePort = 58430
 
 // cfToken is the fake's API token; not a secret, as the fake is loopback only.
@@ -109,16 +108,8 @@ func cfHandle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ends := now.Add(time.Duration(40+k*3) * 24 * time.Hour)
-		if z == "partners.example" {
-			ends = now.Add(9*24*time.Hour + 5*time.Hour)
-		}
-		packs := []map[string]any{{"type": "universal", "status": "active", "hosts": []string{z, "*." + z},
-			"certificates": []map[string]string{{"expires_on": ends.Format(time.RFC3339)}}}}
-		if z == "media.example" {
-			packs = append(packs, map[string]any{"type": "advanced", "status": "pending_validation", "hosts": []string{"cdn." + z},
-				"certificates": []map[string]string{}})
-		}
-		ok(packs)
+		ok([]map[string]any{{"type": "universal", "status": "active", "hosts": []string{z, "*." + z},
+			"certificates": []map[string]string{{"expires_on": ends.Format(time.RFC3339)}}}})
 	case len(parts) == 3 && parts[0] == "zones" && parts[2] == "load_balancers":
 		_, z, found := zone(parts[1])
 		if !found {
@@ -169,7 +160,7 @@ func cfHandle(w http.ResponseWriter, r *http.Request) {
 			for pos := 1; pos <= 2; pos++ {
 				_, a := cfOrigin(s, pos)
 				h := map[string]any{"healthy": true, "rtt": fmt.Sprintf("%dms", 20+ri*30+pos*3), "failure_reason": "No failures", "response_code": 200}
-				if s == 1 && pos == 2 && region == "ENAM" {
+				if s == 1 && pos == 2 && region == "ENAM" && spellLBFlaps.active(now) {
 					h = map[string]any{"healthy": false, "rtt": "0ms", "failure_reason": "Response code mismatch error", "response_code": 503}
 				}
 				origins = append(origins, map[string]any{a: h})
@@ -197,7 +188,7 @@ func cfHandle(w http.ResponseWriter, r *http.Request) {
 				return map[string]any{"count": n, "dimensions": map[string]any{"edgeResponseStatus": status, "securityAction": action, "clientRequestHTTPHost": host}}
 			}
 			win := []map[string]any{g(base, 200, "unknown", z), g(base/20, 304, "unknown", "www."+z), g(3, 502, "unknown", z), g(base/400, 403, "block", z)}
-			if z == "shop.example" {
+			if z == "shop.example" && spellReplicaBehind.active(now) {
 				win = append(win, g(base*6/100, 503, "unknown", "checkout.shop.example"), g(base/100, 502, "unknown", z))
 			}
 			zs = append(zs, map[string]any{"zoneTag": id, "win": win, "day": []map[string]int{{"count": base / 400 * 96}}})

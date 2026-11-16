@@ -16,17 +16,20 @@ import (
 // keep running, and the backups each site keeps, so that every page has
 // something to show. config writes the files obs-beacond reads; run makes
 // the hosts report against them. Both work them out from the number of
-// agents, so give both the same -n. Problems on purpose:
+// agents, so give both the same -n. Problems on purpose, most of them
+// coming and going (scenario.go):
 //
-//	checks    legacy.example.com answers 502 (a warning-only check);
-//	          billing.example.com's certificate ends in 9 days; the
-//	          ping to the last site loses 3%
-//	units     fleet-0041's redis-server has failed
-//	containers fleet-0007's app-04 exited; fleet-0008's app-09 is stopped
-//	          on purpose
-//	backups   site 1's newest pg-dump is 40 hours old; site 2's shrank to
-//	          a third; site 3's backup disk is 93% full; site 4's
-//	          pg-backup job failed; site 5's md1 is missing a disk
+//	checks    legacy.example.com answers 502 now and then (a warning-only
+//	          check); billing.example.com's certificate ends in 9 days;
+//	          the ping to the last site loses 3%; mx2 lands on a block
+//	          list now and then
+//	units     fleet-0041's redis-server fails now and then, and is
+//	          restarted
+//	containers fleet-0007's app-04 exits now and then; fleet-0008's app-09
+//	          is stopped on purpose
+//	backups   site 1's pg-dump is late now and then; site 2's shrinks to a
+//	          third now and then; site 3's backup disk is 93% full; site
+//	          4's pg-backup job failed; site 5's md1 is missing a disk
 
 // role is what a host does in its site, by position (netmap.go).
 func role(pos int) string {
@@ -112,6 +115,9 @@ func demoChecks(hosts int) []demoCheck {
 	out = append(out,
 		demoCheck{id: "web-legacy", name: "legacy.example.com", yaml: "http: https://legacy.example.com/\n    severity: warning", from: web,
 			result: func(from int, now time.Time) report.CheckResult {
+				if !spellLegacy502.active(now) {
+					return report.CheckResult{ID: "web-legacy", At: now.UTC(), OK: true, Status: 200, Ms: 340}
+				}
 				return report.CheckResult{ID: "web-legacy", At: now.UTC(), Status: 502, Ms: 2100, Error: "HTTP 502, want 200"}
 			}},
 		demoCheck{id: "dns-mx", name: "example.com MX", yaml: "dns: example.com\n    type: MX\n    contains: mx1.example.com", from: web,
@@ -126,6 +132,9 @@ func demoChecks(hosts int) []demoCheck {
 		// mx2 landed on a list that flags whole networks: a warning to look at, not a page.
 		demoCheck{id: "rbl-mx2", name: "mx2.example.com on block lists", yaml: "rbl: 192.0.2.26\n    severity: warning", from: web[:1],
 			result: func(from int, now time.Time) report.CheckResult {
+				if !spellBlocklisted.active(now) {
+					return report.CheckResult{ID: "rbl-mx2", At: now.UTC(), OK: true, Ms: 190, Answer: "clean on 5 of 5"}
+				}
 				return report.CheckResult{ID: "rbl-mx2", At: now.UTC(), Ms: 210, Answer: "clean on 4 of 5",
 					Error: "listed on dnsbl-1.uceprotect.net (127.0.0.2)"}
 			}},
@@ -204,16 +213,19 @@ func demoScan(n, hosts int, now time.Time) *report.Backups {
 					if name == "system" {
 						size = int64(800+40*k) << 20
 					}
-					d := report.BackupDir{Name: name, From: hostName(from), Path: fmt.Sprintf("/srv/backups/%s/%s/%s", hostName(from), name, now.Format("2006-01-02")),
-						Size: size, PrevSize: size - size/50, Count: 14, Modified: now.Add(-time.Duration(3+k) * time.Hour).UTC()}
+					d := report.BackupDir{Name: name, From: hostName(from), Size: size, PrevSize: size - size/50, Count: 14,
+						Modified: now.Add(-time.Duration(3+k) * time.Hour).UTC()}
 					if k == 0 && name == "pg-dump" {
-						switch site {
-						case 1:
-							d.Modified = now.Add(-40 * time.Hour).UTC()
-						case 2:
+						switch {
+						case site == 1 && spellLateBackup.active(now):
+							// Last night's never came: the newest is the night before's.
+							d.Modified = spellLateBackup.began(now).Add(-26*time.Hour - 10*time.Minute).UTC()
+						case site == 2 && spellBackupShrank.active(now):
 							d.PrevSize, d.Size = d.Size, d.Size/3
 						}
 					}
+					// Each copy is in a folder named after the day it was made.
+					d.Path = fmt.Sprintf("/srv/backups/%s/%s/%s", hostName(from), name, d.Modified.Format("2006-01-02"))
 					sc.Received = append(sc.Received, d)
 				}
 			}
@@ -328,13 +340,46 @@ func (d *demoHost) setup(r *report.Report) {
 	}
 	for k := range r.Containers.List {
 		c := &r.Containers.List[k]
-		switch {
-		case d.n == demoExited && c.Name == "app-04":
-			c.State, c.Status, c.Health = "exited", "Exited (137) 12 minutes ago", ""
-		case d.n == demoStoppedOnPurp && c.Name == "app-09":
+		if d.n == demoStoppedOnPurp && c.Name == "app-09" {
 			c.State, c.Status, c.Health = "exited", "Exited (0) 2 days ago", ""
 		}
 	}
+}
+
+// containers puts the containers that come and go in their state now.
+func (d *demoHost) containers(r *report.Report, now time.Time) {
+	if d.n != demoExited || r.Containers == nil {
+		return
+	}
+	list := append([]report.Container{}, r.Containers.List...)
+	for k := range list {
+		c := &list[k]
+		if c.Name != "app-04" {
+			continue
+		}
+		if b := spellAppExits.began(now); spellAppExits.active(now) {
+			c.State, c.Status, c.Health = "exited", fmt.Sprintf("Exited (137) %s ago", fuzzy(now.Sub(b))), ""
+		} else {
+			c.State, c.Health = "running", "healthy"
+			c.Status = fmt.Sprintf("Up %s (healthy)", fuzzy(now.Sub(b.Add(spellAppExits.on))))
+		}
+	}
+	r.Containers = &report.Containers{List: list}
+}
+
+// fuzzy is a duration as docker ps says it.
+func fuzzy(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "Less than a minute"
+	case d < 2*time.Minute:
+		return "About a minute"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes", int(d.Minutes()))
+	case d < 2*time.Hour:
+		return "About an hour"
+	}
+	return fmt.Sprintf("%d hours", int(d.Hours()))
 }
 
 // stamp adds the units, check results and backup scan to a report.
@@ -343,7 +388,12 @@ func (d *demoHost) stamp(r *report.Report, start, now time.Time) {
 	for _, u := range demoUnits(d.n) {
 		un := report.Unit{Name: u + ".service", Load: "loaded", Active: "active", Sub: "running", Since: start.UTC()}
 		if d.n == demoFailedUnit && u == "redis-server" {
-			un.Active, un.Sub, un.Restarts, un.Since = "failed", "failed", 5, time.Time{}
+			switch b := spellRedisFails.began(now); {
+			case spellRedisFails.active(now):
+				un.Active, un.Sub, un.Restarts, un.Since = "failed", "failed", 5, time.Time{}
+			case b.After(start): // restarted by hand when the spell ended
+				un.Since = b.Add(spellRedisFails.on).UTC()
+			}
 		}
 		r.Units = append(r.Units, un)
 	}
@@ -351,6 +401,7 @@ func (d *demoHost) stamp(r *report.Report, start, now time.Time) {
 	for _, c := range d.checks {
 		r.Checks = append(r.Checks, c.result(d.n, now))
 	}
+	d.containers(r, now)
 	r.Backups = demoScan(d.n, d.hosts, now)
 	if hasDataLayer(d.hosts) {
 		r.Fetches = dataFetches(d.n, now)

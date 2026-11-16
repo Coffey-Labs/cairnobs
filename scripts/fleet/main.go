@@ -589,8 +589,8 @@ const (
 
 var vmRoles = [libvirtVMs]string{"db", "web", "cache", "build", "mq", "ldap", "backup", "monitor", "runner", "jump", "proxy", "spare"}
 
-// hypervisorVMs are host i's domains: all running, but its spare is shut
-// off, and on the third hypervisor one has crashed.
+// hypervisorVMs are host i's domains: all running but its spare, which is
+// shut off.
 func hypervisorVMs(i int, now time.Time) []report.Workload {
 	out := make([]report.Workload, libvirtVMs)
 	for k := range out {
@@ -598,11 +598,8 @@ func hypervisorVMs(i int, now time.Time) []report.Workload {
 		r := report.Workload{Kind: report.KindVM, ID: id, Name: fmt.Sprintf("%s-%02d", vmRoles[k], i/hypervisorEvery),
 			State: report.StateOK, Word: "Running", Since: now.Add(-time.Duration(3+k) * 24 * time.Hour).Truncate(time.Second),
 			Facts: map[string]any{"firmware_uuid": id, "autostart": k != libvirtVMs-1, "hypervisor": "libvirt", "vcpus": 2 << (k % 3), "memory_gib": float64(int(4) << (k % 3))}}
-		switch {
-		case k == libvirtVMs-1:
+		if k == libvirtVMs-1 {
 			r.State, r.Word = report.StateStopped, "Shut off"
-		case i/hypervisorEvery == 2 && k == 7:
-			r.State, r.Word, r.Since = report.StateDown, "Crashed", now.Add(-47*time.Minute).Truncate(time.Second)
 		}
 		out[k] = r
 	}

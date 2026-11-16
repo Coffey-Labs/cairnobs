@@ -35,21 +35,12 @@ func newNutanix(name, token string, vms int) *fakeCluster {
 			r := report.Workload{Kind: report.KindNode, ID: fmt.Sprintf("a1b2c3d4-%04d-4000-8000-%012d", cl, n), Name: host(cl, n),
 				State: report.StateOK, Word: "Connected", Since: now.Add(-time.Duration(20+n) * 24 * time.Hour),
 				Facts: map[string]any{"cluster": peName(cl), "cpus": 64, "memory_gib": 1024.0, "version": "AHV 10.0.1", "model": "NX-8170-G9"}}
-			switch {
-			case cl == 1 && n == 4:
-				r.State, r.Word, r.Since = report.StateUpdating, "In maintenance mode", now.Add(-20*time.Minute)
-			case cl == 2 && n == 2:
-				r.State, r.Word, r.Facts["alerts"] = report.StateDegraded, "Alert from Prism: Disk Failure", "Disk Failure (critical)"
-			}
 			put(r)
 		}
 		for k, ct := range []string{"default-container", "vdi-images", "db-data"} {
 			r := report.Workload{Kind: report.KindPVC, ID: fmt.Sprintf("c0ffee00-%04d-4000-8000-%012d", cl, k), Name: ct,
 				State: report.StateOK, Word: "Available", Since: now.Add(-200 * 24 * time.Hour),
 				Facts: map[string]any{"type": "storage container", "cluster": peName(cl), "capacity_gib": 81920.0, "replication_factor": 2}}
-			if cl == 0 && k == 2 {
-				r.State, r.Word, r.Facts["alerts"] = report.StateDegraded, "Alert from Prism: Storage Container Space Usage Exceeded", "Storage Container Space Usage Exceeded (critical)"
-			}
 			put(r)
 		}
 	}
@@ -72,5 +63,8 @@ func newNutanix(name, token string, vms int) *fakeCluster {
 		}
 		put(r)
 	}
+	c.flap(fmt.Sprintf("a1b2c3d4-%04d-4000-8000-%012d", 1, 4), spellAHVUpdate, func(r *report.Workload, since time.Time) { // an AOS upgrade's rolling restart (scenario.go)
+		r.State, r.Word, r.Since = report.StateUpdating, "In maintenance mode", since
+	})
 	return c
 }

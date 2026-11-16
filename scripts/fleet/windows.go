@@ -14,10 +14,11 @@ import (
 // agents named win-*, outside the sites of 50:
 //
 //	win-dc01   a domain controller, all well
-//	win-fs01   a file server that rebooted itself 25 minutes ago (Kernel-Power
-//	           41, critical) and has a disk with bad blocks
-//	win-sql01  SQL Server: its Agent service should start by itself and has
-//	           stopped; its certificate ends in a few days
+//	win-fs01   a file server with a disk going bad: bad blocks, and every
+//	           8 hours it crashes and comes back (Kernel-Power 41, critical)
+//	win-sql01  SQL Server: its Agent service should start by itself, and
+//	           now and then stops (scenario.go); its certificate ends in a
+//	           few days
 //	win-hv01   a Hyper-V host with twelve VMs: one saved, one failed
 type winServer struct {
 	name, os, kernel string
@@ -73,17 +74,26 @@ func newWindowsHost(name string, interval time.Duration) *host {
 // them.
 func (wh *winHost) stamp(h *host, r *report.Report, now time.Time) {
 	w := wh.w
+	crashes, lastCrash := 0, time.Time{}
 	if w.name == "win-fs01" {
-		// It went down without shutting down cleanly 25 minutes ago, and
-		// still has, whenever one looks.
-		h.start = now.Add(-25 * time.Minute)
-		r.Uptime = now.Sub(h.start).Seconds()
+		// It goes down without shutting down cleanly and is straight back:
+		// up since the last time.
+		lastCrash = spellFSCrash.began(now)
+		for t := lastCrash; now.Sub(t) < 24*time.Hour; t = t.Add(-spellFSCrash.every) {
+			crashes++
+		}
+		h.start = lastCrash
+		r.Uptime = max(0, now.Sub(h.start).Seconds())
 	}
 	r.Units = nil
 	for _, u := range w.units {
 		un := report.Unit{Name: u + ".service", Load: "loaded", Active: "active", Sub: "running", Since: h.start.UTC().Add(time.Minute).Truncate(time.Second)}
 		if w.name == "win-sql01" && u == "SQLSERVERAGENT" {
-			un.Active, un.Sub, un.Since = "failed", "dead", time.Time{}
+			if b := spellSQLAgent.began(now); spellSQLAgent.active(now) {
+				un.Active, un.Sub, un.Since = "failed", "dead", time.Time{}
+			} else if b.After(h.start) { // someone started it again
+				un.Since = b.Add(spellSQLAgent.on).UTC().Truncate(time.Second)
+			}
 		}
 		r.Units = append(r.Units, un)
 	}
@@ -94,13 +104,14 @@ func (wh *winHost) stamp(h *host, r *report.Report, now time.Time) {
 	}
 	switch w.name {
 	case "win-fs01":
-		group("System", "Microsoft-Windows-Kernel-Power", 41, "critical", 1, 24*time.Minute, 24*time.Minute,
+		first := lastCrash.Add(-time.Duration(crashes-1) * spellFSCrash.every)
+		group("System", "Microsoft-Windows-Kernel-Power", 41, "critical", crashes, now.Sub(first), now.Sub(h.start),
 			"The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly.")
 		group("System", "disk", 7, "error", 14, 19*time.Hour, 2*time.Hour, `The device, \Device\Harddisk1\DR1, has a bad block.`)
-		group("System", "NETLOGON", 5719, "error", 2, 23*time.Minute, 23*time.Minute,
+		group("System", "NETLOGON", 5719, "error", 2*crashes, now.Sub(first), now.Sub(h.start),
 			"This computer was not able to set up a secure session with a domain controller in domain CORP due to the following: There are currently no logon servers available to service the logon request.")
 	case "win-sql01":
-		group("System", "Service Control Manager", 7034, "error", 3, 6*time.Hour, 40*time.Minute,
+		group("System", "Service Control Manager", 7034, "error", 3, 6*time.Hour, now.Sub(spellSQLAgent.began(now)),
 			"The SQL Server Agent (MSSQLSERVER) service terminated unexpectedly. It has done this 3 time(s).")
 	case "win-hv01":
 		group("System", "Microsoft-Windows-Hyper-V-Worker", 18560, "critical", 1, 3*time.Hour, 3*time.Hour,

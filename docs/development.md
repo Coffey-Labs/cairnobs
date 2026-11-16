@@ -67,11 +67,20 @@ send (ntfy, Discord, PagerDuty, a webhook and email) and lists it on
 http://127.0.0.1:58450/. `fleet run -h` lists the rest: clusters, VMs,
 Proxmox, vSphere, Nutanix and Pure arrays.
 
-Some things are wrong on purpose, so every page has something to show: a
-container exited, a unit failed, a stale backup, PostgreSQL's leader away
-from home with a replica behind, an origin failing Cloudflare's health
-check, a zone on Flexible SSL, and so on. The mail server is healthy, to
-show what normal looks like.
+Some things are wrong on purpose, so every page has something to show,
+and most of the fleet is fine, as a real one is. `scripts/fleet/scenario.go`
+has the plan: three stories with a cause and its effects (a FlashArray
+lost a drive; a PostgreSQL replica falls behind and the shop's checkout
+fails; the legacy datacenter drops out of Akamai GTM), a handful of
+lasting warnings (a failover nobody moved back, a weak key, an old VM
+snapshot, a zone on Flexible SSL, and so on), and problems that come and
+go: a unit that fails and is restarted, a container that exits, a check
+that flaps, a late backup, a host being patched. Each of those is a
+*spell*: on for a while once every so often, counted from the Unix epoch,
+so every part of the simulator agrees on what's happening now and a
+restarted demo carries on where the clock is. Incidents open and resolve
+through the day, and a dozen or two are open at any moment. The mail
+server is healthy, to show what normal looks like.
 
 ## Dependencies and notices
 
