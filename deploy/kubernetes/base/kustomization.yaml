@@ -20,4 +20,4 @@ configMapGenerator:
 images:
   - name: obs-beacond
     newName: ghcr.io/coffey-labs/cairnobs # or your own registry's copy (docs/kubernetes.md, The image)
-    newTag: 0.1.2
+    newTag: 0.1.3
