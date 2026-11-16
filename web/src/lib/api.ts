@@ -68,6 +68,8 @@ export interface Cluster {
 	usage?: Usage; history?: string;
 	/** What it is (Cluster, Array, vCenter, Prism Central) and what its nodes are (Node, Controller, Host). */
 	noun: string; node_noun: string;
+	/** The Clusters page's section (Kubernetes, Virtualization, Storage, IBM i, Secrets), and its state in a line, in its kind's terms. */
+	group: string; summary: string;
 	/** An IBM i partition's own numbers, in place of nodes. */
 	partition?: PartitionNums;
 }

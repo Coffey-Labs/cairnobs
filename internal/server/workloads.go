@@ -552,6 +552,87 @@ func (s wsnap) noun() string {
 	return "Cluster"
 }
 
+// group is the Clusters page's section for the source (#41).
+func (s wsnap) group() string {
+	switch d := s.distribution(); {
+	case strings.HasPrefix(d, "Vault"), d == "OpenBao":
+		return "Secrets"
+	case strings.HasPrefix(d, "Purity"):
+		return "Storage"
+	case d == ibmiDistribution, d == hmcDistribution:
+		return "IBM i"
+	case d == "vCenter", d == "Prism Central", strings.HasPrefix(d, "Proxmox"):
+		return "Virtualization"
+	}
+	return "Kubernetes"
+}
+
+// kindLabel is what the source is, said on its own: "Kubernetes
+// cluster", "Proxmox cluster", "vCenter", "HMC", "IBM i partition".
+func (s wsnap) kindLabel() string {
+	d := s.distribution()
+	switch n := s.noun(); {
+	case n == "Partition":
+		return "IBM i partition"
+	case n == "Array":
+		return "Pure array"
+	case n != "Cluster":
+		return n // vCenter, Prism Central, HMC, Vault, OpenBao
+	case strings.HasPrefix(d, "Proxmox"):
+		return "Proxmox cluster"
+	case d == "OpenShift", d == "OKD":
+		return d + " cluster"
+	}
+	return "Kubernetes cluster"
+}
+
+// summary is a cluster's state in a line, in the terms of its kind (#46).
+func (v *ClusterView) summary() string {
+	count := func(n int) string { return humanCount(n) }
+	if p := v.Partition; p != nil {
+		var out []string
+		cpu := p.CPUPct
+		if v.Usage != nil && v.Usage.CPUOf > 0 {
+			cpu = &v.Usage.CPUPct // the last minute's, as the page shows
+		}
+		if cpu != nil {
+			out = append(out, fmt.Sprintf("CPU %.0f%%", *cpu))
+		}
+		out = append(out, fmt.Sprintf("system ASP %.0f%%", p.SystemASPPct))
+		if p.Subsystems > 0 {
+			out = append(out, fmt.Sprintf("%d of %d subsystems active", p.SubsystemsActive, p.Subsystems))
+		}
+		return strings.Join(out, " · ")
+	}
+	nodes := strings.ToLower(cmp.Or(v.NodeNoun, "Node")) + "s"
+	out := []string{fmt.Sprintf("%d/%d %s ready", v.NodesReady, v.Nodes, nodes)}
+	switch v.Noun {
+	case "Array":
+		out = append(out, count(v.Workloads)+" volumes")
+		if v.Usage != nil && v.Usage.IO != nil && v.Usage.IO.UsedOf > 0 {
+			out = append(out, fmt.Sprintf("%.0f%% used", 100*float64(v.Usage.IO.Used)/float64(v.Usage.IO.UsedOf)))
+		}
+	case "HMC":
+		out = append(out, count(v.Workloads)+" partitions")
+	case "Vault", "OpenBao":
+		out = append(out, count(v.Workloads)+" certificates")
+	case "vCenter", "Prism Central":
+		out = append(out, count(v.Workloads)+" VMs")
+	default:
+		out = append(out, count(v.Workloads)+" workloads")
+	}
+	return strings.Join(out, " · ")
+}
+
+// humanCount is n with thousands separated: 3,300.
+func humanCount(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0 && s[i-1] != '-'; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
 // nodeNoun is what its nodes are: a FlashArray's are controllers, a
 // FlashBlade's blades; a vCenter's and Prism Central's, hosts; an HMC's,
 // Power servers.
@@ -1079,6 +1160,12 @@ type ClusterView struct {
 	NodeNoun string `json:"node_noun"`
 	// Partition is an IBM i partition's own numbers (docs/ibmi.md).
 	Partition *PartitionView `json:"partition,omitempty"`
+	// Group is the Clusters page's section: Kubernetes, Virtualization,
+	// Storage, IBM i or Secrets. Summary is one line fitted to the kind,
+	// for the dashboard and the maps: "31/32 nodes ready · 3,300
+	// workloads", "CPU 54% · system ASP 85% · 4 of 5 subsystems active".
+	Group   string `json:"group"`
+	Summary string `json:"summary"`
 }
 
 // expectSubsystems marks an IBM i partition's subsystems that
@@ -1269,7 +1356,7 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 		if s.host {
 			continue // a host's VMs: on its page and Workloads, not Clusters
 		}
-		v := ClusterView{Name: s.name, Agent: s.agent, Problems: probs[s.name], Kinds: map[string]map[string]int{}, Noun: s.noun(), NodeNoun: s.nodeNoun()}
+		v := ClusterView{Name: s.name, Agent: s.agent, Problems: probs[s.name], Kinds: map[string]map[string]int{}, Noun: s.noun(), NodeNoun: s.nodeNoun(), Group: s.group()}
 		v.Status, v.Word, _ = srv.sourceStatus(s, now)
 		if !s.heard.IsZero() {
 			h := s.heard
@@ -1352,6 +1439,7 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 		if v.Status == "good" && v.Problems > 0 {
 			v.Status, v.Word = "warning", plural(v.Problems, "problem", "problems")
 		}
+		v.Summary = v.summary()
 		out = append(out, v)
 	}
 	return out

@@ -111,8 +111,7 @@
 							<b class="mono">{k.name}</b>
 							<Status s={k.status} word={k.word} />
 							<span class="sub">{k.version ?? ''}</span>
-							<span><b class="mono">{k.nodes_ready}</b><span class="sub">/{k.nodes} {(k.node_noun || 'Node').toLowerCase()}s ready</span></span>
-							<span><b class="mono">{k.workloads}</b> <span class="sub">workloads</span></span>
+							<span class="sub sum">{k.summary}</span>
 						</a>
 					{/each}
 				</div>
@@ -189,8 +188,8 @@
 	.csum span { color: var(--muted-fg); font-size: 12px; }
 	.csum .bad b { color: var(--critical); }
 	.clist { display: grid; gap: 6px; }
-	.crow { display: grid; grid-template-columns: minmax(120px, 1.2fr) minmax(140px, 1.4fr) minmax(60px, .8fr) 1fr 1fr; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--foreground); }
+	.crow { display: grid; grid-template-columns: minmax(120px, 1.2fr) minmax(140px, 1.4fr) minmax(60px, .8fr) 2fr; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--foreground); }
 	.crow:hover { border-color: color-mix(in oklab, var(--primary) 45%, var(--border)); }
-	@media (max-width: 700px) { .crow { grid-template-columns: 1fr 1fr; } }
+	@media (max-width: 700px) { .crow { grid-template-columns: 1fr 1fr; } .crow .sum { grid-column: 1 / -1; } }
 	@media (max-width: 860px) { .clock { text-align: left; } .csum { grid-template-columns: 1fr 1fr; } }
 </style>

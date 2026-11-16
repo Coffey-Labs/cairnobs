@@ -668,3 +668,49 @@ func TestLowerFirst(t *testing.T) {
 		}
 	}
 }
+
+// A cluster's summary says what matters for its kind (#46).
+func TestClusterSummary(t *testing.T) {
+	cpu := 41.0
+	cases := []struct {
+		v    ClusterView
+		want string
+	}{
+		{ClusterView{Noun: "Cluster", NodeNoun: "Node", Nodes: 32, NodesReady: 31, Workloads: 3300}, "31/32 nodes ready · 3,300 workloads"},
+		{ClusterView{Noun: "Partition", Partition: &PartitionView{CPUPct: &cpu, SystemASPPct: 84.6, Subsystems: 5, SubsystemsActive: 4}}, "CPU 41% · system ASP 85% · 4 of 5 subsystems active"},
+		{ClusterView{Noun: "Array", NodeNoun: "Controller", Nodes: 2, NodesReady: 2, Workloads: 600,
+			Usage: &UsageNow{IO: &report.IO{Used: 71, UsedOf: 100}}}, "2/2 controllers ready · 600 volumes · 71% used"},
+		{ClusterView{Noun: "HMC", NodeNoun: "Server", Nodes: 2, NodesReady: 2, Workloads: 6}, "2/2 servers ready · 6 partitions"},
+	}
+	for _, c := range cases {
+		if got := c.v.summary(); got != c.want {
+			t.Errorf("%s: %q, want %q", c.v.Noun, got, c.want)
+		}
+	}
+	if humanCount(1234567) != "1,234,567" || humanCount(999) != "999" {
+		t.Errorf("humanCount: %s %s", humanCount(1234567), humanCount(999))
+	}
+}
+
+// The service map says what a cluster is, not "Kubernetes cluster" for an
+// HMC or a vCenter (#37); the Clusters page puts each in its section (#41).
+func TestClusterKind(t *testing.T) {
+	snap := func(d string) wsnap {
+		return wsnap{recs: []report.Workload{{Kind: report.KindCluster, ID: report.ClusterSelf, Facts: map[string]any{"distribution": d}}}}
+	}
+	for d, want := range map[string][2]string{
+		"":              {"Kubernetes cluster", "Kubernetes"},
+		"OpenShift":     {"OpenShift cluster", "Kubernetes"},
+		"Proxmox VE":    {"Proxmox cluster", "Virtualization"},
+		"vCenter":       {"vCenter", "Virtualization"},
+		"Prism Central": {"Prism Central", "Virtualization"},
+		"HMC":           {"HMC", "IBM i"},
+		"IBM i":         {"IBM i partition", "IBM i"},
+		"Purity//FA":    {"Pure array", "Storage"},
+		"OpenBao":       {"OpenBao", "Secrets"},
+	} {
+		if got := [2]string{snap(d).kindLabel(), snap(d).group()}; got != want {
+			t.Errorf("%q: %v, want %v", d, got, want)
+		}
+	}
+}

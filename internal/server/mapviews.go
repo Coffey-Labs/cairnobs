@@ -289,7 +289,7 @@ func (srv *Server) networkView(focus string, now time.Time) (*MapView, bool) {
 		_, conds := srv.view(now)
 		for _, c := range srv.clusterViews(now, conds) {
 			v.Boxes = append(v.Boxes, MapBox{ID: "cluster:" + c.Name, Kind: "cluster", Name: c.Name, Status: c.Status,
-				Sub: fmt.Sprintf("%d/%d nodes ready", c.NodesReady, c.Nodes), Count: c.Nodes})
+				Sub: c.Summary, Count: c.Nodes})
 		}
 
 	case "site", "group":
@@ -688,14 +688,18 @@ func (srv *Server) servicesView(focus string, steps int, now time.Time) (*MapVie
 			where[s.ID] = gid
 			layer[gid] = min(layer[gid], s.Layer)
 		}
+		kinds := map[string]string{} // a source's name → what it is, for its box (#37)
+		for _, s := range srv.workloadSnapshot() {
+			kinds[s.name] = s.kindLabel()
+		}
 		for _, gid := range order {
 			b := fold(gid, "group", names[gid], members[gid], status)
 			for i, m := range b.Problems {
 				b.Problems[i] = svc[m].Name
 			}
 			b.Layer = layer[gid]
-			if strings.HasPrefix(gid, "group:cluster:") {
-				b.Sub = "Kubernetes cluster"
+			if c, ok := strings.CutPrefix(gid, "group:cluster:"); ok {
+				b.Sub = cmp.Or(kinds[c], "Kubernetes cluster")
 			}
 			v.Boxes = append(v.Boxes, b)
 		}
