@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -334,5 +335,39 @@ func TestAcknowledgingTellsFollowersOnly(t *testing.T) {
 	b.acknowledge("B-0001", "Pat Admin", t0.Add(time.Minute), true)
 	if len(b.queue) != 0 {
 		t.Fatal("acknowledging a held incident told the follower")
+	}
+}
+
+// Incidents that open in the same evaluation keep one order across
+// snapshots (#32): severity, then opened, then id by number.
+func TestSnapshotOrderIsStable(t *testing.T) {
+	a := testAlerter(&spy{id: "phone", min: "warning"})
+	t0 := time.Now()
+	var cs []Condition
+	for i := range 40 {
+		sev := "warning"
+		if i%3 == 0 {
+			sev = "critical"
+		}
+		cs = append(cs, Condition{Key: fmt.Sprintf("unit/node%d/app.service", i), Severity: sev, Title: "app failed", Host: fmt.Sprintf("node%d", i)})
+	}
+	a.evaluate(t0, cs)
+	first, _ := a.snapshot()
+	for range 20 {
+		again, _ := a.snapshot()
+		for i := range first {
+			if again[i].ID != first[i].ID {
+				t.Fatalf("row %d: %s, then %s", i, first[i].ID, again[i].ID)
+			}
+		}
+	}
+	for i := 1; i < len(first); i++ {
+		p, c := first[i-1], first[i]
+		if p.Severity == c.Severity && !idLess(p.ID, c.ID) {
+			t.Fatalf("%s before %s", p.ID, c.ID)
+		}
+	}
+	if !idLess("B-9999", "B-10000") || idLess("B-0002", "B-0001") {
+		t.Fatal("idLess")
 	}
 }

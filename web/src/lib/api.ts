@@ -237,14 +237,35 @@ export class SignedOut extends Error {
 export async function get<T>(url: string): Promise<T> {
 	const r = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
 	if (r.status === 401) throw new SignedOut(await r.json());
-	if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
+	if (!r.ok) throw await failed(r);
 	return r.json() as Promise<T>;
+}
+
+/**
+ * An error obs-beacond answered with. Its text is the server's own message
+ * ("This is the demo: it shows everything and changes nothing.") when there
+ * is one, and String(e) gives just that, without "Error: ".
+ */
+export class APIError extends Error {
+	status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.status = status;
+	}
+	toString() {
+		return this.message;
+	}
+}
+
+async function failed(r: Response): Promise<APIError> {
+	const j = (await r.json().catch(() => ({}))) as { error?: string };
+	return new APIError(j.error || `The server answered ${r.status} ${r.statusText}`.trim(), r.status);
 }
 
 /** POSTs carry X-Beacon, which obs-beacond requires and a cross-site form can't add. */
 export async function post(url: string): Promise<void> {
 	const r = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-Beacon': '1' } });
-	if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
+	if (!r.ok) throw await failed(r);
 }
 
 /** A JSON request that changes something (PUT, POST with a body), with X-Beacon. */
@@ -255,7 +276,7 @@ export async function send<T = unknown>(url: string, method: string, body?: unkn
 		body: body === undefined ? undefined : JSON.stringify(body)
 	});
 	const j = await r.json().catch(() => ({}));
-	if (!r.ok) throw new Error((j as { error?: string }).error ?? `${r.status} ${r.statusText}`);
+	if (!r.ok) throw new APIError((j as { error?: string }).error || `The server answered ${r.status} ${r.statusText}`.trim(), r.status);
 	return j as T;
 }
 
@@ -267,7 +288,7 @@ export async function sendYAML<T = unknown>(url: string, yaml: string): Promise<
 		body: yaml
 	});
 	const j = await r.json().catch(() => ({}));
-	if (!r.ok) throw new Error((j as { error?: string }).error ?? `${r.status} ${r.statusText}`);
+	if (!r.ok) throw new APIError((j as { error?: string }).error || `The server answered ${r.status} ${r.statusText}`.trim(), r.status);
 	return j as T;
 }
 
