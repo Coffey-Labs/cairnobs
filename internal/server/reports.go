@@ -99,6 +99,26 @@ type Uptime struct {
 	Incidents int     `json:"incidents"`
 }
 
+// worstFirst orders uptime rows by uptime, and among equals (most are
+// 100% when rounded) by time down, then degraded, then incidents, so the
+// rows worth reading aren't buried among quiet ones by name (#58).
+func worstFirst(l []Uptime) {
+	sort.Slice(l, func(i, j int) bool {
+		a, b := l[i], l[j]
+		switch {
+		case a.Pct != b.Pct:
+			return a.Pct < b.Pct
+		case a.DownS != b.DownS:
+			return a.DownS > b.DownS
+		case a.DegradedS != b.DegradedS:
+			return a.DegradedS > b.DegradedS
+		case a.Incidents != b.Incidents:
+			return a.Incidents > b.Incidents
+		}
+		return a.Name < b.Name
+	})
+}
+
 // integrate adds up the time each entity spent in each status in [from, to).
 func integrate(changes []state.Change, from, to time.Time) map[string]*Uptime {
 	by := map[string][]state.Change{}
@@ -313,17 +333,9 @@ func (srv *Server) buildReport(from, to, now time.Time, label string) (*Report, 
 			r.Checks = append(r.Checks, *u)
 		}
 	}
-	byPct := func(l []Uptime) {
-		sort.Slice(l, func(i, j int) bool {
-			if l[i].Pct != l[j].Pct {
-				return l[i].Pct < l[j].Pct
-			}
-			return l[i].Name < l[j].Name
-		})
-	}
-	byPct(r.Services)
-	byPct(r.Hosts)
-	byPct(r.Checks)
+	worstFirst(r.Services)
+	worstFirst(r.Hosts)
+	worstFirst(r.Checks)
 
 	// Certificates, as they stand now.
 	checks, _ := srv.judgeChecks(now)

@@ -707,7 +707,8 @@ older than 400 days is dropped.
 
 The Reports page covers the last 7 or 30 days or any month: uptime per
 service, host and check (down is time critical, degraded time warning or
-serious), incidents people were told about with time to acknowledge and to
+serious; worst first, and among equal uptimes the most time down, then
+degraded, then incidents), incidents people were told about with time to acknowledge and to
 fix and a cause admins can write, certificates by expiry, disk use with a
 straight-line forecast of when each disk fills, CPU and memory per day,
 the mail monitor's rounds and block-list time, and backups. Every section
