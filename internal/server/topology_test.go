@@ -191,3 +191,36 @@ func TestServiceMapJudgesByUnits(t *testing.T) {
 		t.Errorf("patroni failed: %s", got)
 	}
 }
+
+// One copy of a unit down while another runs is the service degraded,
+// not down; every copy down is down (#52).
+func TestServiceRedundantCopies(t *testing.T) {
+	srv := topoServer(t)
+	now := time.Now()
+	mail := func() ServiceView {
+		t.Helper()
+		svcs, ok := srv.serviceStates(now)
+		if !ok {
+			t.Fatal("no services")
+		}
+		for _, s := range svcs {
+			if s.ID == "mail" {
+				return s
+			}
+		}
+		t.Fatal("no mail service")
+		return ServiceView{}
+	}
+	unit := func(active string) report.Report {
+		return report.Report{V: report.Version, Units: []report.Unit{{Name: "inbuxa.service", Load: "loaded", Active: active, Sub: active, Since: now}}}
+	}
+	srv.store.Put("node1", unit("failed"), now)
+	srv.store.Put("node2", unit("active"), now)
+	if m := mail(); m.Status != "warning" || m.Word != "1 of 2 inbuxa.service down" {
+		t.Errorf("one of two down: %s %q", m.Status, m.Word)
+	}
+	srv.store.Put("node2", unit("failed"), now)
+	if m := mail(); m.Status != "critical" {
+		t.Errorf("both down: %s %q", m.Status, m.Word)
+	}
+}
