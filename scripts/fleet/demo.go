@@ -361,11 +361,11 @@ func (d *demoHost) containers(r *report.Report, now time.Time) {
 		if c.Name != "app-04" {
 			continue
 		}
-		if b := spellAppExits.began(now); spellAppExits.active(now) {
-			c.State, c.Status, c.Health = "exited", fmt.Sprintf("Exited (137) %s ago", fuzzy(now.Sub(b))), ""
+		if o := spellAppExits.last(now); spellAppExits.active(now) {
+			c.State, c.Status, c.Health = "exited", fmt.Sprintf("Exited (137) %s ago", fuzzy(now.Sub(o.start))), ""
 		} else {
 			c.State, c.Health = "running", "healthy"
-			c.Status = fmt.Sprintf("Up %s (healthy)", fuzzy(now.Sub(b.Add(spellAppExits.on))))
+			c.Status = fmt.Sprintf("Up %s (healthy)", fuzzy(now.Sub(o.end)))
 		}
 	}
 	r.Containers = &report.Containers{List: list}
@@ -392,11 +392,11 @@ func (d *demoHost) stamp(r *report.Report, start, now time.Time) {
 	for _, u := range demoUnits(d.n) {
 		un := report.Unit{Name: u + ".service", Load: "loaded", Active: "active", Sub: "running", Since: start.UTC()}
 		if d.n == demoFailedUnit && u == "redis-server" {
-			switch b := spellRedisFails.began(now); {
+			switch o := spellRedisFails.last(now); {
 			case spellRedisFails.active(now):
 				un.Active, un.Sub, un.Restarts, un.Since = "failed", "failed", 5, time.Time{}
-			case b.After(start): // restarted by hand when the spell ended
-				un.Since = b.Add(spellRedisFails.on).UTC()
+			case o.start.After(start): // restarted by hand when the spell ended
+				un.Since = o.end.UTC()
 			}
 		}
 		r.Units = append(r.Units, un)

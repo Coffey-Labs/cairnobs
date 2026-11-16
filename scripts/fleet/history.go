@@ -89,9 +89,11 @@ func writeHistory(path, keyFile string, days int, f pastFleet, now time.Time) er
 			state.Change{Entity: "svc/shop", At: from.Add(time.Second), Status: "warning"})
 		for _, fl := range pastFlaps {
 			s := fl.s
-			for b := s.began(from).Add(s.every); b.Add(s.on).Before(now); b = b.Add(s.every) {
-				statuses = append(statuses, state.Change{Entity: fl.entity, At: b.Add(20 * time.Second), Status: fl.status},
-					state.Change{Entity: fl.entity, At: b.Add(s.on + 20*time.Second), Status: fl.after})
+			for _, o := range s.between(from, now) {
+				if o.end.Before(now) {
+					statuses = append(statuses, state.Change{Entity: fl.entity, At: o.start.Add(20 * time.Second), Status: fl.status},
+						state.Change{Entity: fl.entity, At: o.end.Add(20 * time.Second), Status: fl.after})
+				}
 			}
 		}
 		slices.SortStableFunc(statuses, func(a, b state.Change) int { return a.At.Compare(b.At) })
@@ -245,9 +247,9 @@ func clusterHours(c *fakeCluster, from, few, to time.Time) []state.WorkloadHour 
 // obs-beacond where the numbers carry on.
 func writePastIncidents(db *state.DB, from, now time.Time) (int, error) {
 	type occ struct {
-		p     past
-		began time.Time
-		first bool // the first of its kind on its day: it gets the note
+		p          past
+		began, end time.Time
+		first      bool // the first of its kind on its day: it gets the note
 	}
 	var all []occ
 	for _, p := range pastProblems {
@@ -255,9 +257,12 @@ func writePastIncidents(db *state.DB, from, now time.Time) (int, error) {
 			continue
 		}
 		day := ""
-		for b := p.s.began(from).Add(p.s.every); b.Add(p.s.on).Before(now); b = b.Add(p.s.every) {
-			d := b.UTC().Format("2006-01-02")
-			all = append(all, occ{p, b, d != day})
+		for _, o := range p.s.between(from, now) {
+			if !o.end.Before(now) {
+				continue // still going: the live demo opens it
+			}
+			d := o.start.UTC().Format("2006-01-02")
+			all = append(all, occ{p, o.start, o.end, d != day})
 			day = d
 		}
 	}
@@ -268,10 +273,10 @@ func writePastIncidents(db *state.DB, from, now time.Time) (int, error) {
 		// resolved within a minute of its end.
 		opened := o.began.Add(time.Duration(10+seedInt(p.key, o.began, 40)) * time.Second)
 		fired := opened.Add(2 * time.Minute)
-		resolved := o.began.Add(p.s.on + time.Duration(15+seedInt(p.key+" end", o.began, 45))*time.Second)
+		resolved := o.end.Add(time.Duration(15+seedInt(p.key+" end", o.began, 45)) * time.Second)
 		inc := state.Incident{ID: fmt.Sprintf("B-%04d", k+1), Key: p.key, Severity: p.sev, Title: p.title, Detail: p.detail,
 			Host: p.host, Href: p.href, Opened: opened, Fired: fired, Notified: fired, Resolved: resolved}
-		if p.sev == "critical" && p.s.on > 10*time.Minute {
+		if p.sev == "critical" && o.end.Sub(o.began) > 10*time.Minute {
 			inc.AckBy, inc.AckAt = "On call", fired.Add(time.Duration(2+seedInt(p.key+" ack", o.began, 6))*time.Minute)
 		}
 		if err := db.PutIncident(inc); err != nil {

@@ -120,8 +120,8 @@ func (c *fakeCluster) play(now time.Time) {
 		w := cloneWorkload(e.good)
 		if on {
 			e.bad(&w, e.s.began(now))
-		} else if !e.good.Since.IsZero() && now.Sub(e.s.began(now)) < e.s.every {
-			w.Since = e.s.began(now).Add(e.s.on) // right again since the spell ended
+		} else if o := e.s.last(now); !e.good.Since.IsZero() && now.Sub(o.start) < e.s.every {
+			w.Since = o.end // right again since the spell ended
 		}
 		c.recs[e.id] = w
 		c.changed[e.id] = true

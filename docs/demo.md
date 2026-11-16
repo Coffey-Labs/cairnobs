@@ -62,9 +62,13 @@ Most of the simulated fleet is healthy. What's wrong follows a plan
 (`scripts/fleet/scenario.go`, and "The demo fleet" in development.md):
 three stories with a cause and its effects, a few lasting warnings, and
 problems that come and go through the day, so incidents open, resolve and
-show up under Recently resolved. Because the plan runs on the clock, two
-visitors an hour apart see different problems, and a restarted demo shows
-the same ones the old one would have.
+show up under Recently resolved. Each comes round about on a schedule but
+not like a clock: its start and length vary, and it skips about half its
+turns, four in five at night in Phoenix, so the history has a working
+day's shape, about 1,400 incidents a month rather than thousands, and in
+the day there's never an hour with nothing going on. Because the plan
+runs on the clock, two visitors an hour apart see different problems, and
+a restarted demo shows the same ones the old one would have.
 
 The demo starts with a month behind it, worked out from the same plan and
 clock (`scripts/fleet/history.go`): every host's hourly CPU, memory and
