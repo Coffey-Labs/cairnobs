@@ -189,3 +189,6 @@ up where it left off.
 does. To publish one, push an annotated tag on main (`vX.Y.Z`, or
 `vX.Y.Z-rc.N` for a pre-release); the tag's message becomes the release
 notes and `.gitea/workflows/release.yml` builds and attaches the files.
+Before tagging a final release, merge the change that sets `newTag` in
+`deploy/kubernetes/base/kustomization.yaml` to its version: the release
+stops before building if the tagged tree would deploy another one.
