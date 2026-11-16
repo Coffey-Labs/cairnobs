@@ -74,9 +74,9 @@ func serveVaults(ctx context.Context, dir string) {
 	now := time.Now()
 	vaults := []*fakeVault{
 		newFakeVault("vault-prod", "1.21.4+ent", true, "pki_int", now, 300*24*time.Hour, 400, 2000,
-			[]fakeRaft{{"v1", "leader", "alive"}, {"v2", "voter", "alive"}, {"v3", "voter", "alive"}}, 1, 18_000),
+			[]fakeRaft{{"v1", "leader", "alive"}, {"v2", "voter", "alive"}, {"v3", "voter", "alive"}}, 1, vaultLeaseBase["vault-prod"]),
 		newFakeVault("vault-edge", "2.4.1", false, "pki_edge", now, 12*24*time.Hour, 40, 0,
-			[]fakeRaft{{"e1", "leader", "alive"}, {"e2", "voter", "alive"}, {"e3", "voter", "alive"}}, 1, 900),
+			[]fakeRaft{{"e1", "leader", "alive"}, {"e2", "voter", "alive"}, {"e3", "voter", "alive"}}, 1, vaultLeaseBase["vault-edge"]),
 	}
 	var yaml strings.Builder
 	yaml.WriteString("vault:\n")
@@ -230,7 +230,7 @@ func (v *fakeVault) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "auth/token/renew-self":
 		out = map[string]any{"auth": map[string]any{"lease_duration": 24 * 3600}}
 	case p == "sys/metrics":
-		l := v.leases + int(float64(v.leases)/10*math.Sin(float64(now.Unix())/3600))
+		l := vaultLeases(v.leases, now)
 		fmt.Fprintf(w, "# TYPE vault_expire_num_leases gauge\nvault_expire_num_leases %d\nvault_expire_num_irrevocable_leases 0\n", l)
 		if v.enterprise {
 			fmt.Fprint(w, "vault_audit_log_request_failure 0\nvault_audit_log_response_failure 0\n")
@@ -267,4 +267,15 @@ func (v *fakeVault) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+// vaultLeaseBase is each fake Vault's usual number of leases.
+var vaultLeaseBase = map[string]int{"vault-prod": 18_000, "vault-edge": 900}
+
+// vaultLeases is how many leases a Vault holds at t: more in the working
+// day, when people and jobs log in, with a little noise.
+func vaultLeases(base int, t time.Time) int {
+	h := float64(t.UTC().Hour()) + float64(t.UTC().Minute())/60
+	day := math.Sin(2 * math.Pi * (h - 14) / 24) // UTC 20:00 is early afternoon in Phoenix
+	return base + int(float64(base)*(0.12*day+0.02*jitter("leases", t.Truncate(time.Minute))))
 }

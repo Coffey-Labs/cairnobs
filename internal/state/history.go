@@ -245,3 +245,53 @@ func (d *DB) Prune(before time.Time) error {
 	}
 	return nil
 }
+
+// PutHostHours is PutHostHour for many, in one transaction: a backfill
+// (the demo's 30 days, scripts/fleet) or an import.
+func (d *DB) PutHostHours(hs []HostHour) error {
+	t, err := d.begin()
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	for _, h := range hs {
+		b, _ := json.Marshal(h.Disks)
+		if _, err := t.Exec(`INSERT INTO host_hours (host, hour, cpu, cpu_max, mem, mem_max, disks) VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (host, hour) DO UPDATE SET cpu=excluded.cpu, cpu_max=excluded.cpu_max, mem=excluded.mem, mem_max=excluded.mem_max, disks=excluded.disks`,
+			h.Host, h.Hour.Unix(), h.CPU, h.CPUMax, h.Mem, h.MemMax, string(b)); err != nil {
+			return err
+		}
+	}
+	return t.Commit()
+}
+
+// PutMailRounds is PutMailRound for many, in one transaction.
+func (d *DB) PutMailRounds(ms []MailRound) error {
+	t, err := d.begin()
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	for _, m := range ms {
+		if _, err := t.Exec(`INSERT INTO mail_rounds (at, seconds, queue) VALUES (?, ?, ?)
+			ON CONFLICT (at) DO UPDATE SET seconds=excluded.seconds, queue=excluded.queue`, m.At.Unix(), m.Seconds, m.Queue); err != nil {
+			return err
+		}
+	}
+	return t.Commit()
+}
+
+// LogStatuses is LogStatus for many, in one transaction.
+func (d *DB) LogStatuses(cs []Change) error {
+	t, err := d.begin()
+	if err != nil {
+		return err
+	}
+	defer t.Rollback()
+	for _, c := range cs {
+		if _, err := t.Exec(`INSERT INTO status_log (entity, at, status) VALUES (?, ?, ?)`, c.Entity, c.At.Unix(), c.Status); err != nil {
+			return err
+		}
+	}
+	return t.Commit()
+}
