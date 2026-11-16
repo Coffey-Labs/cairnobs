@@ -181,6 +181,10 @@ type Attention struct {
 	Detail   string `json:"detail"`
 	Href     string `json:"href"`
 	Host     string `json:"host"`
+	Key      string `json:"key,omitempty"`
+	Affected string `json:"affected,omitempty"` // what else it takes down, from root-cause grouping
+	// Incident is the open incident it is, once there is one (today.go).
+	Incident *AttnIncident `json:"incident,omitempty"`
 }
 
 func nonNil(s []float64) []float64 {
@@ -399,13 +403,13 @@ func attention(conds []Condition) []Attention {
 			if shown[c.Host] == 3 {
 				if !folded[c.Host] {
 					folded[c.Host] = true
-					out = append(out, Attention{"warning", fmt.Sprintf("%d more containers on %s need a look", total[c.Host]-3, c.Host), "", "/containers", c.Host})
+					out = append(out, Attention{Severity: "warning", Title: fmt.Sprintf("%d more containers on %s need a look", total[c.Host]-3, c.Host), Href: "/containers", Host: c.Host})
 				}
 				continue
 			}
 			shown[c.Host]++
 		}
-		out = append(out, Attention{c.Severity, c.Title, c.Detail, c.Href, c.Host})
+		out = append(out, Attention{Severity: c.Severity, Title: c.Title, Detail: c.Detail, Href: c.Href, Host: c.Host, Key: c.Key, Affected: c.Affected})
 	}
 	return out
 }
@@ -419,6 +423,7 @@ func (srv *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		sum.add(h.Containers)
 	}
 	open, _ := srv.alerts.snapshot()
+	attn = withIncidents(attn, open)
 	firing, unacked := 0, 0
 	for _, inc := range open {
 		if inc.Fired != nil {
@@ -447,6 +452,10 @@ func (srv *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"attention": attn, "containers": sum, "clusters": srv.clusterViews(now, conds),
 		"alerts":   map[string]int{"firing": firing, "unacknowledged": unacked},
 		"features": srv.features(),
+		// The dashboard's briefing (today.go): what happened since this
+		// person last looked, each service's last day, and the hosts
+		// heading somewhere.
+		"today": srv.todayFor(r, now), "services": srv.serviceBriefs(now), "watch": srv.watch(hosts, now),
 	})
 }
 
