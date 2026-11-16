@@ -728,8 +728,29 @@ restarts; admins can preview it and send it by hand on the Reports page.
 
 ### The dashboard's briefing
 
-The same history feeds the dashboard. `GET /api/v1/overview` carries,
-besides the readings:
+The dashboard (Today) is written to be read, not scanned for numbers. It
+opens with a sentence on whether anything needs you and whether
+customers are affected (the services with `tier: public`), then:
+
+- **Needs you:** critical and serious problems nobody has picked up, each
+  with when it started, whether people were told and what it takes down.
+  **I'm on it** is the acknowledgement: the repeats stop, and the problem
+  moves to **Being handled** with who has it.
+- **Can wait:** warnings, one line each with why.
+- **Your services:** each service's state and its last 24 hours, one bar
+  per half hour. The **Services** page lists them all by tier (what
+  customers use, what runs it, where the data lives, the edge); picking one
+  shows its parts in trouble, what it needs and what needs it.
+- **Since you last looked:** what opened and closed since your last visit.
+- **The fleet:** hosts reporting, containers, clusters and the busiest
+  host, and what's worth watching: disks filling up, hosts busier than
+  usual for the hour, hosts restarted in the last day. The **Hosts** page
+  shows the same list over one square per host, grouped by the network
+  map's sites and by role, the host name's first word after its site
+  (phx1-app05 is an app server); the table is a click away.
+
+The same history feeds it. `GET /api/v1/overview` carries, besides the
+readings:
 
 - `today`: what happened since this person last looked. A visit ends after
   30 minutes without the dashboard open, and the end of the last one is
@@ -754,7 +775,8 @@ besides the readings:
 
 The strips and uptimes are read from history once a minute (30 days every
 ten), the watch list every ten minutes, whatever the number of dashboards
-open.
+open. `GET /api/v1/fleet` is the Hosts page's squares: every host's state
+by site and role, the hosts that need a look per site, and the watch list.
 
 ## checks.yaml: active checks
 

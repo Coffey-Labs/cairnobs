@@ -70,28 +70,35 @@
 		store('folded', JSON.stringify(folded));
 	}
 	type Item = { href: string; icon: IconName; label: string; show?: boolean; exact?: boolean; meta?: number; sev?: string; tip?: string };
-	const overview = $derived(([
-		{ href: '/', icon: 'dashboard', label: 'Dashboard', exact: true, show: true },
-		// One entry for every host: a big fleet's partial list told you little.
-		{ href: '/hosts', icon: 'hosts', label: 'Hosts', show: true, meta: hostLook, sev: hostCritical ? 'critical' : 'warning', tip: hostLook ? `${hostLook} need a look` : '' }
+	// Shaped by what people come to do (#72): today's briefing and what to
+	// act on first, then the fleet, the maps, and what Cairn OBS is
+	// connected to.
+	const hasServices = $derived((live.overview?.services?.length ?? 0) > 0);
+	const today = $derived(([
+		{ href: '/', icon: 'dashboard', label: 'Today', exact: true, show: true },
+		{ href: '/services', icon: 'services', label: 'Services', show: hasServices },
+		{ href: '/alerts', icon: 'bell', label: 'Alerts', show: true, meta: unacked, sev: 'critical', tip: unacked ? `${unacked} not acknowledged` : '' },
+		{ href: '/reports', icon: 'report', label: 'Reports', show: f?.reports }
 	] as Item[]).filter((i) => i.show));
-	const infra = $derived(([
-		{ href: '/map/network', icon: 'network', label: 'Network map', show: f?.maps },
-		{ href: '/map/services', icon: 'services', label: 'Service map', show: f?.maps },
-		{ href: '/mail', icon: 'mail', label: 'Mail', show: f?.mail },
-		{ href: '/data', icon: 'database', label: 'Data layer', show: f?.data },
+	const fleet = $derived(([
+		// One entry for every host: a big fleet's partial list told you little.
+		{ href: '/hosts', icon: 'hosts', label: 'Hosts', show: true, meta: hostLook, sev: hostCritical ? 'critical' : 'warning', tip: hostLook ? `${hostLook} need a look` : '' },
 		{ href: '/clusters', icon: 'cluster', label: 'Clusters', show: f?.workloads, meta: clusterProblems, sev: clusterSeverity, tip: clusterProblems ? `${clusterProblems} need a look` : '' },
 		{ href: '/workloads', icon: 'grid', label: 'Workloads', show: f?.workloads },
-		{ href: '/containers', icon: 'box', label: 'Containers', show: f?.containers || problems > 0, meta: problems, sev: containerSeverity, tip: problems ? `${problems} need a look` : '' },
+		{ href: '/containers', icon: 'box', label: 'Containers', show: f?.containers || problems > 0, meta: problems, sev: containerSeverity, tip: problems ? `${problems} need a look` : '' }
+	] as Item[]).filter((i) => i.show));
+	const maps = $derived(([
+		{ href: '/map/network', icon: 'network', label: 'Network map', show: f?.maps },
+		{ href: '/map/services', icon: 'services', label: 'Service map', show: f?.maps }
+	] as Item[]).filter((i) => i.show));
+	const connected = $derived(([
+		{ href: '/checks', icon: 'check', label: 'Checks', show: f?.checks || checksDown > 0, meta: checksDown, sev: live.overview?.checks?.severity ?? 'warning', tip: checksDown ? `${checksDown} down` : '' },
+		{ href: '/mail', icon: 'mail', label: 'Mail', show: f?.mail },
+		{ href: '/data', icon: 'database', label: 'Data layer', show: f?.data },
 		{ href: '/certificates', icon: 'lock', label: 'Certificates', show: f?.certificates },
 		{ href: '/backups', icon: 'archive', label: 'Backups', show: f?.backups },
 		{ href: '/cloudflare', icon: 'cloud', label: 'Cloudflare', show: f?.cloudflare },
 		{ href: '/akamai', icon: 'globe', label: 'Akamai', show: f?.akamai }
-	] as Item[]).filter((i) => i.show));
-	const watch = $derived(([
-		{ href: '/checks', icon: 'check', label: 'Checks', show: f?.checks || checksDown > 0, meta: checksDown, sev: live.overview?.checks?.severity ?? 'warning', tip: checksDown ? `${checksDown} down` : '' },
-		{ href: '/alerts', icon: 'bell', label: 'Alerts', show: true, meta: unacked, sev: 'critical', tip: unacked ? `${unacked} not acknowledged` : '' },
-		{ href: '/reports', icon: 'report', label: 'Reports', show: f?.reports }
 	] as Item[]).filter((i) => i.show));
 	const setup: Item[] = [
 		{ href: '/configure', icon: 'settings', label: 'Overview', exact: true },
@@ -215,9 +222,10 @@
 				{@render group('Configure', setup)}
 				{@render group('Access', access)}
 			{:else}
-				{@render group('Overview', overview)}
-				{#if infra.length}{@render group('Infrastructure', infra)}{/if}
-				{@render group('Watch', watch)}
+				{@render group('Today', today)}
+				{@render group('Fleet', fleet)}
+				{#if maps.length}{@render group('Maps', maps)}{/if}
+				{#if connected.length}{@render group('Connected to', connected)}{/if}
 			{/if}
 		</nav>
 		<div class="side-foot">

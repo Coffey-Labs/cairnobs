@@ -40,7 +40,25 @@ export interface VMLink { source: string; namespace?: string; name: string; node
 /** The libvirt VMs a host runs. */
 export interface HostVMCount { total: number; running: number; error?: string; href: string }
 export interface UnitView { name: string; load: string; active: string; sub: string; restarts: number; since?: string; host: string; severity: Severity; word: string }
-export interface Attention { severity: Severity; title: string; detail: string; href: string; host: string }
+export interface Attention {
+	severity: Severity; title: string; detail: string; href: string; host: string;
+	key?: string; affected?: string;
+	/** The open incident it is, once there is one: the dashboard's "I'm on it" acknowledges it. */
+	incident?: { id: string; opened: string; fired: string | null; ack: { by: string; at: string } | null };
+}
+/** What happened since this person last looked (internal/server/today.go). */
+export interface Today { since: string; last_visit: boolean; events: TodayEvent[]; opened: number; resolved: number; fixed_itself: number; told: number }
+export interface TodayEvent { id: string; severity: Severity; title: string; host?: string; href?: string; at: string; opened: string; resolved?: string; ack_by?: string; told: boolean }
+/** A service's last 24 hours as 48 half-hour cells (the worst status in each, '' unknown), and its uptime (-1 unknown). */
+export interface ServiceHistory { cells: string[]; pct_24h: number; pct_30d: number }
+export interface ServiceBrief { id: string; name: string; tier: string; status: Severity; word: string; history: ServiceHistory }
+/** The few hosts heading somewhere, in place of gauges. */
+export interface Watch {
+	filling: { host: string; mount: string; pct: number; full_days: number }[];
+	busier: { host: string; what: 'cpu' | 'memory'; now: number; usual: number }[];
+	restarted: { host: string; up_s: number }[];
+	restarted_n: number;
+}
 /** Every host in a few numbers (internal/server/lists.go). */
 export interface Fleet {
 	hosts: number;
@@ -58,7 +76,7 @@ export interface HostRow {
 	os?: string; uptime_s: number; cpu_pct: number; mem_pct: number; fullest?: Disk; containers: ContainerSummary;
 }
 /** hosts is every host in a small fleet, else the ones most in need; fleet counts them all. */
-export interface Overview { now: string; version: string; hosts: Host[]; fleet: Fleet; attention: Attention[]; containers: ContainerSummary; alerts: { firing: number; unacknowledged: number }; checks?: { down: number; severity: string }; features?: Features; clusters?: Cluster[] }
+export interface Overview { now: string; version: string; hosts: Host[]; fleet: Fleet; attention: Attention[]; containers: ContainerSummary; alerts: { firing: number; unacknowledged: number }; checks?: { down: number; severity: string }; features?: Features; clusters?: Cluster[]; today?: Today; services?: ServiceBrief[]; watch?: Watch }
 /** A cluster agent's cluster: GET /api/v1/clusters, and the overview. */
 export interface Cluster {
 	name: string; status: Severity; word: string; heard: string | null; listed: string | null; agent?: string; version?: string;

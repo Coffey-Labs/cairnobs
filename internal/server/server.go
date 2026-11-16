@@ -428,6 +428,7 @@ func (srv *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/map/network", srv.needSession(srv.handleMapNetwork))
 	mux.HandleFunc("GET /api/v1/map/services", srv.needSession(srv.handleMapServices))
 	mux.HandleFunc("GET /api/v1/services", srv.needSession(srv.handleServices))
+	mux.HandleFunc("GET /api/v1/fleet", srv.needSession(srv.handleFleet))
 	mux.HandleFunc("GET /api/v1/map/find", srv.needSession(srv.handleMapFind))
 	mux.HandleFunc("GET /api/v1/map/found", srv.needSession(srv.handleMapFound))
 	mux.HandleFunc("GET /api/v1/map/corrections", srv.needSession(srv.handleMapCorrections))
