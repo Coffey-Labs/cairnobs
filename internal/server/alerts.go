@@ -536,11 +536,25 @@ func (a *alerter) snapshot() (open, recent []Incident) {
 		if ri, rj := notify.Rank(open[i].Severity), notify.Rank(open[j].Severity); ri != rj {
 			return ri > rj
 		}
-		return open[i].Opened.Before(open[j].Opened)
+		if !open[i].Opened.Equal(open[j].Opened) {
+			return open[i].Opened.Before(open[j].Opened)
+		}
+		// Many open in one evaluation (a restart, a wide outage), so ties
+		// are common: break them on the id, or the list reshuffles with
+		// map order on every refresh and a click lands on another row.
+		return idLess(open[i].ID, open[j].ID)
 	})
 	n := min(len(a.history), 50)
 	recent = append([]Incident{}, a.history[:n]...)
 	return open, recent
+}
+
+// idLess orders incident ids by number: B-0999 before B-1000 before B-10000.
+func idLess(a, b string) bool {
+	if len(a) != len(b) {
+		return len(a) < len(b)
+	}
+	return a < b
 }
 
 // run delivers queued notices until ctx ends.
