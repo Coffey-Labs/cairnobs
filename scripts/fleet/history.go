@@ -104,8 +104,11 @@ func writeHistory(path, keyFile string, days int, f pastFleet, now time.Time) er
 	}
 
 	nw := 0
+	// Thousands of controllers and VMs get a week: a month of each is most
+	// of the database, and the demo's state is a 256 MB tmpfs.
+	few := to.Add(-time.Duration(min(days, 7)) * 24 * time.Hour)
 	for _, c := range f.clusters {
-		ws := clusterHours(c, from, to)
+		ws := clusterHours(c, from, few, to)
 		if err := db.PutWorkloadHours(ws); err != nil {
 			return fmt.Errorf("%s: %w", c.name, err)
 		}
@@ -177,8 +180,9 @@ func hostHour(h *host, t time.Time) state.HostHour {
 func round1(f float64) float64 { return math.Round(f*10) / 10 }
 
 // clusterHours is a cluster's workloads' hours, from two readings an hour,
-// keyed the way obs-beacond keeps them (its historyKey).
-func clusterHours(c *fakeCluster, from, to time.Time) []state.WorkloadHour {
+// keyed the way obs-beacond keeps them (its historyKey): from from for
+// the cluster itself and its nodes, from few for the rest.
+func clusterHours(c *fakeCluster, from, few, to time.Time) []state.WorkloadHour {
 	if c.noUsage && c.usageFn == nil {
 		return nil
 	}
@@ -201,7 +205,7 @@ func clusterHours(c *fakeCluster, from, to time.Time) []state.WorkloadHour {
 			}
 			for _, u := range us(at) {
 				r, ok := names[u.ID]
-				if !ok {
+				if !ok || t.Before(few) && r.Kind != report.KindNode && r.Kind != report.KindCluster {
 					continue
 				}
 				key := r.Name

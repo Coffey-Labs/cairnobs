@@ -69,7 +69,8 @@ The demo starts with a month behind it, worked out from the same plan and
 clock (`scripts/fleet/history.go`): every host's hourly CPU, memory and
 disks (a working day in its site's time zone, quieter weekends, memory
 that creeps until a weekly restart, disks that fill until a clean-up), the
-clusters' workloads, the arrays' I/O, the IBM i partitions' CPU, the
+clusters' nodes (and a week of their controllers and VMs, to keep the
+database small), the arrays' I/O, the IBM i partitions' CPU, the
 Vaults' leases, the mail monitor's rounds, availability for the reports,
 and an incident for each time a problem came and went, with notes on the
 stories saying what the cause was. Its incident numbers carry on from
