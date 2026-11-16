@@ -371,3 +371,25 @@ func TestSnapshotOrderIsStable(t *testing.T) {
 		t.Fatal("idLess")
 	}
 }
+
+// Each incident says where it's from, for the Alerts page's filter (#42).
+func TestIncidentSource(t *testing.T) {
+	for key, want := range map[string]string{
+		"silent/node1":                            "hosts",
+		"container/fleet-0007/app-04":             "hosts",
+		"cluster/fa-prod-01/cluster":              "clusters",
+		"vm/win-hv01//build-win02":                "clusters",
+		"certinv/f447f4":                          "certificates",
+		"batch/certends/vault-prod/pki_int":       "certificates",
+		"check/rbl-mx2":                           "checks",
+		"dl/patroni/home":                         "data",
+		"backup/fleet-0050/received/x/pg-dump":    "backups",
+		"akamai/traffic/400019":                   "akamai",
+		"cloudflare/origin/site-1-web/fleet-0052": "cloudflare",
+		"mail/roundtrip":                          "mail",
+	} {
+		if got := incidentSource(key); got != want {
+			t.Errorf("%s: %s, want %s", key, got, want)
+		}
+	}
+}

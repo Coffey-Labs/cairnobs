@@ -146,6 +146,8 @@ export interface Incident {
 	grouped?: { from: string; to: string; from_name: string; to_name: string; port?: number; since: string }[];
 	/** Where it is on the maps: a page path with its focus. */
 	map?: string;
+	/** Where the problem is: hosts, clusters, certificates, checks, mail, data, backups, cloudflare, akamai. */
+	source?: string;
 }
 export interface AlertChannel { id: string; type: string; min: string }
 export interface CfOrigin { name: string; address: string; enabled: boolean; healthy: boolean; reason?: string; code?: number; rtt?: string }

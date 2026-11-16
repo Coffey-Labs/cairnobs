@@ -321,6 +321,14 @@ Without `alerts.channels` in obs-beacond.yaml, channels are added under
 Configure › Alerts instead (see "Settings edited in the UI"). Writing the key,
 even as `channels: []`, makes the file the place for them.
 
+The Alerts page narrows its lists by severity, by where the problem is
+and by text (title, host, detail or incident number), and keeps that in
+the address so a link shows the same list:
+`/alerts?severity=critical&source=clusters&q=prod`. Each incident from
+`GET /api/v1/incidents` carries its `source`: `hosts`, `clusters`
+(clusters, arrays, hypervisors, IBM i and VMs), `certificates`, `checks`,
+`mail`, `data`, `backups`, `cloudflare` or `akamai`.
+
 ### Certificates
 
 `certificates.critical_within` (default `48h`) is how close to its end a

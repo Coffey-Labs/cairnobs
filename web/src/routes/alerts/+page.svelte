@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 	import Panel from '$lib/Panel.svelte';
 	import Status from '$lib/Status.svelte';
@@ -49,6 +51,35 @@
 			rejecting = '';
 		}
 	}
+	// Filters (#42), kept in the address so a link shows the same list:
+	// /alerts?severity=critical&source=clusters&q=prod.
+	const sources: [string, string][] = [['hosts', 'Hosts'], ['clusters', 'Clusters and VMs'], ['certificates', 'Certificates'], ['checks', 'Checks'], ['mail', 'Mail'], ['data', 'Data layer'], ['backups', 'Backups'], ['cloudflare', 'Cloudflare'], ['akamai', 'Akamai']];
+	const severities: [string, string][] = [['critical', 'Critical'], ['serious', 'Serious'], ['warning', 'Warning']];
+	const u = page.url.searchParams;
+	let severity = $state(u.get('severity') ?? '');
+	let source = $state(u.get('source') ?? '');
+	let typed = $state(u.get('q') ?? '');
+	let q = $state(u.get('q') ?? '');
+	$effect(() => {
+		const t = typed;
+		const d = setTimeout(() => (q = t.trim()), 200);
+		return () => clearTimeout(d);
+	});
+	$effect(() => {
+		const p = new URLSearchParams();
+		for (const [k, v] of [['severity', severity], ['source', source], ['q', q]]) if (v) p.set(k, v);
+		try { replaceState('/alerts' + (p.size ? '?' + p : ''), {}); } catch { /* before the router is up */ }
+	});
+	const textOf = (i: Incident) => [i.id, i.title, i.detail, i.host, i.affected].join(' ').toLowerCase();
+	const keep = (i: Incident, bySeverity = true) =>
+		(!bySeverity || !severity || i.severity === severity) && (!source || i.source === source) && (!q || textOf(i).includes(q.toLowerCase()));
+	const open = $derived(data ? data.open.filter((i) => keep(i)) : []);
+	const recent = $derived(data ? data.recent.filter((i) => keep(i)) : []);
+	const filtered = $derived(!!(severity || source || q));
+	// Counts on the chips are of what's open.
+	const bySource = $derived(Object.fromEntries(sources.map(([k]) => [k, data?.open.filter((i) => i.source === k && keep(i)).length ?? 0])));
+	const bySev = $derived(Object.fromEntries(severities.map(([k]) => [k, data?.open.filter((i) => i.severity === k && (!source || i.source === source)).length ?? 0])));
+	const clear = () => { severity = ''; source = ''; typed = ''; q = ''; };
 	const day = (s: string) => new Date(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 	const lasted = (i: Incident) => duration((new Date(i.resolved ?? Date.now()).getTime() - new Date(i.opened).getTime()) / 1000);
 </script>
@@ -67,8 +98,27 @@
 {#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
 
 {#if data}
-	<Panel title="Open" aside="{data.open.length} open" flush>
-		{#each data.open as i (i.id)}
+	{#if data.open.length || data.recent.length}
+		<div class="filters">
+			<Icon name="filter" />
+			<input class="input" placeholder="Title, host or incident number" aria-label="Find an alert" bind:value={typed} style="width:240px" />
+			<button class="chip" class:on={severity === ''} onclick={() => (severity = '')}>Every severity</button>
+			{#each severities as [k, label] (k)}
+				<button class="chip" class:on={severity === k} onclick={() => (severity = severity === k ? '' : k)}>{label} <b>{bySev[k]}</b></button>
+			{/each}
+		</div>
+		<div class="filters">
+			<button class="chip" class:on={source === ''} onclick={() => (source = '')}>Everywhere</button>
+			{#each sources as [k, label] (k)}
+				{#if bySource[k] || source === k || data.recent.some((i) => i.source === k)}
+					<button class="chip" class:on={source === k} onclick={() => (source = source === k ? '' : k)}>{label} <b>{bySource[k]}</b></button>
+				{/if}
+			{/each}
+			{#if filtered}<button class="btn sm" onclick={clear}>Clear</button>{/if}
+		</div>
+	{/if}
+	<Panel title="Open" aside={filtered && data.open.length ? `${open.length} of ${data.open.length} open` : `${data.open.length} open`} flush>
+		{#each open as i (i.id)}
 			<div class="inc">
 				<span class="bar {i.severity}"></span>
 				<div class="body">
@@ -97,24 +147,24 @@
 				{#if i.fired && !i.ack && admin}<button class="btn pri sm" onclick={() => ack(i)}>Acknowledge</button>{/if}
 			</div>
 		{:else}
-			<p class="empty">Nothing open.</p>
+			<p class="empty">{filtered && data.open.length ? 'Nothing open matches.' : 'Nothing open.'}</p>
 		{/each}
 	</Panel>
 
 	<div class="grid mt" class:g2={data.maintenance?.length}>
-		<Panel title="Recently resolved" aside="last {data.recent.length}" flush>
+		<Panel title="Recently resolved" aside={filtered ? `${recent.length} of the last ${data.recent.length}` : `last ${data.recent.length}`} flush>
 			<div class="tbl-wrap flat">
 				<table class="tbl">
 					<thead><tr><th>Resolved</th><th>Incident</th><th class="r">Lasted</th></tr></thead>
 					<tbody>
-						{#each data.recent as i (i.id)}
+						{#each recent as i (i.id)}
 							<tr>
 								<td class="sub" title={utc(i.resolved ?? i.opened)}>{hmz(i.resolved ?? i.opened)}</td>
 								<td><Status s={i.severity} word={i.title} />{#if i.ack}<div class="sub">acknowledged by {i.ack.by}</div>{/if}</td>
 								<td class="r mono">{lasted(i)}</td>
 							</tr>
 						{:else}
-							<tr><td colspan="3" class="empty">Nothing resolved yet.</td></tr>
+							<tr><td colspan="3" class="empty">{filtered && data.recent.length ? 'None of these match.' : 'Nothing resolved yet.'}</td></tr>
 						{/each}
 					</tbody>
 				</table>
@@ -156,6 +206,7 @@
 	.why li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted-fg); padding: 6px 10px; border: 1px dashed var(--border); border-radius: 6px; }
 	.why li b { color: var(--foreground); font-weight: 600; }
 	.why li .btn { margin-left: auto; height: 26px; }
+	.filters + .filters { margin-top: -6px; }
 	.sm { height: 30px; padding: 0 12px; font-size: 13px; }
 	.flat { border: 0; border-radius: 0; }
 	:global(.panel) .empty { padding: 20px; }
