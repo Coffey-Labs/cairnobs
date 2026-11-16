@@ -345,6 +345,18 @@ everything at once.
 - **Workloads:** one table for every kind, filtered by cluster, namespace,
   kind, node and state and searched by name, problems first, paged. The
   same table filtered to `vm` is the **VMs** page.
+- **Platforms (#80):** every cluster, array and VM host says what it runs
+  on, the way people name it: OpenShift, OKD, Kubernetes, VMware vSphere,
+  Nutanix, Proxmox VE, Hyper-V, KVM, Pure FlashArray, Pure FlashBlade,
+  IBM i, IBM Power, Vault or OpenBao. A cluster's comes from the
+  distribution its watcher reports (OpenShift's from its cluster version),
+  a host's VMs' from their hypervisor. It's a label on the Clusters cards,
+  in the Workloads "Where" column and cluster picker, on a host's VM line
+  and in the network map's cluster boxes. Workloads filters by it
+  (`/workloads?platform=VMware vSphere`), with a count on each choice. The
+  API gives `platform` on each cluster, workload row and VM link, and the
+  workload list adds `platforms` (counts, before the platform, state and
+  kind filters) and `platform_of` (each source's).
 - **A controller, VM or node:** its record, its pods (for a controller or
   a node), its warning events, its history, its incidents. For operators
   and admins, the last log lines of a failing container, when the cluster

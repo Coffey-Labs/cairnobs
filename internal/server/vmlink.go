@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"strings"
 
 	"github.com/cairnobs/cairnobs/internal/report"
@@ -21,8 +22,9 @@ type VMLink struct {
 	State     string `json:"state"`
 	Word      string `json:"word"`
 	Href      string `json:"href"`
-	OnHost    bool   `json:"on_host,omitempty"` // Source is a host running libvirt, not a cluster
-	Title     string `json:"title,omitempty"`   // the cluster's own name, when it isn't Source's (Proxmox)
+	OnHost    bool   `json:"on_host,omitempty"`  // Source is a host running libvirt, not a cluster
+	Title     string `json:"title,omitempty"`    // the cluster's own name, when it isn't Source's (Proxmox)
+	Platform  string `json:"platform,omitempty"` // what Source runs on: VMware vSphere, OpenShift, KVM (#80)
 	key       string // its condition's key: vm/<source>/<ns>/<name>
 }
 
@@ -56,7 +58,7 @@ func (srv *Server) vmLinks() (byHost map[string]VMLink, byVM map[string]HostLink
 	ws := &srv.wl
 	ws.mu.RLock()
 	for src, s := range ws.src {
-		title := ""
+		title, plat := "", clusterPlatform(s.recs)
 		if r, ok := s.recs[report.ClusterSelf]; ok && r.Name != "" && r.Name != src {
 			title = r.Name
 		}
@@ -75,7 +77,7 @@ func (srv *Server) vmLinks() (byHost map[string]VMLink, byVM map[string]HostLink
 			if _, ok := vmOf[u]; ok {
 				dupVM[u] = true
 			}
-			vmOf[u] = VMLink{Source: src, Title: title, Namespace: r.Namespace, Name: r.Name, Node: r.Node, State: r.State, Word: r.Word,
+			vmOf[u] = VMLink{Source: src, Title: title, Platform: plat, Namespace: r.Namespace, Name: r.Name, Node: r.Node, State: r.State, Word: r.Word,
 				Href: workloadHref(src, r.Namespace, r.Name), key: "vm/" + src + "/" + r.Namespace + "/" + r.Name}
 		}
 	}
@@ -90,7 +92,8 @@ func (srv *Server) vmLinks() (byHost map[string]VMLink, byVM map[string]HostLink
 			if _, ok := vmOf[u]; ok {
 				dupVM[u] = true
 			}
-			vmOf[u] = VMLink{Source: h.name, Name: r.Name, State: r.State, Word: r.Word,
+			hv, _ := r.Facts["hypervisor"].(string)
+			vmOf[u] = VMLink{Source: h.name, Platform: cmp.Or(platformOf("", hv), "KVM"), Name: r.Name, State: r.State, Word: r.Word,
 				Href: workloadHref(h.name, "", r.Name), OnHost: true, key: "vm/" + h.name + "//" + r.Name}
 		}
 	}
