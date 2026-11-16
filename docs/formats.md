@@ -821,6 +821,28 @@ links to where it is on the maps. What it holds back and why is kept
 with the incident, so every copy shows it. The dashboard groups the same
 way, and the service map names the likely cause on a failing service.
 
+### Batches
+
+After grouping by cause, problems that are alike and from one place are
+one incident when there are three or more at once: "4 certificates from
+pki_int in vault-prod end soon", "3 VMs in vcenter-phx: inaccessible".
+Its detail names them, worst first (eight at most, then "and 5 more"),
+and it takes the worst one's severity. What's alike:
+
+| batch | what's in it |
+|---|---|
+| certificates ending, by issuer | the Certificates page's own alerts (hosts' ports and files), when ending is all that's wrong |
+| certificates ending, by Vault mount or cluster namespace | Vault PKI leaves and issuers; cert-manager's certificates |
+| Akamai certificates ending | CPS's deployed certificates |
+| VMs, by cluster and state | a vCenter's, Nutanix's, Proxmox's or KubeVirt's VMs failing the same way |
+| workloads, by cluster and how their pods fail | Deployments, StatefulSets and the like whose pods all fail the same way (CrashLoopBackOff, say) |
+
+The safety rules are grouping's: one that has already paged on its own
+stays on its own, and a batch that has paged stays one incident while
+any of it is left, so it neither resolves early nor opens again as
+something else. Certificates that have ended, or are weak or served
+wrong as well, are never batched: each is its own job.
+
 ## expected.yaml: what should run where
 
 Per host, `running` and `stopped` name containers; `units` names systemd
