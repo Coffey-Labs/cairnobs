@@ -179,3 +179,17 @@ func TestServerZone(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Among equal uptimes, the rows with something to say come first (#58).
+func TestWorstFirst(t *testing.T) {
+	l := []Uptime{{Name: "a", Pct: 100}, {Name: "b", Pct: 100, Incidents: 220}, {Name: "c", Pct: 100, DegradedS: 60},
+		{Name: "d", Pct: 99.5}, {Name: "e", Pct: 100, DownS: 30}, {Name: "f", Pct: -1}}
+	worstFirst(l)
+	var got []string
+	for _, u := range l {
+		got = append(got, u.Name)
+	}
+	if strings.Join(got, "") != "fdecba" {
+		t.Errorf("order %v", got)
+	}
+}
