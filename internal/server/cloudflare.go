@@ -108,11 +108,11 @@ func (srv *Server) cloudflareConditions(now time.Time) []Condition {
 					Detail: "Covers " + strings.Join(c.Hosts, ", ") + ".", Href: href})
 			case c.Expires.IsZero():
 			case days < cfg.CertCriticalDays:
-				out = append(out, Condition{Key: key, Severity: "critical",
+				out = append(out, Condition{Key: key, Severity: "critical", Ends: c.Expires,
 					Title:  fmt.Sprintf("%s edge certificate expires in %s", z.Name, plural(days, "day", "days")),
 					Detail: "Cloudflare normally renews well before this; renewal is stuck. Covers " + strings.Join(c.Hosts, ", ") + ".", Href: href})
 			case days < cfg.CertWarnDays:
-				out = append(out, Condition{Key: key, Severity: "warning",
+				out = append(out, Condition{Key: key, Severity: "warning", Ends: c.Expires,
 					Title:  fmt.Sprintf("%s edge certificate expires in %s", z.Name, plural(days, "day", "days")),
 					Detail: "Cloudflare normally renews 30 days ahead. Covers " + strings.Join(c.Hosts, ", ") + ".", Href: href})
 			}

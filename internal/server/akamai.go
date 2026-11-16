@@ -79,8 +79,8 @@ func (srv *Server) akamaiConditions(now time.Time) []Condition {
 	for _, e := range s.Enrollments {
 		key := "akamai/cps/" + strconv.Itoa(e.ID)
 		for _, c := range e.Deployed {
-			if st, word := certStatus(c, now); st != "good" {
-				out = append(out, Condition{Key: key + "/" + c.Fingerprint, Severity: st,
+			if st, word := certStatus(c, now, srv.certCritical()); st != "good" {
+				out = append(out, Condition{Key: key + "/" + c.Fingerprint, Severity: st, Ends: c.NotAfter,
 					Title:  "Akamai certificate for " + e.CN + ": " + lowerFirst(word),
 					Detail: akamaiEnrollment(e) + ", " + c.Key + ". " + akamaiRenewal(e), Href: href})
 			}
@@ -287,7 +287,7 @@ func (srv *Server) handleAkamai(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	for _, e := range snap.Enrollments {
 		for _, c := range e.Deployed {
-			st, word := certStatus(c, now)
+			st, word := certStatus(c, now, srv.certCritical())
 			certs[c.Fingerprint] = judged{st, word, certinfo.Weak(&c)}
 		}
 	}

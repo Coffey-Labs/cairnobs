@@ -22,10 +22,42 @@ import (
 // with each source (decision 5); this page only gathers.
 
 const (
-	certWarn     = 21 * 24 * time.Hour
-	certCritical = 7 * 24 * time.Hour
-	certPlaces   = 50 // places sent per certificate; PlaceCount has them all
+	certWarn   = 21 * 24 * time.Hour
+	certPlaces = 50 // places sent per certificate; PlaceCount has them all
+	// defaultCertCritical is certificates.critical_within's default: four
+	// days left is a job for working hours, two is not (#34).
+	defaultCertCritical = 48 * time.Hour
 )
+
+// CertificatesConfig is obs-beacond.yaml's certificates section.
+type CertificatesConfig struct {
+	// CriticalWithin is how close to its end a certificate becomes
+	// critical (48h). Before that it's a warning, from whenever its source
+	// starts warning (21 days for most).
+	CriticalWithin time.Duration `yaml:"critical_within"`
+}
+
+func (srv *Server) certCritical() time.Duration {
+	if srv.cfg == nil || srv.cfg.Certificates.CriticalWithin <= 0 {
+		return defaultCertCritical
+	}
+	return srv.cfg.Certificates.CriticalWithin
+}
+
+// certSeverity holds every certificate condition at warning until its
+// certificate is within critical of its end, whatever its source judged
+// (each has its own critical threshold: 7 days for checks and Vault, 3
+// for Cloudflare). A source's critical inside the window stands, and so
+// does one about something other than the end (an ended certificate is
+// past it).
+func certSeverity(conds []Condition, now time.Time, critical time.Duration) {
+	for i := range conds {
+		c := &conds[i]
+		if c.Severity == "critical" && !c.Ends.IsZero() && c.Ends.Sub(now) > critical {
+			c.Severity = "warning"
+		}
+	}
+}
 
 // CertInvPlace is where a certificate was seen.
 type CertInvPlace struct {
@@ -88,11 +120,12 @@ type CertReload struct {
 // reload before it's said not to have happened.
 const reloadGrace = time.Hour
 
-// certStatus judges a certificate by the time it has left: 21 and 7 days,
-// or a third and a tenth of a short life (the same as Vault's leaves).
-func certStatus(c report.Cert, now time.Time) (string, string) {
+// certStatus judges a certificate by the time it has left: 21 days, and
+// critical (certificates.critical_within), or a third and a tenth of a
+// short life (the same as Vault's leaves).
+func certStatus(c report.Cert, now time.Time, critical time.Duration) (string, string) {
 	left, life := c.NotAfter.Sub(now), c.NotAfter.Sub(c.NotBefore)
-	warn, crit := certWarn, certCritical
+	warn, crit := certWarn, critical
 	if life > 0 && !c.CA {
 		warn, crit = min(warn, life/3), min(crit, life/10)
 	}
@@ -296,9 +329,9 @@ func (srv *Server) certificates(now time.Time) []*CertInv {
 		if row.NotAfter.Before(now) {
 			row.Days = -int(now.Sub(row.NotAfter).Hours()/24) - 1
 		}
-		row.Status, row.Word = certStatus(row.Cert, now)
-		if fileOnly(row) && row.Status == "warning" {
-			row.Status = "good" // a file no port serves is judged at 7 days only
+		row.Status, row.Word = certStatus(row.Cert, now, srv.certCritical())
+		if fileOnly(row) && row.Status == "warning" && row.NotAfter.Sub(now) >= fileWarn {
+			row.Status = "good" // a file no port serves is judged from 7 days only
 		}
 		if row.Weak = certinfo.Weak(&row.Cert); row.Weak != "" && row.Status == "good" && !fileOnly(row) {
 			row.Status = "warning"
@@ -373,9 +406,12 @@ func namesKey(c report.Cert) string {
 	return strings.Join(c.Names, ",")
 }
 
+// fileWarn is when a certificate found only in files starts to warn: 7
+// days, not 21 (one no port serves may be nobody's).
+const fileWarn = 7 * 24 * time.Hour
+
 // fileOnly says a certificate was found only in files or a Windows
-// certificate store: judged at 7 days, not 21 (one no port serves may be
-// nobody's).
+// certificate store.
 func fileOnly(c *CertInv) bool {
 	for _, k := range c.Kinds {
 		if k != "file" && k != "store" {
@@ -528,7 +564,7 @@ func (srv *Server) certConditions(now time.Time) []Condition {
 		if !own {
 			sev = "warning" // the others alert on its end; this is only the reload
 		}
-		cond := Condition{Key: "certinv/" + c.Fingerprint, Severity: sev, Title: "Certificate " + c.Subject + " " + what,
+		cond := Condition{Key: "certinv/" + c.Fingerprint, Severity: sev, Ends: c.NotAfter, Title: "Certificate " + c.Subject + " " + what,
 			Detail: strings.Join(detail, " "), Href: "/certificates?q=" + c.Fingerprint[:16]}
 		if len(hosts) == 1 {
 			for h := range hosts {
