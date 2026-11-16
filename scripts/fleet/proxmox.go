@@ -12,7 +12,6 @@ import (
 const (
 	proxmoxCluster = "pve-prod"
 	proxmoxNodes   = 8
-	proxmoxHost    = 60 // the fleet host whose agent reads it
 	// proxmoxGuestEvery: host 3 in every 20 is the cluster's VM number i/20.
 	proxmoxGuestEvery = 20
 )

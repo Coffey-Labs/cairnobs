@@ -218,7 +218,7 @@ results (internal/mapepire's Fake, internal/ibmi's FakePartition), and a
 fake HMC built from the answers IBM's own Python library (pypowervm)
 keeps from real HMCs (internal/hmc's Fake); its field names were checked
 against those answers. Then on a real partition and HMC (question 5).
-The demo simulator's `-ibmi 4` adds four partitions read by fleet-0041:
+The demo simulator's `-ibmi 4` adds four partitions read by phx1-ibmi01:
 prod1 past its system ASP threshold, ha1 a PowerHA standby with its
 independent ASP varied off, dev1 on 7.4; and hmc1, their HMC, with the
 server they run on, a DR server with its attention light on and a

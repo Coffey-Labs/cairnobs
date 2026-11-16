@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/cairnobs/cairnobs/internal/report"
@@ -24,7 +22,7 @@ import (
 const siteSize = 50
 
 func fleetIndex(i int, name string) int {
-	if n, err := strconv.Atoi(strings.TrimPrefix(name, "fleet-")); err == nil {
+	if n := hostIndex(name); n >= 0 {
 		return n
 	}
 	return i

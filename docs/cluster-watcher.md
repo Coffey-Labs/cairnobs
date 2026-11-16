@@ -605,7 +605,7 @@ configured, and listed them with the rest in 200 ms.
 - **Tested** against a fake of the documented API (a TLS server, CA and
   pinned fingerprint both; a refused config; quorum lost; a node on its
   own), and in the fleet simulator: `-proxmox 400` makes an 8-node
-  cluster read by fleet-0060, with one guest in HA error, one migrating,
+  cluster read by phx1-virt01, with one guest in HA error, one migrating,
   and hosts 3, 23, 43 … as its VMs. Not against a real Proxmox VE.
 
 ### vSphere (step 8, 2026-11-13)
@@ -645,7 +645,7 @@ configured, and listed them with the rest in 200 ms.
   certificate, a wrong pin refused, a lapsed session, a VM powered off,
   a host into maintenance, a snapshot ten days on), alarms against fixed
   states, and in the fleet simulator: `-vsphere 600` makes a vCenter of 16
-  ESXi hosts read by fleet-0080, with a host in maintenance, one with a
+  ESXi hosts read by phx1-virt01, with a host in maintenance, one with a
   red alarm, a datastore 91% full, an inaccessible VM, an old snapshot,
   and hosts 7, 27, 47 … as its VMs, every other one byte-swapped. Not
   against a real vCenter.
@@ -689,7 +689,7 @@ configured, and listed them with the rest in 200 ms.
   unknown CA refused, a wrong password, a 403 on alerts (a problem on
   Prism Central's record) and on VMs (the read fails), and in the fleet
   simulator: `-nutanix 450` makes Prism Central pc-01 with three clusters
-  of six AHV hosts read by fleet-0100, with a host in maintenance, one
+  of six AHV hosts read by phx1-virt01, with a host in maintenance, one
   with a critical alert, a container over its space threshold, and hosts
   11, 31, 51 … as its VMs. Not against a real Prism Central.
 

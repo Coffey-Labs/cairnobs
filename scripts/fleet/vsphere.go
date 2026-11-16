@@ -8,11 +8,10 @@ import (
 )
 
 // A vCenter, as a host agent with a vsphere: section sends it
-// (docs/cluster-watcher.md, step 8): fleet-0080's agent reads it.
+// (docs/cluster-watcher.md, step 8): phx1-virt01's agent reads it.
 const (
 	vcenterName = "vcsa-01.example.org"
 	esxiHosts   = 16
-	vcenterHost = 80 // the fleet host whose agent reads it
 	// vsphereGuestEvery: host 7 in every 20 is the vCenter's VM number
 	// i/20; every other one on old virtual hardware (its UUID byte-swapped).
 	vsphereGuestEvery = 20

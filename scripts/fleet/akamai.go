@@ -163,10 +163,11 @@ func fleetAkamai(f *akamai.Fake) string {
 		records += len(recs)
 		f.SetZone(fmt.Sprintf("zone%02d.example", z), akamai.FakeZone{Records: recs})
 	}
-	// Traffic: a long tail, about one request in 2,000 failing.
+	// Traffic: a long tail, about one request in 2,000 failing, no two
+	// CP codes alike.
 	for i := range 320 {
-		hits := int64(2_000_000 / (i + 1))
-		f.SetTraffic(int64(400000+i), hits, hits/2000)
+		hits, errs := cpTraffic(int64(400000 + i))
+		f.SetTraffic(int64(400000+i), hits, errs)
 	}
 	akamaiStory(f, now)
 	return fmt.Sprintf("%d GTM properties over %d datacenters, 180 CPS enrollments, 320 properties, 40 DNS zones with %d record sets, 320 CP codes", props, sites, records)
@@ -178,6 +179,15 @@ const (
 	slowActivation = 15              // the property whose production activation drags
 )
 
+// cpTraffic is a CP code's requests and errors in a reading: the long
+// tail's share for its place in it, give or take 15%, and one in 1,600 to
+// 2,600 failing.
+func cpTraffic(cp int64) (hits, errs int64) {
+	k := fmt.Sprint(cp)
+	hits = int64(float64(2_000_000/(cp-400000+1)) * (0.85 + 0.3*seed(k, "hits")))
+	return hits, hits / int64(1600+1000*seed(k, "errors"))
+}
+
 // slowBase is the slow property as fleetAkamai made it, before its new
 // version.
 var slowBase akamai.FakePMProperty
@@ -188,8 +198,7 @@ var slowBase akamai.FakePMProperty
 func akamaiStory(f *akamai.Fake, now time.Time) {
 	legacyDown := spellLegacyDC.active(now)
 	f.SetAlive("corp.example.akadns.net", "legacy", 3100, legacyServer, !legacyDown)
-	hits := int64(2_000_000 / (legacyCPCode - 400000 + 1))
-	errs := hits / 2000
+	hits, errs := cpTraffic(legacyCPCode)
 	if legacyDown {
 		errs = hits * 30 / 100
 	}
