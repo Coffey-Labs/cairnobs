@@ -316,11 +316,13 @@
 	.rows .open { flex: none; font-weight: 600; font-size: 14px; }
 	.more { align-self: flex-start; }
 
-	.calm { padding: 26px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
-	.calm div { flex: 1 1 320px; }
+	/* A section, so it takes the column layout above unless told otherwise. */
+	section.calm { padding: 26px; flex-direction: row; flex-wrap: wrap; gap: 18px; align-items: center; }
+	.calm > div { flex: 1 1 320px; }
 	.calm h2 { font-size: 21px; }
 	.calm p { margin: 6px 0 0; color: color-mix(in oklab, var(--foreground) 85%, var(--muted-fg)); }
 	.big-ok { color: var(--good); display: inline-flex; }
+	.big-ok :global(svg) { width: 32px; height: 32px; }
 
 	.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 	.tile { display: flex; flex-direction: column; gap: 10px; padding: 16px; color: var(--foreground); min-width: 0; }
