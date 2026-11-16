@@ -220,6 +220,8 @@ type Condition struct {
 	// Ends is when the certificate a condition is about ends, for one that
 	// is: certSeverity keeps it a warning until it's close (#34).
 	Ends time.Time `json:"-"`
+	// Batch folds it with others alike from the same place (batches.go).
+	Batch *Batch `json:"-"`
 }
 
 // view judges every host now: what the UI shows, and the conditions the

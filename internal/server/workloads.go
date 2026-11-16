@@ -856,8 +856,13 @@ func judgeRecords(s wsnap, now time.Time, firing func(key string) bool, ad adopt
 					detail = append(detail, "Served on "+on+".")
 				}
 				ends, _ := time.Parse(time.RFC3339, fmt.Sprint(r.Facts["ends"]))
-				add(Condition{Key: "cert/" + src + "/" + r.ID, Severity: sev, Detail: strings.Join(detail, " "), Ends: ends,
-					Title: fmt.Sprintf("%s %s%s in %s: %s", what, r.Name, from, name, lowerFirst(r.Word)), Href: workloadHref(src, r.Namespace, r.Name)}, ad.alert(r, r.Alert), r.Kind)
+				c := Condition{Key: "cert/" + src + "/" + r.ID, Severity: sev, Detail: strings.Join(detail, " "), Ends: ends,
+					Title: fmt.Sprintf("%s %s%s in %s: %s", what, r.Name, from, name, lowerFirst(r.Word)), Href: workloadHref(src, r.Namespace, r.Name)}
+				if strings.HasPrefix(r.Word, "Ends in") && !strings.Contains(r.Word, ";") && !ends.IsZero() { // ending, and nothing else wrong: alike
+					c.Batch = &Batch{Key: "certends/" + src + "/" + r.Namespace, Title: "{n} certificates" + from + " in " + name + " end soon", Href: workloadHref(src, r.Namespace, ""),
+						Item: r.Name + " (" + certLeft(ends.Sub(now)) + ")"}
+				}
+				add(c, ad.alert(r, r.Alert), r.Kind)
 			}
 		case report.KindVM:
 			sev, detail := "", ""
@@ -876,7 +881,8 @@ func judgeRecords(s wsnap, now time.Time, firing func(key string) bool, ad adopt
 			}
 			if sev != "" {
 				add(Condition{Key: "vm/" + src + "/" + r.Namespace + "/" + r.Name, Severity: sev, Detail: detail,
-					Title: fmt.Sprintf("VM %s (%s): %s", where(r.Name, r.Namespace), name, lowerFirst(r.Word)), Href: workloadHref(src, r.Namespace, r.Name)}, ad.alert(r, r.Alert), r.Kind)
+					Title: fmt.Sprintf("VM %s (%s): %s", where(r.Name, r.Namespace), name, lowerFirst(r.Word)), Href: workloadHref(src, r.Namespace, r.Name),
+					Batch: &Batch{Key: "vm/" + src + "/" + r.Word, Title: "{n} VMs in " + name + ": " + lowerFirst(r.Word), Item: where(r.Name, r.Namespace), Href: workloadHref(src, "", "")}}, ad.alert(r, r.Alert), r.Kind)
 			}
 			for _, c := range vmExtras(src, r, now) {
 				add(c, ad.alert(r, r.Alert), r.Kind)
@@ -943,9 +949,18 @@ func judgeRecords(s wsnap, now time.Time, firing func(key string) bool, ad adopt
 		if sev == "" {
 			continue
 		}
-		add(Condition{Key: "workload/" + src + "/" + g.ns + "/" + g.owner, Severity: sev,
-			Title: fmt.Sprintf("%s (%s): %s", where(g.owner, g.ns), name, word), Href: workloadHref(src, g.ns, ownerName(g.owner))},
-			ad.alertKey(g.ns, g.ns+"/"+g.owner, g.alert), report.KindController)
+		c := Condition{Key: "workload/" + src + "/" + g.ns + "/" + g.owner, Severity: sev,
+			Title: fmt.Sprintf("%s (%s): %s", where(g.owner, g.ns), name, word), Href: workloadHref(src, g.ns, ownerName(g.owner))}
+		if g.bad > 0 && !strings.Contains(word, "; ") { // its pods failing, and nothing else: alike when they fail the same way
+			how := make([]string, 0, len(g.words))
+			for w := range g.words {
+				how = append(how, lowerFirst(w))
+			}
+			slices.Sort(how)
+			c.Batch = &Batch{Key: "workload/" + src + "/" + strings.Join(how, "+"), Title: "{n} workloads in " + name + " with pods failing: " + strings.Join(how, ", "),
+				Item: fmt.Sprintf("%s (%d of %d pods)", where(g.owner, g.ns), g.bad, g.pods), Href: workloadHref(src, "", "")}
+		}
+		add(c, ad.alertKey(g.ns, g.ns+"/"+g.owner, g.alert), report.KindController)
 	}
 	// Volumes: several failing in one storage class is one problem.
 	byClass := map[string][]pvcBad{}

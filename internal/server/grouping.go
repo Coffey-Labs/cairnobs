@@ -323,12 +323,18 @@ func nodeOf(t *Topology, c Condition) string {
 	return ""
 }
 
-// groupConditions folds conditions caused by a deeper failure into the
+// groupConditions folds conditions by cause, then folds what's alike into
+// batches (batches.go).
+func (srv *Server) groupConditions(conds []Condition, firing func(key string) bool) []Condition {
+	return foldBatches(srv.groupByCause(conds, firing), firing)
+}
+
+// groupByCause folds conditions caused by a deeper failure into the
 // condition for that failure. firing says whether a key already has an
 // incident that people were told about: such a condition stays on its
 // own, so it neither vanishes nor reads as "resolved" because its cause
 // was spotted later.
-func (srv *Server) groupConditions(conds []Condition, firing func(key string) bool) []Condition {
+func (srv *Server) groupByCause(conds []Condition, firing func(key string) bool) []Condition {
 	if len(conds) == 0 {
 		return conds
 	}

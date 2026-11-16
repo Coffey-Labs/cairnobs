@@ -3,6 +3,7 @@ package server
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -570,6 +571,10 @@ func (srv *Server) certConditions(now time.Time) []Condition {
 			for h := range hosts {
 				cond.Host = h // a maintenance window on the host holds it
 			}
+		}
+		if own && c.Weak == "" && len(c.NotReloaded) == 0 && !wrongOnHosts(c) && c.Issuer != "" && c.NotAfter.After(now) {
+			cond.Batch = &Batch{Key: "certends/issuer/" + c.Issuer, Title: "{n} certificates from " + c.Issuer + " end soon",
+				Item: c.Subject + " (" + certLeft(c.NotAfter.Sub(now)) + ")", Href: "/certificates?q=" + url.QueryEscape(c.Issuer)}
 		}
 		conds = append(conds, cond)
 	}

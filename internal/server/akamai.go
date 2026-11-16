@@ -82,7 +82,8 @@ func (srv *Server) akamaiConditions(now time.Time) []Condition {
 			if st, word := certStatus(c, now, srv.certCritical()); st != "good" {
 				out = append(out, Condition{Key: key + "/" + c.Fingerprint, Severity: st, Ends: c.NotAfter,
 					Title:  "Akamai certificate for " + e.CN + ": " + lowerFirst(word),
-					Detail: akamaiEnrollment(e) + ", " + c.Key + ". " + akamaiRenewal(e), Href: href})
+					Detail: akamaiEnrollment(e) + ", " + c.Key + ". " + akamaiRenewal(e), Href: href,
+					Batch: &Batch{Key: "akamai/cps-ends", Title: "{n} Akamai certificates end soon", Item: e.CN + " (" + certLeft(c.NotAfter.Sub(now)) + ")", Href: href}})
 			}
 		}
 		if what := akamaiWaiting[e.Waiting]; what != "" {
