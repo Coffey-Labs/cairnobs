@@ -3,6 +3,7 @@ package state
 import (
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -62,12 +63,19 @@ func (d *DB) LatestStatuses() (map[string]string, error) {
 // StatusChanges is every change in [from, to), plus each entity's last
 // change before from (its status as the period began), oldest first.
 func (d *DB) StatusChanges(from, to time.Time) ([]Change, error) {
+	return d.StatusChangesOf("", from, to)
+}
+
+// StatusChangesOf is StatusChanges for the entities whose names start
+// with prefix ("svc/": the services).
+func (d *DB) StatusChangesOf(prefix string, from, to time.Time) ([]Change, error) {
+	like := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix) + "%"
 	rows, err := d.query(`
 		SELECT entity, at, status, `+d.kind.rowOrder()+` AS n FROM status_log s
-			WHERE at < ? AND at = (SELECT MAX(at) FROM status_log WHERE entity = s.entity AND at < ?)
+			WHERE entity LIKE ? ESCAPE '\' AND at < ? AND at = (SELECT MAX(at) FROM status_log WHERE entity = s.entity AND at < ?)
 		UNION ALL
-		SELECT entity, at, status, `+d.kind.rowOrder()+` AS n FROM status_log WHERE at >= ? AND at < ?
-		ORDER BY at, n`, from.Unix(), from.Unix(), from.Unix(), to.Unix())
+		SELECT entity, at, status, `+d.kind.rowOrder()+` AS n FROM status_log WHERE entity LIKE ? ESCAPE '\' AND at >= ? AND at < ?
+		ORDER BY at, n`, like, from.Unix(), from.Unix(), like, from.Unix(), to.Unix())
 	if err != nil {
 		return nil, err
 	}

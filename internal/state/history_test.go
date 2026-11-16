@@ -48,6 +48,18 @@ func TestStatusHistory(t *testing.T) {
 	if len(got) != 2 {
 		t.Errorf("after prune: %+v", got)
 	}
+	// One kind of entity only; the prefix's _ is a letter, not a wildcard.
+	_ = db.LogStatus("host/mail", "critical", t0.Add(61*24*time.Hour))
+	_ = db.LogStatus("svcXmail", "critical", t0.Add(61*24*time.Hour))
+	_ = db.LogStatus("svc_mail", "critical", t0.Add(61*24*time.Hour))
+	got, _ = db.StatusChangesOf("svc/", t0.Add(61*24*time.Hour), t0.Add(62*24*time.Hour))
+	if len(got) != 2 || got[0].Entity[:4] != "svc/" || got[1].Entity[:4] != "svc/" {
+		t.Errorf("svc/ only: %+v", got)
+	}
+	got, _ = db.StatusChangesOf("svc_", t0, t0.Add(62*24*time.Hour))
+	if len(got) != 1 || got[0].Entity != "svc_mail" {
+		t.Errorf("svc_ only: %+v", got)
+	}
 }
 
 func join(s []string) string {

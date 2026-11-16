@@ -726,6 +726,36 @@ expiring within 30 days, disks filling within 90 and mail. Email gets the
 whole text, chat a line and a link. It's sent once per week even across
 restarts; admins can preview it and send it by hand on the Reports page.
 
+### The dashboard's briefing
+
+The same history feeds the dashboard. `GET /api/v1/overview` carries,
+besides the readings:
+
+- `today`: what happened since this person last looked. A visit ends after
+  30 minutes without the dashboard open, and the end of the last one is
+  `since` (`last_visit: true`); with none on record, and for demo visitors,
+  who share one sign-in, it's the last 12 hours. `events` are the newest
+  eight incidents that opened or closed since then; `opened`, `resolved`,
+  `fixed_itself` (closed with nobody having acknowledged it) and `told`
+  (alerts that went out) count them all. Each person's last visit is kept
+  in the database's meta table as `visit/<user>`.
+- `services`: each service's state and its last 24 hours as 48 half-hour
+  cells, the worst status in each (empty where nothing is known), with
+  uptime over 24 hours and 30 days. `GET /api/v1/services` gives the same
+  with each service's parts, what it needs and what needs it.
+- `watch`, the few hosts heading somewhere: disks that fill within 30 days
+  at the past week's rate (50% full at least), hosts busier than usual for
+  the hour (CPU at least twice and 15 points over that hour's average in
+  the past week, memory 15 points over and 60% at least; three days of
+  that hour first), and hosts that started in the last day.
+- each `attention` item's `key`, what else it takes down (`affected`) and,
+  once there is one, its open `incident` with who acknowledged it, so the
+  dashboard can offer "I'm on it".
+
+The strips and uptimes are read from history once a minute (30 days every
+ten), the watch list every ten minutes, whatever the number of dashboards
+open.
+
 ## checks.yaml: active checks
 
 `checks` in obs-beacond.yaml points at it. obs-beacond re-reads it when it changes

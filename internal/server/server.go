@@ -43,6 +43,8 @@ type Server struct {
 	started   time.Time
 	alerts    *alerter
 	db        *state.DB         // nil when no database is configured
+	visits    visitBook         // each person's previous visit (today.go)
+	trends    trendCache        // service strips and the watch list, from history (today.go)
 	atls      *agentTLS         // nil when the agent listener is plain HTTP
 	acme      *autocert.Manager // nil without tls.acme
 	joinedMu  sync.RWMutex
@@ -425,6 +427,7 @@ func (srv *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /agent-packages/{file}", srv.handleAgentPackage)
 	mux.HandleFunc("GET /api/v1/map/network", srv.needSession(srv.handleMapNetwork))
 	mux.HandleFunc("GET /api/v1/map/services", srv.needSession(srv.handleMapServices))
+	mux.HandleFunc("GET /api/v1/services", srv.needSession(srv.handleServices))
 	mux.HandleFunc("GET /api/v1/map/find", srv.needSession(srv.handleMapFind))
 	mux.HandleFunc("GET /api/v1/map/found", srv.needSession(srv.handleMapFound))
 	mux.HandleFunc("GET /api/v1/map/corrections", srv.needSession(srv.handleMapCorrections))
