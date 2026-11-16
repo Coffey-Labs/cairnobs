@@ -698,19 +698,56 @@ func TestClusterKind(t *testing.T) {
 	snap := func(d string) wsnap {
 		return wsnap{recs: []report.Workload{{Kind: report.KindCluster, ID: report.ClusterSelf, Facts: map[string]any{"distribution": d}}}}
 	}
-	for d, want := range map[string][2]string{
-		"":              {"Kubernetes cluster", "Kubernetes"},
-		"OpenShift":     {"OpenShift cluster", "Kubernetes"},
-		"Proxmox VE":    {"Proxmox cluster", "Virtualization"},
-		"vCenter":       {"vCenter", "Virtualization"},
-		"Prism Central": {"Prism Central", "Virtualization"},
-		"HMC":           {"HMC", "IBM i"},
-		"IBM i":         {"IBM i partition", "IBM i"},
-		"Purity//FA":    {"Pure array", "Storage"},
-		"OpenBao":       {"OpenBao", "Secrets"},
+	for d, want := range map[string][3]string{
+		"":              {"Kubernetes cluster", "Kubernetes", "Kubernetes"},
+		"OpenShift":     {"OpenShift cluster", "Kubernetes", "OpenShift"},
+		"OKD":           {"OKD cluster", "Kubernetes", "OKD"},
+		"Proxmox VE":    {"Proxmox cluster", "Virtualization", "Proxmox VE"},
+		"vCenter":       {"VMware vCenter", "Virtualization", "VMware vSphere"},
+		"Prism Central": {"Nutanix Prism Central", "Virtualization", "Nutanix"},
+		"HMC":           {"IBM Power HMC", "IBM i", "IBM Power"},
+		"IBM i":         {"IBM i partition", "IBM i", "IBM i"},
+		"Purity//FA":    {"Pure array", "Storage", "Pure FlashArray"},
+		"Purity//FB":    {"Pure array", "Storage", "Pure FlashBlade"},
+		"Vault":         {"Vault", "Secrets", "Vault"},
+		"OpenBao":       {"OpenBao", "Secrets", "OpenBao"},
 	} {
-		if got := [2]string{snap(d).kindLabel(), snap(d).group()}; got != want {
+		if got := [3]string{snap(d).kindLabel(), snap(d).group(), snap(d).platform()}; got != want {
 			t.Errorf("%q: %v, want %v", d, got, want)
 		}
+	}
+}
+
+// A host's own VMs are on the platform their hypervisor names (#80).
+func TestHostPlatform(t *testing.T) {
+	vm := func(h string) wsnap {
+		return wsnap{host: true, recs: []report.Workload{{Kind: report.KindVM, Name: "a", Facts: map[string]any{"hypervisor": h}}}}
+	}
+	for h, want := range map[string]string{"Hyper-V": "Hyper-V", "libvirt": "KVM", "": "KVM"} {
+		if got := vm(h).platform(); got != want {
+			t.Errorf("hypervisor %q: %q, want %q", h, got, want)
+		}
+	}
+	if got := (wsnap{host: true}).platform(); got != "KVM" {
+		t.Errorf("a host with no VMs: %q", got)
+	}
+}
+
+// OpenShift says so on its cluster version, not on the cluster's own
+// record: that's where the cluster watcher reads it (#80).
+func TestOpenShiftPlatform(t *testing.T) {
+	s := wsnap{recs: []report.Workload{
+		{Kind: report.KindCluster, ID: report.ClusterSelf, Name: "prod"},
+		{Kind: report.KindCluster, ID: "cv", Name: "clusterversion/version", Facts: map[string]any{"distribution": "OpenShift", "version": "4.20.3"}},
+	}}
+	if got := [3]string{s.platform(), s.kindLabel(), s.group()}; got != [3]string{"OpenShift", "OpenShift cluster", "Kubernetes"} {
+		t.Errorf("OpenShift: %v", got)
+	}
+	recs := map[string]*wrec{}
+	for _, r := range s.recs {
+		recs[r.ID] = &wrec{Workload: r}
+	}
+	if got := clusterPlatform(recs); got != "OpenShift" {
+		t.Errorf("clusterPlatform: %q", got)
 	}
 }

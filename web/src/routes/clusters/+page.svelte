@@ -3,6 +3,7 @@
 	import { replaceState } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 	import Panel from '$lib/Panel.svelte';
+	import Platform from '$lib/Platform.svelte';
 	import Status from '$lib/Status.svelte';
 	import ArrayIO from '$lib/ArrayIO.svelte';
 	import VaultLeases from '$lib/VaultLeases.svelte';
@@ -64,7 +65,7 @@
 		if (show === 'problems' && !needsLook(c)) return false;
 		if (!q) return true;
 		const f = q.toLowerCase();
-		return [c.name, c.title, c.read_by, c.version, c.noun].some((x) => x?.toLowerCase().includes(f));
+		return [c.name, c.title, c.read_by, c.version, c.noun, c.platform].some((x) => x?.toLowerCase().includes(f));
 	};
 	const sections = $derived(
 		groups
@@ -98,7 +99,7 @@
 	</nav>
 	<div class="filters">
 		<Icon name="filter" />
-		<input class="input" placeholder="Name, version or what it is" aria-label="Find a cluster" bind:value={typed} style="width:240px" />
+		<input class="input" placeholder="Name, version or platform" aria-label="Find a cluster" bind:value={typed} style="width:240px" />
 		<button class="chip" class:on={group === ''} onclick={() => (group = '')}>All kinds</button>
 		{#each sections as x (x.g)}<button class="chip" class:on={group === x.g} onclick={() => (group = group === x.g ? '' : x.g)}>{x.g}</button>{/each}
 		<button class="chip" class:on={show === 'problems'} onclick={() => (show = show === 'problems' ? '' : 'problems')}>Need a look <b>{badCount}</b></button>
@@ -114,6 +115,7 @@
 	<div class="mt">
 		<Panel title={c.title ? `${c.title} · read by ${c.read_by || c.name}` : c.name} aside={c.version ? `version ${c.version}` : ''}>
 			<div class="top">
+				<Platform p={c.platform} />
 				<Status s={c.status} word={c.word} />
 				<span class="sub">{c.heard ? `Heard ${ago(c.heard)}` : 'Never heard from'}{#if c.listed} · listed in full {ago(c.listed)}{/if}</span>
 			</div>

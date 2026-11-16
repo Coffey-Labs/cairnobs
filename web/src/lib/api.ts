@@ -36,7 +36,7 @@ export interface Host {
 export interface HostEvents { at: string; since: string; list: EventGroup[]; error?: string }
 export interface EventGroup { log: string; source: string; id: number; level: 'critical' | 'error'; count: number; first: string; last: string; message?: string }
 /** A cluster's VM, as linked to a host (internal/server/vmlink.go). */
-export interface VMLink { source: string; namespace?: string; name: string; node?: string; state: string; word: string; href: string; on_host?: boolean; title?: string }
+export interface VMLink { source: string; namespace?: string; name: string; node?: string; state: string; word: string; href: string; on_host?: boolean; title?: string; platform?: string }
 /** The libvirt VMs a host runs. */
 export interface HostVMCount { total: number; running: number; error?: string; href: string }
 export interface UnitView { name: string; load: string; active: string; sub: string; restarts: number; since?: string; host: string; severity: Severity; word: string }
@@ -88,6 +88,8 @@ export interface Cluster {
 	noun: string; node_noun: string;
 	/** The Clusters page's section (Kubernetes, Virtualization, Storage, IBM i, Secrets), and its state in a line, in its kind's terms. */
 	group: string; summary: string;
+	/** What it runs on, the way people name it: OpenShift, Kubernetes, VMware vSphere, Nutanix (#80). */
+	platform?: string;
 	/** An IBM i partition's own numbers, in place of nodes. */
 	partition?: PartitionNums;
 }
@@ -101,7 +103,8 @@ export interface ClusterPart { name: string; title: string; state: string; word:
 export interface ClusterNode { name: string; state: string; severity: Severity; word: string; since?: string; facts?: Record<string, unknown> }
 /** A row of the workloads list: GET /api/v1/workloads. */
 export interface Workload {
-	source: string; kind: string; id: string; name: string; namespace?: string; owner?: string; node?: string;
+	/** platform is what source runs on: OpenShift, VMware vSphere, KVM (#80). */
+	source: string; platform?: string; kind: string; id: string; name: string; namespace?: string; owner?: string; node?: string;
 	state: string; severity: Severity; word: string; since?: string; alert?: string;
 	labels?: Record<string, string>; facts?: Record<string, unknown>;
 	/** For a VM: the host agent inside it, linked by its SMBIOS UUID. */

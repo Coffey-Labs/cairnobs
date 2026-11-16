@@ -289,7 +289,7 @@ func (srv *Server) networkView(focus string, now time.Time) (*MapView, bool) {
 		_, conds := srv.view(now)
 		for _, c := range srv.clusterViews(now, conds) {
 			v.Boxes = append(v.Boxes, MapBox{ID: "cluster:" + c.Name, Kind: "cluster", Name: c.Name, Status: c.Status,
-				Sub: c.Summary, Count: c.Nodes})
+				Sub: c.Platform + " · " + c.Summary, Count: c.Nodes})
 		}
 
 	case "site", "group":

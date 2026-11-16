@@ -8,6 +8,7 @@
 	import Spark from '$lib/Spark.svelte';
 	import { live } from '$lib/live.svelte';
 	import { ago, bytes, sourceLabel } from '$lib/format';
+	import Platform from '$lib/Platform.svelte';
 
 	// Every node, pod, controller, job, volume and VM the cluster agents
 	// send, filtered and paged by obs-beacond: at fleet size that's tens of
@@ -21,6 +22,7 @@
 	let node = $state(u.get('node') ?? '');
 	let owner = $state(u.get('owner') ?? '');
 	let show = $state(u.get('show') ?? '');
+	let platform = $state(u.get('platform') ?? '');
 	let typed = $state(u.get('q') ?? '');
 	let q = $state(u.get('q') ?? '');
 	let offset = $state(0);
@@ -32,6 +34,8 @@
 	let namespaces = $state<string[]>([]);
 	let clusters = $state<string[]>([]);
 	let hypervisors = $state<string[]>([]); // hosts reporting libvirt VMs
+	let platforms = $state<Record<string, number>>({}); // workloads on each platform, other filters applied
+	let platformOf = $state<Record<string, string>>({}); // each cluster's and host's
 	let open = $state<string | null>(null);
 	// The open row's last day, hour by hour, when it has usage.
 	let hours = $state<{ key: string; list: WorkloadHour[] } | null>(null);
@@ -56,7 +60,7 @@
 
 	const params = () => {
 		const p = new URLSearchParams();
-		for (const [k, v] of [['source', source], ['kind', kind], ['ns', ns], ['node', node], ['owner', owner], ['show', show], ['q', q]]) if (v) p.set(k, v);
+		for (const [k, v] of [['source', source], ['platform', platform], ['kind', kind], ['ns', ns], ['node', node], ['owner', owner], ['show', show], ['q', q]]) if (v) p.set(k, v);
 		return p;
 	};
 	async function load(p: URLSearchParams, offset: number) {
@@ -64,7 +68,7 @@
 			const qp = new URLSearchParams(p);
 			qp.set('offset', String(offset));
 			qp.set('limit', String(limit));
-			const r = await get<{ workloads: Workload[]; total: number; counts: Record<string, number>; kinds: Record<string, number>; namespaces: string[]; clusters: string[]; hypervisors?: string[] }>('/api/v1/workloads?' + qp);
+			const r = await get<{ workloads: Workload[]; total: number; counts: Record<string, number>; kinds: Record<string, number>; namespaces: string[]; clusters: string[]; hypervisors?: string[]; platforms?: Record<string, number>; platform_of?: Record<string, string> }>('/api/v1/workloads?' + qp);
 			rows = r.workloads;
 			total = r.total;
 			counts = r.counts;
@@ -72,6 +76,8 @@
 			namespaces = r.namespaces;
 			clusters = r.clusters;
 			hypervisors = r.hypervisors ?? [];
+			platforms = r.platforms ?? {};
+			platformOf = r.platform_of ?? {};
 			error = '';
 			loaded = true;
 		} catch (e) {
@@ -93,7 +99,10 @@
 	const kindNames: Record<string, string> = { node: 'Nodes', pod: 'Pods', controller: 'Controllers', job: 'Jobs', pvc: 'Volumes', vm: 'VMs', service: 'Services', ingress: 'Ingresses', cert: 'Certificates' };
 	const kindWord: Record<string, string> = { node: 'Node', pod: 'Pod', controller: 'Controller', job: 'Job', pvc: 'Volume', vm: 'VM', service: 'Service', ingress: 'Ingress', cert: 'Certificate' };
 	const set = (fn: () => void) => { fn(); offset = 0; open = null; };
-	const clear = () => set(() => { source = ''; kind = ''; ns = ''; node = ''; owner = ''; show = ''; typed = ''; q = ''; });
+	const clear = () => set(() => { source = ''; platform = ''; kind = ''; ns = ''; node = ''; owner = ''; show = ''; typed = ''; q = ''; });
+	// Most workloads first, so the platform chips read biggest to smallest.
+	const platformList = $derived(Object.entries(platforms).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
+	const pick = (name: string, label: string) => (platformOf[name] ? `${label} · ${platformOf[name]}` : label);
 	const fact = (v: unknown) => (typeof v === 'object' ? JSON.stringify(v) : String(v));
 </script>
 
@@ -114,10 +123,10 @@
 		<select class="input" aria-label="Cluster or host" value={source} onchange={(e) => set(() => { source = e.currentTarget.value; ns = ''; })}>
 			<option value="">Every cluster and host</option>
 			{#if hypervisors.length}
-				<optgroup label="Clusters">{#each clusters as c}<option value={c}>{sourceLabel(c)}</option>{/each}</optgroup>
-				<optgroup label="Hosts running VMs">{#each hypervisors as h}<option value={h}>{h}</option>{/each}</optgroup>
+				<optgroup label="Clusters">{#each clusters as c}<option value={c}>{pick(c, sourceLabel(c))}</option>{/each}</optgroup>
+				<optgroup label="Hosts running VMs">{#each hypervisors as h}<option value={h}>{pick(h, h)}</option>{/each}</optgroup>
 			{:else}
-				{#each clusters as c}<option value={c}>{sourceLabel(c)}</option>{/each}
+				{#each clusters as c}<option value={c}>{pick(c, sourceLabel(c))}</option>{/each}
 			{/if}
 		</select>
 	{/if}
@@ -131,6 +140,15 @@
 		<button class="chip" class:on={show === k} onclick={() => set(() => (show = k))}>{label} <b>{showCount(k)}</b></button>
 	{/each}
 </div>
+{#if platformList.length > 1 || platform}
+<div class="filters kinds" role="group" aria-label="Platform">
+	<button class="chip" class:on={platform === ''} onclick={() => set(() => (platform = ''))}>Every platform</button>
+	{#each platformList as [p, n] (p)}
+		<button class="chip" class:on={platform === p} onclick={() => set(() => { platform = p; source = ''; ns = ''; })}><Platform {p} /> <b>{n}</b></button>
+	{/each}
+	{#if platform && !platforms[platform]}<button class="chip on" onclick={() => set(() => (platform = ''))}>On {platform} ×</button>{/if}
+</div>
+{/if}
 <div class="filters kinds">
 	<button class="chip" class:on={kind === ''} onclick={() => set(() => (kind = ''))}>Every kind</button>
 	{#each Object.keys(kindNames) as k}
@@ -139,7 +157,7 @@
 	{#if node}<button class="chip on" onclick={() => set(() => (node = ''))}>On {node} ×</button>{/if}
 	{#if owner}<button class="chip on" onclick={() => set(() => (owner = ''))}>Of {owner} ×</button>{/if}
 	{#if source && clusters.length + hypervisors.length <= 1}<button class="chip on" onclick={() => set(() => { source = ''; ns = ''; })}>In {sourceLabel(source)} ×</button>{/if}
-	{#if source || kind || ns || node || owner || show || q}<button class="btn sm" onclick={clear}>Clear</button>{/if}
+	{#if source || platform || kind || ns || node || owner || show || q}<button class="btn sm" onclick={clear}>Clear</button>{/if}
 </div>
 
 <div class="tbl-wrap">
@@ -153,7 +171,7 @@
 					<td class="sub">{kindWord[w.kind] ?? w.kind}</td>
 					<td class="sub mono use">{#if w.usage}{cores(w.usage.cpu)} CPU{#if w.usage.cpu_pct}{' '}<b class:hot={w.usage.cpu_pct >= 90}>{Math.round(w.usage.cpu_pct)}%</b>{/if} · {bytes(w.usage.mem)}{#if w.usage.mem_pct}{' '}<b class:hot={w.usage.mem_pct >= 90}>{Math.round(w.usage.mem_pct)}%</b>{/if}{:else}—{/if}</td>
 					<td class="mono sub">{#if w.node}<button class="link" onclick={(e) => { e.stopPropagation(); set(() => { node = w.node ?? ''; source = w.source; }); }}>{w.node}</button>{:else}—{/if}</td>
-					<td class="sub">{#if hypervisors.includes(w.source)}<a href="/hosts/{w.source}">{w.source}</a>{:else}{sourceLabel(w.source)}{/if}</td>
+					<td class="sub where">{#if hypervisors.includes(w.source)}<a href="/hosts/{w.source}">{w.source}</a>{:else}{sourceLabel(w.source)}{/if} <Platform p={w.platform} /></td>
 					<td class="sub">{w.since ? ago(w.since) : '—'}</td>
 				</tr>
 				{#if open === w.source + '/' + w.id}
@@ -193,6 +211,8 @@
 
 <style>
 	.kinds { margin-top: -6px; }
+	.where :global(.plat) { margin-left: 2px; }
+	.chip :global(.plat) { border: 0; padding: 0; background: none; font-size: inherit; font-weight: inherit; }
 	.row { cursor: pointer; }
 	.row.sel td { background: var(--accent); }
 	.nm { font-weight: 600; }

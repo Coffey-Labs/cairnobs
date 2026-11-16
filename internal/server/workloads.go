@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"log"
 	"maps"
 	"net/http"
@@ -576,8 +577,14 @@ func (s wsnap) kindLabel() string {
 		return "IBM i partition"
 	case n == "Array":
 		return "Pure array"
+	case n == "vCenter":
+		return "VMware vCenter"
+	case n == "Prism Central":
+		return "Nutanix Prism Central"
+	case n == "HMC":
+		return "IBM Power HMC"
 	case n != "Cluster":
-		return n // vCenter, Prism Central, HMC, Vault, OpenBao
+		return n // Vault, OpenBao
 	case strings.HasPrefix(d, "Proxmox"):
 		return "Proxmox cluster"
 	case d == "OpenShift", d == "OKD":
@@ -652,14 +659,34 @@ func (s wsnap) nodeNoun() string {
 	return "Node"
 }
 
+// distribution is what the source's watcher says it is: on its own
+// record, or for OpenShift and OKD on the cluster version's, which is
+// where the cluster watcher reads it.
 func (s wsnap) distribution() string {
-	for _, r := range s.recs {
-		if r.Kind == report.KindCluster && r.ID == report.ClusterSelf {
-			d, _ := r.Facts["distribution"].(string)
+	return distributionOf(func(yield func(report.Workload) bool) {
+		for _, r := range s.recs {
+			if !yield(r) {
+				return
+			}
+		}
+	})
+}
+
+func distributionOf(recs iter.Seq[report.Workload]) string {
+	ocp := ""
+	for r := range recs {
+		if r.Kind != report.KindCluster {
+			continue
+		}
+		d, _ := r.Facts["distribution"].(string)
+		switch {
+		case r.ID == report.ClusterSelf && d != "":
 			return d
+		case strings.HasPrefix(r.Name, "clusterversion/") && d != "":
+			ocp = d
 		}
 	}
-	return ""
+	return ocp
 }
 
 // alertable applies a workload's alert setting: off drops it, and only
@@ -1166,6 +1193,9 @@ type ClusterView struct {
 	// workloads", "CPU 54% · system ASP 85% · 4 of 5 subsystems active".
 	Group   string `json:"group"`
 	Summary string `json:"summary"`
+	// Platform is what it runs on, said the way people name it:
+	// OpenShift, Kubernetes, VMware vSphere, Nutanix, Proxmox VE (#80).
+	Platform string `json:"platform"`
 }
 
 // expectSubsystems marks an IBM i partition's subsystems that
@@ -1356,7 +1386,7 @@ func (srv *Server) clusterViews(now time.Time, conds []Condition) []ClusterView 
 		if s.host {
 			continue // a host's VMs: on its page and Workloads, not Clusters
 		}
-		v := ClusterView{Name: s.name, Agent: s.agent, Problems: probs[s.name], Kinds: map[string]map[string]int{}, Noun: s.noun(), NodeNoun: s.nodeNoun(), Group: s.group()}
+		v := ClusterView{Name: s.name, Agent: s.agent, Problems: probs[s.name], Kinds: map[string]map[string]int{}, Noun: s.noun(), NodeNoun: s.nodeNoun(), Group: s.group(), Platform: s.platform()}
 		v.Status, v.Word, _ = srv.sourceStatus(s, now)
 		if !s.heard.IsZero() {
 			h := s.heard
@@ -1511,6 +1541,8 @@ func rank(sev string) int {
 // WorkloadRow is one workload in the Workloads list.
 type WorkloadRow struct {
 	Source string `json:"source"`
+	// Platform is what Source runs on: OpenShift, VMware vSphere, KVM (#80).
+	Platform string `json:"platform"`
 	report.Workload
 	Severity string `json:"severity"`
 	// Host is the host agent inside a VM, linked by its SMBIOS UUID.
@@ -1526,13 +1558,17 @@ type WorkloadRow struct {
 
 // handleWorkloadList is every workload, most in need first: ?source=,
 // ?kind=, ?ns=, ?node=, ?owner=, ?show= (problems, good, waiting, off),
-// ?q= (name, namespace, owner or node), ?offset=, ?limit= (100, at most
-// 1000). counts leave show and kind out and kinds leaves kind out, so each
-// choice can say how many it holds; namespaces are the chosen cluster's.
+// ?q= (name, namespace, owner or node), ?platform= (#80), ?offset=,
+// ?limit= (100, at most 1000). counts leave show and kind out, kinds
+// leaves kind out and platforms leaves platform, show and kind out, so
+// each choice can say how many it holds; namespaces are the chosen
+// cluster's. platform_of names each source's platform, for the picker.
 func (srv *Server) handleWorkloadList(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	qv := r.URL.Query()
 	source, kind, ns, node, owner, show := qv.Get("source"), qv.Get("kind"), qv.Get("ns"), qv.Get("node"), qv.Get("owner"), qv.Get("show")
+	platform := qv.Get("platform")
+	platforms, platformOfSource := map[string]int{}, map[string]string{}
 	q := strings.ToLower(strings.TrimSpace(qv.Get("q")))
 	offset, limit := page(r, 100, 1000)
 	counts := map[string]int{"all": 0, "problems": 0, "good": 0, "waiting": 0, "off": 0}
@@ -1543,6 +1579,8 @@ func (srv *Server) handleWorkloadList(w http.ResponseWriter, r *http.Request) {
 	snaps := srv.workloadSnapshot()
 	byPVC, byVolume := volumeLinks(snaps)
 	for _, s := range snaps {
+		plat := s.platform()
+		platformOfSource[s.name] = plat
 		if source != "" && s.name != source {
 			continue
 		}
@@ -1560,6 +1598,10 @@ func (srv *Server) handleWorkloadList(w http.ResponseWriter, r *http.Request) {
 			if q != "" && !strings.Contains(strings.ToLower(rec.Name+" "+rec.Namespace+" "+rec.Owner+" "+rec.Node), q) {
 				continue
 			}
+			platforms[plat]++
+			if platform != "" && plat != platform {
+				continue
+			}
 			sev := stateSeverity(rec.State)
 			counts["all"]++
 			switch sev {
@@ -1575,7 +1617,7 @@ func (srv *Server) handleWorkloadList(w http.ResponseWriter, r *http.Request) {
 			if kind != "" && rec.Kind != kind {
 				continue
 			}
-			row := WorkloadRow{Source: s.name, Workload: rec, Severity: sev, Usage: s.usageOf(rec.ID, now)}
+			row := WorkloadRow{Source: s.name, Platform: plat, Workload: rec, Severity: sev, Usage: s.usageOf(rec.ID, now)}
 			if h, ok := byVM["vm/"+s.name+"/"+rec.Namespace+"/"+rec.Name]; ok && rec.Kind == report.KindVM {
 				row.Host = &h
 			}
@@ -1600,7 +1642,8 @@ func (srv *Server) handleWorkloadList(w http.ResponseWriter, r *http.Request) {
 	// Facts and labels stay for whoever opens a row: the list is the rest.
 	win := window(rows, offset, limit)
 	writeJSON(w, http.StatusOK, map[string]any{"workloads": win, "total": len(rows), "offset": offset, "limit": limit,
-		"counts": counts, "kinds": kinds, "namespaces": namespaces, "clusters": names(srv.clusterSnaps()), "hypervisors": names(srv.hostVMSnaps())})
+		"counts": counts, "kinds": kinds, "namespaces": namespaces, "clusters": names(srv.clusterSnaps()), "hypervisors": names(srv.hostVMSnaps()),
+		"platforms": platforms, "platform_of": platformOfSource})
 }
 
 // lowerFirst lowers a word's first letter, for the middle of a sentence,

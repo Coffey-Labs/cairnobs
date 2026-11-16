@@ -32,7 +32,7 @@ func TestVMLinkedToItsHost(t *testing.T) {
 
 	// Running: linked both ways; silence is the guest's or the network's.
 	hosts, conds := a.view(now)
-	if hosts[0].VM == nil || hosts[0].VM.Name != "db" || hosts[0].VM.Source != "prod" || hosts[0].VM.Href != "/workloads?source=prod&ns=vms&q=db" {
+	if hosts[0].VM == nil || hosts[0].VM.Name != "db" || hosts[0].VM.Source != "prod" || hosts[0].VM.Href != "/workloads?source=prod&ns=vms&q=db" || hosts[0].VM.Platform != "Kubernetes" {
 		t.Fatalf("host's VM: %+v", hosts[0].VM)
 	}
 	silent := find(conds, "silent/node1")
@@ -44,6 +44,9 @@ func TestVMLinkedToItsHost(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &list)
 	if rec.Code != http.StatusOK || len(list.Workloads) != 1 || list.Workloads[0].Host == nil || list.Workloads[0].Host.Name != "node1" {
 		t.Fatalf("VM's host: %d %s", rec.Code, rec.Body)
+	}
+	if list.Workloads[0].Platform != "Kubernetes" {
+		t.Errorf("VM's platform: %q", list.Workloads[0].Platform)
 	}
 
 	// The VM is down: one incident for it, the host held under it.
@@ -129,6 +132,31 @@ func TestHostVMs(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &list)
 	if rec.Code != http.StatusOK || len(list.Workloads) != 2 || len(list.Hypervisors) != 1 || list.Hypervisors[0] != "kvm1" {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+	}
+	for _, w := range list.Workloads {
+		if w.Platform != "KVM" {
+			t.Errorf("%s: platform %q, want KVM", w.Name, w.Platform)
+		}
+	}
+	// ?platform= keeps one platform's, and the counts say how many each has.
+	var by struct {
+		Workloads  []WorkloadRow
+		Platforms  map[string]int
+		PlatformOf map[string]string `json:"platform_of"`
+	}
+	_ = json.Unmarshal(get(a.Handler(), "/api/v1/workloads?platform=KVM", devCookie(t, a.Handler())).Body.Bytes(), &by)
+	if len(by.Workloads) != 2 || by.Platforms["KVM"] != 2 || by.PlatformOf["kvm1"] != "KVM" {
+		t.Errorf("platform=KVM: %d rows, %v, %v", len(by.Workloads), by.Platforms, by.PlatformOf)
+	}
+	_ = json.Unmarshal(get(a.Handler(), "/api/v1/workloads?platform=Hyper-V", devCookie(t, a.Handler())).Body.Bytes(), &by)
+	if len(by.Workloads) != 0 || by.Platforms["KVM"] != 2 {
+		t.Errorf("platform=Hyper-V: %d rows, %v", len(by.Workloads), by.Platforms)
+	}
+	hosts, _ := a.view(now)
+	for _, h := range hosts {
+		if h.Name == "web" && (h.VM == nil || h.VM.Platform != "KVM") {
+			t.Errorf("web's VM: %+v", h.VM)
+		}
 	}
 	for _, w := range list.Workloads {
 		if w.Name == "web" && (w.Host == nil || w.Host.Name != "web" || w.Usage == nil || w.Usage.CPU != 0.5) {

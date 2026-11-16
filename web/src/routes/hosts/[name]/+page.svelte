@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import Icon from '$lib/Icon.svelte';
+	import Platform from '$lib/Platform.svelte';
 	import Panel from '$lib/Panel.svelte';
 	import Spark from '$lib/Spark.svelte';
 	import Status from '$lib/Status.svelte';
@@ -49,7 +50,7 @@
 		<h1>{name}</h1>
 		<p>{#if host?.os}{host.os} · {windows ? 'build' : 'kernel'} {host.kernel} · {host.cpus} CPUs · {bytes(host.mem_total)} memory{:else if host}Waiting for this host's first report.{/if}</p>
 		{#if host?.vm}
-			<p class="vm">VM <a href={host.vm.href}>{host.vm.namespace ? host.vm.namespace + '/' : ''}{host.vm.name}</a> {#if host.vm.on_host}on <a href="/hosts/{host.vm.source}">{host.vm.source}</a>{:else}in {host.vm.title ?? host.vm.source}{/if}{#if host.vm.node}, on {host.vm.node}{/if} · <span class:bad={!['ok', 'updating', 'degraded'].includes(host.vm.state)}>{host.vm.word}</span></p>
+			<p class="vm">VM <a href={host.vm.href}>{host.vm.namespace ? host.vm.namespace + '/' : ''}{host.vm.name}</a> {#if host.vm.on_host}on <a href="/hosts/{host.vm.source}">{host.vm.source}</a>{:else}in {host.vm.title ?? host.vm.source}{/if}{#if host.vm.platform}{' '}<Platform p={host.vm.platform} />{/if}{#if host.vm.node}, on {host.vm.node}{/if} · <span class:bad={!['ok', 'updating', 'degraded'].includes(host.vm.state)}>{host.vm.word}</span></p>
 		{/if}
 		{#if host?.vms}
 			<p class="vm">{#if host.vms.error}<span class="bad">Can't read its VMs</span>: {host.vms.error}{:else}Runs <a href={host.vms.href}>{host.vms.total} {host.vms.total === 1 ? 'VM' : 'VMs'}</a>, {host.vms.running} running{/if}</p>
