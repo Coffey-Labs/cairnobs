@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cairnobs/cairnobs/internal/hmc"
@@ -18,9 +17,9 @@ const hmcName = "hmc1"
 
 // newHMC is three servers: p10-prod runs the four IBM i partitions (their
 // serial and partition numbers are the ones the partitions say), an AIX
-// database and a Linux pair; p10-dr has its attention light on, a VIOS
-// the HMC can't reach over RMC and a Linux partition stopped in Open
-// Firmware; p9-old is in standby, waiting to be retired.
+// database and a Linux pair; p10-dr has its attention light on (a
+// serviceable event nobody has closed); p9-old is in standby, waiting to
+// be retired.
 func newHMC(name, token string) *fakeCluster {
 	c := &fakeCluster{name: name, token: token, recs: map[string]report.Workload{}, changed: map[string]bool{}, noUsage: true, source: hmcName}
 	n := 0
@@ -52,9 +51,8 @@ func newHMC(name, token string) *fakeCluster {
 		MachineType: "9105", Model: "22B", Serial: "78DEF45", ProcUnits: 20, ProcFree: 12.25, MemMB: 1 << 20, MemFreeMB: 655_360, AttentionLED: "true",
 		Partitions: []hmc.Partition{vios("p10-dr", 1, 1), vios("p10-dr", 2, 2),
 			part("p10-dr", "aixdb1-dr", "AIX/Linux", "AIX 7.3 7300-03-00-2446", "running", 3, 2, 8, 512),
-			part("p10-dr", "lnxtest1", "AIX/Linux", "Linux/SUSE 6.4.0-150600.23.25-default 15.6", "open firmware", 4, 0.5, 2, 16),
+			part("p10-dr", "lnxtest1", "AIX/Linux", "Linux/SUSE 6.4.0-150600.23.25-default 15.6", "running", 4, 0.5, 2, 16),
 			part("p10-dr", "aixtest1", "AIX/Linux", "Unknown", "not activated", 5, 0.5, 1, 16)}}
-	dr.Partitions[1].RMC = "inactive"
 	old := hmc.Server{UUID: "1f7a9c3e-5b2d-3e84-a6c0-94d2e8b1f733", Name: "p9-old", State: "standby", DetailedState: "None",
 		MachineType: "9009", Model: "42A", Serial: "13XYZ99", ProcUnits: 16, ProcFree: 16, MemMB: 512 << 10, MemFreeMB: 512 << 10, AttentionLED: "false",
 		Partitions: []hmc.Partition{part("p9-old", "aixold1", "AIX/Linux", "AIX 7.2 7200-05-08-2420", "not activated", 1, 2, 4, 64)}}
@@ -62,9 +60,6 @@ func newHMC(name, token string) *fakeCluster {
 	now := time.Now()
 	for i, r := range hmc.Records(s) {
 		r.Since = now.Add(-time.Duration(30+i%11) * 24 * time.Hour)
-		if strings.HasPrefix(r.Word, "Stopped in Open Firmware") || strings.HasPrefix(r.Word, "Running, but the HMC") {
-			r.Since = now.Add(-time.Duration(2+i%5) * time.Hour)
-		}
 		c.recs[r.ID] = r
 	}
 	return c

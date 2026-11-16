@@ -16,6 +16,7 @@ import (
 	"math"
 	mrand "math/rand/v2"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,6 +48,105 @@ type fakeCluster struct {
 	noUsage     bool                               // its reader sends none (Nutanix: usage is a separate API, not read yet)
 	source      string                             // what a host agent calls it (a vCenter's host name); "" for a cluster agent
 	usageFn     func(now time.Time) []report.Usage // its own readings instead of CPU and memory (an array's performance)
+	episodes    []episode                          // records that go wrong and come right (scenario.go)
+}
+
+// episode is a record that takes its bad form while its spell is on.
+type episode struct {
+	id     string
+	s      spell
+	good   report.Workload
+	bad    func(w *report.Workload, since time.Time)
+	on, in bool // on: in its bad form; in: played at least once
+}
+
+// flap makes record id go wrong during s and come right after
+// (scenario.go): bad changes a copy of the record as it is now, given
+// when the spell began.
+func (c *fakeCluster) flap(id string, s spell, bad func(w *report.Workload, since time.Time)) {
+	if _, ok := c.recs[id]; !ok {
+		panic("flap: no record " + id)
+	}
+	c.episodes = append(c.episodes, episode{id: id, s: s, good: cloneWorkload(c.recs[id]), bad: bad})
+	c.play(time.Now())
+}
+
+// flapSet flaps every record that bad has and good hasn't, or has
+// otherwise: a reader's records made from a good and a bad snapshot. A
+// record only bad has is there during the spell and gone after.
+func (c *fakeCluster) flapSet(s spell, good, bad []report.Workload) {
+	have := map[string]report.Workload{}
+	for _, r := range good {
+		have[r.ID] = r
+	}
+	for _, b := range bad {
+		g, ok := have[b.ID]
+		if ok {
+			g.Since, b.Since = time.Time{}, time.Time{}
+			if reflect.DeepEqual(g, b) {
+				continue
+			}
+		}
+		b := cloneWorkload(b)
+		if !ok {
+			c.episodes = append(c.episodes, episode{id: b.ID, s: s, bad: func(w *report.Workload, since time.Time) { *w = cloneWorkload(b); w.Since = since }})
+			continue
+		}
+		c.flap(b.ID, s, func(w *report.Workload, since time.Time) { *w = cloneWorkload(b); w.Since = since })
+	}
+	c.play(time.Now())
+}
+
+// play puts each flapping record in the form its spell says, and marks
+// the ones that changed.
+func (c *fakeCluster) play(now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.episodes {
+		e := &c.episodes[i]
+		on := e.s.active(now)
+		if e.in && on == e.on {
+			continue
+		}
+		e.on, e.in = on, true
+		if e.good.ID == "" && !on { // there only during the spell
+			if _, ok := c.recs[e.id]; ok {
+				delete(c.recs, e.id)
+				delete(c.changed, e.id)
+				c.removed = append(c.removed, e.id)
+			}
+			continue
+		}
+		w := cloneWorkload(e.good)
+		if on {
+			e.bad(&w, e.s.began(now))
+		} else if !e.good.Since.IsZero() && now.Sub(e.s.began(now)) < e.s.every {
+			w.Since = e.s.began(now).Add(e.s.on) // right again since the spell ended
+		}
+		c.recs[e.id] = w
+		c.changed[e.id] = true
+	}
+}
+
+// flapping says whether record id has an episode, so churn leaves it be.
+func (c *fakeCluster) flapping(id string) bool {
+	for _, e := range c.episodes {
+		if e.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneWorkload(w report.Workload) report.Workload {
+	if w.Facts != nil {
+		f := make(map[string]any, len(w.Facts))
+		for k, v := range w.Facts {
+			f[k] = v
+		}
+		w.Facts = f
+	}
+	return w
 }
 
 func newID() string {
@@ -69,6 +169,7 @@ func newCluster(name, token string, s clusterShape) *fakeCluster {
 			Since: now.Add(-48 * time.Hour), Facts: map[string]any{"kubelet": kubelet, "os": nodeOS, "cpus": 32, "memory_gib": 256}})
 	}
 	k := clusterIndex(name)
+	crasher := ""
 	for i := range s.controllers {
 		ns, owner := fmt.Sprintf("ns-%02d", i%30), fmt.Sprintf("deployment/app-%03d", i)
 		want := s.pods / max(s.controllers, 1)
@@ -82,11 +183,8 @@ func newCluster(name, token string, s clusterShape) *fakeCluster {
 		for range want {
 			c.addPod(ns, owner, now)
 		}
-		if i%97 == 0 { // a few controllers with a crashing pod
-			id := c.pods[len(c.pods)-1]
-			p := c.recs[id]
-			p.State, p.Word, p.Facts = report.StateCrashloop, "Restarting (CrashLoopBackOff)", map[string]any{"restarts": 40, "last_exit": "Error"}
-			put(p)
+		if i == 97 && k == 0 { // a pod that crashes for a while after each deploy (scenario.go)
+			crasher = c.pods[len(c.pods)-1]
 		}
 	}
 	vmGroup := map[string][]string{}
@@ -141,6 +239,12 @@ func newCluster(name, token string, s clusterShape) *fakeCluster {
 	}
 	if name == "cluster-00" { // the pod the probe changes
 		put(report.Workload{Kind: report.KindPod, ID: "probe", Name: "probe", Namespace: "fleet", Node: "node-00", State: report.StateOK, Word: "Running"})
+	}
+	if crasher != "" {
+		c.flap(crasher, spellCrashloop, func(p *report.Workload, since time.Time) {
+			p.State, p.Word, p.Since = report.StateCrashloop, "Restarting (CrashLoopBackOff)", since
+			p.Facts["restarts"], p.Facts["last_exit"], p.Facts["ready"] = 9, "Error", "0/1"
+		})
 	}
 	return c
 }
@@ -212,7 +316,7 @@ func (c *fakeCluster) churn(n int, now time.Time) {
 		i := mrand.N(len(c.pods))
 		id := c.pods[i]
 		p := c.recs[id]
-		if p.State == report.StateCrashloop {
+		if p.State == report.StateCrashloop || c.flapping(id) {
 			continue
 		}
 		if mrand.N(10) == 0 { // replaced: a new pod, the old one gone
@@ -372,6 +476,7 @@ func runCluster(ctx context.Context, c *fakeCluster, client *http.Client, pick f
 				}
 			}
 			c.churn(int(c.shape.churn*5), now)
+			c.play(now)
 			if probed != nil {
 				probeWord, probeAt = c.probe(now), now
 			}

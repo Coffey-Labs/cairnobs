@@ -17,18 +17,19 @@ import (
 // account on loopback, every signature checked. GTM's datacenters are
 // the first sites and its servers their load balancers' public
 // addresses (netmap.go, positions 1 and 2), so a failing one is a fleet
-// host. Problems on purpose:
+// host. Problems on purpose, the ones marked * coming and going
+// (scenario.go):
 //
-//	GTM        site 2's first load balancer failing for api.shop; the
-//	           legacy property with no live datacenter; corp's change
-//	           propagating for 45 minutes
-//	CPS        180 enrollments: four ending within 21 days (one within
-//	           7), two third-party renewals waiting on a CSR
-//	Property   320 properties: a failed production activation, one
-//	Manager    stuck on staging, two rolling out
+//	GTM        * site 2's first load balancer failing for api.shop;
+//	           * the legacy property with no live datacenter (story 3)
+//	CPS        180 enrollments: a third-party renewal waiting on a CSR,
+//	           ending in 15 days
+//	Property   320 properties: a failed production activation;
+//	Manager    * one rolling out for longer than it should
 //	Edge DNS   40 zones (one of 5,000 records); one changes an MX 20
 //	           minutes after the start
-//	Traffic    320 CP codes; one at 8% 5xx, one at 30%
+//	Traffic    320 CP codes; * the legacy site's at 30% 5xx while its
+//	           datacenter is down (story 3)
 const akamaiPort = 58410
 
 func serveAkamai(ctx context.Context, dir string) {
@@ -48,6 +49,18 @@ func serveAkamai(ctx context.Context, dir string) {
 	f := &akamai.Fake{Creds: c}
 	start := time.Now()
 	n := fleetAkamai(f)
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				akamaiStory(f, now)
+			}
+		}
+	}()
 	srv := &http.Server{Handler: f, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	go func() { <-ctx.Done(); _ = srv.Close() }()
@@ -90,35 +103,25 @@ func fleetAkamai(f *akamai.Fake) string {
 		switch name {
 		case "shop":
 			ps[0].Name = "api"
-			if t := ps[0].Targets[3100+2%sites]; t != nil {
-				t[lb(2%sites, 1)] = false
-			}
 		case "corp":
-			ps = append(ps, akamai.FakeProperty{Name: "legacy", Type: "failover", Targets: map[int]map[string]bool{3100: {"198.51.100.50": false}}})
+			ps = append(ps, akamai.FakeProperty{Name: "legacy", Type: "failover", Targets: map[int]map[string]bool{3100: {legacyServer: true}}})
 		}
 		props += len(ps)
-		fd := akamai.FakeDomain{Type: "full", Datacenters: dcs, Properties: ps}
-		if name == "corp" {
-			fd.Propagation, fd.Since = "PENDING", now.Add(-45*time.Minute)
-		}
-		f.SetDomain(name+".example.akadns.net", fd)
+		f.SetDomain(name+".example.akadns.net", akamai.FakeDomain{Type: "full", Datacenters: dcs, Properties: ps})
 	}
 	// CPS: ECDSA keys (fast to make); every tenth has an RSA one too.
 	for i := range 180 {
 		cn := fmt.Sprintf("app%03d.example.com", i)
 		left := time.Duration(25+(i*37)%300) * day
-		switch i {
-		case 3:
-			left = 5 * day
-		case 11, 47, 101:
-			left = time.Duration(10+i%9) * day
+		if i == 47 {
+			left = 15 * day
 		}
 		e := akamai.FakeEnrollment{CN: cn, SANs: []string{cn, "www." + cn}, Validation: "dv", Contract: "1-FLEET", Waiting: "-"}
 		issuer := "Let's Encrypt E7"
 		if i%6 == 0 {
 			e.Validation, issuer = "ov", "DigiCert Global G2 TLS RSA SHA256 2020 CA1"
 		}
-		if i == 47 || i == 120 {
+		if i == 47 {
 			e.Validation, e.Waiting, issuer = "third-party", "third-party-csr", "Sectigo RSA Domain Validation Secure Server CA"
 		}
 		e.Deployed = []string{akamai.FakePEM(issuer, e.SANs, true, now.Add(left))}
@@ -142,15 +145,11 @@ func fleetAkamai(f *akamai.Fake) string {
 			p.Latest, p.Staging = v+1, v+1
 			p.Activations = append(p.Activations, staged,
 				akamai.FakeActivation{Version: v + 1, Network: "PRODUCTION", Status: "FAILED", Submitted: now.Add(-3 * time.Hour), Note: "Origin moved to the new load balancers"})
-		case 9:
-			p.Latest = v + 1
-			p.Activations = append(p.Activations, akamai.FakeActivation{Version: v + 1, Network: "STAGING", Status: "ZONE_1", Submitted: now.Add(-100 * time.Minute)})
-		case 15, 16:
-			p.Latest, p.Staging = v+1, v+1
-			p.Activations = append(p.Activations, staged,
-				akamai.FakeActivation{Version: v + 1, Network: "PRODUCTION", Status: "PENDING", Submitted: now.Add(-time.Duration(i-10) * time.Minute)})
 		}
 		f.SetPMProperty(fmt.Sprintf("prp_9%05d", i), p)
+		if i == slowActivation {
+			slowBase = p
+		}
 	}
 	// Edge DNS.
 	records := 0
@@ -164,19 +163,55 @@ func fleetAkamai(f *akamai.Fake) string {
 		records += len(recs)
 		f.SetZone(fmt.Sprintf("zone%02d.example", z), akamai.FakeZone{Records: recs})
 	}
-	// Traffic: a long tail; CP code 400007 at 8% 5xx, 400019 at 30%.
+	// Traffic: a long tail, about one request in 2,000 failing.
 	for i := range 320 {
 		hits := int64(2_000_000 / (i + 1))
-		errs := hits / 2000
-		switch i {
-		case 7:
-			errs = hits * 8 / 100
-		case 19:
-			errs = hits * 30 / 100
-		}
-		f.SetTraffic(int64(400000+i), hits, errs)
+		f.SetTraffic(int64(400000+i), hits, hits/2000)
 	}
+	akamaiStory(f, now)
 	return fmt.Sprintf("%d GTM properties over %d datacenters, 180 CPS enrollments, 320 properties, 40 DNS zones with %d record sets, 320 CP codes", props, sites, records)
+}
+
+const (
+	legacyServer   = "198.51.100.50" // the legacy property's one datacenter's server
+	legacyCPCode   = 400019          // the legacy site's traffic
+	slowActivation = 15              // the property whose production activation drags
+)
+
+// slowBase is the slow property as fleetAkamai made it, before its new
+// version.
+var slowBase akamai.FakePMProperty
+
+// akamaiStory puts the problems that come and go in their state now
+// (scenario.go): story 3, the legacy datacenter; a load balancer that
+// fails GTM's liveness test now and then; an activation that drags.
+func akamaiStory(f *akamai.Fake, now time.Time) {
+	legacyDown := spellLegacyDC.active(now)
+	f.SetAlive("corp.example.akadns.net", "legacy", 3100, legacyServer, !legacyDown)
+	hits := int64(2_000_000 / (legacyCPCode - 400000 + 1))
+	errs := hits / 2000
+	if legacyDown {
+		errs = hits * 30 / 100
+	}
+	f.SetTraffic(legacyCPCode, hits, errs)
+	if sites := min(fleetSites, 6); sites > 2 {
+		f.SetAlive("shop.example.akadns.net", "api", 3100+2, fmt.Sprintf("203.0.%d.%d", 2, 11), !spellLBFlaps.active(now))
+	}
+	// Its new version goes to production at the start of each spell and
+	// is active an hour and twenty minutes later.
+	p := slowBase
+	p.Activations = append([]akamai.FakeActivation{}, p.Activations...)
+	v := p.Latest + 1
+	b := spellActivation.began(now)
+	p.Latest, p.Staging = v, v
+	p.Activations = append(p.Activations, akamai.FakeActivation{Version: v, Network: "STAGING", Status: "ACTIVE", Submitted: b.Add(-2 * time.Hour)})
+	if spellActivation.active(now) {
+		p.Activations = append(p.Activations, akamai.FakeActivation{Version: v, Network: "PRODUCTION", Status: "PENDING", Submitted: b})
+	} else {
+		p.Production = v
+		p.Activations = append(p.Activations, akamai.FakeActivation{Version: v, Network: "PRODUCTION", Status: "ACTIVE", Submitted: b})
+	}
+	f.SetPMProperty(fmt.Sprintf("prp_9%05d", slowActivation), p)
 }
 
 // fleetZone is zone z's ordinary records, with the given MX.

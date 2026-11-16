@@ -30,12 +30,6 @@ func newVSphere(name, token string, vms int) *fakeCluster {
 		r := report.Workload{Kind: report.KindNode, ID: fmt.Sprintf("host-%d", 1000+n), Name: fmt.Sprintf("esxi-%02d.example.org", n),
 			State: report.StateOK, Word: "Connected", Since: now.Add(-time.Duration(30+n) * 24 * time.Hour),
 			Facts: map[string]any{"cpus": 48, "memory_gib": 768.0, "version": "VMware ESXi 8.0.3 build-24414501"}}
-		switch n {
-		case 9:
-			r.State, r.Word, r.Since = report.StateUpdating, "In maintenance mode", now.Add(-35*time.Minute)
-		case 13:
-			r.State, r.Word, r.Facts["alarms"] = report.StateDegraded, "vCenter alarm: Host memory usage", "Host memory usage (red)"
-		}
 		put(r)
 	}
 	for d := 1; d <= 6; d++ {
@@ -62,13 +56,18 @@ func newVSphere(name, token string, vms int) *fakeCluster {
 			r.State, r.Word = report.StateStopped, "Powered off"
 		case k == 77:
 			r.State, r.Word, r.Facts["oldest_snapshot"] = report.StateDegraded, "Running, with a snapshot 23 days old", now.Add(-23*24*time.Hour).Format(time.DateOnly)
-		case k == 150:
-			r.State, r.Word = report.StateDown, "Inaccessible: its files can't be reached"
-			r.Since = now.Add(-9 * time.Minute)
 		case k%40 == 5:
 			r.Facts["vmware_tools"] = "not running"
 		}
 		put(r)
 	}
+	// Patching takes a host into maintenance for a while; a busy one
+	// raises a memory alarm now and then (scenario.go).
+	c.flap("host-1009", spellESXiUpdate, func(r *report.Workload, since time.Time) {
+		r.State, r.Word, r.Since = report.StateUpdating, "In maintenance mode", since
+	})
+	c.flap("host-1013", spellESXiMemory, func(r *report.Workload, since time.Time) {
+		r.State, r.Word, r.Since, r.Facts["alarms"] = report.StateDegraded, "vCenter alarm: Host memory usage", since, "Host memory usage (red)"
+	})
 	return c
 }

@@ -45,9 +45,6 @@ func newProxmox(name, token string, guests int) *fakeCluster {
 		switch {
 		case k%23 == 22:
 			r.State, r.Word, r.Facts["ha"] = report.StateStopped, "Stopped", "stopped"
-		case k == 41:
-			r.State, r.Word, r.Facts["ha"] = report.StateDown, "HA can't run it (error)", "error"
-			r.Since = now.Add(-18 * time.Minute)
 		case k == 57:
 			r.State, r.Word, r.Facts["lock"] = report.StateUpdating, "Migrating", "migrate"
 		case k%50 == 9:
@@ -55,5 +52,8 @@ func newProxmox(name, token string, guests int) *fakeCluster {
 		}
 		put(r)
 	}
+	c.flap("lxc/141", spellPVEHA, func(r *report.Workload, since time.Time) { // scenario.go
+		r.State, r.Word, r.Since, r.Facts["ha"] = report.StateDown, "HA can't run it (error)", since, "error"
+	})
 	return c
 }

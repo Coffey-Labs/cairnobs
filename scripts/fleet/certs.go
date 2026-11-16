@@ -19,8 +19,7 @@ import (
 //	       last one though its file was renewed, and site 5's sends it
 //	       without its intermediate
 //	30-39  PostgreSQL: each its own certificate from the internal CA
-//	       (STARTTLS), and in /etc/pki/tls/certs; a few end soon, one
-//	       has a 1024-bit key
+//	       (STARTTLS), and in /etc/pki/tls/certs; one has a 1024-bit key
 //
 // Clusters have the router's (or ingress controller's) wildcard on every
 // Route or Ingress, and cert-manager Certificates for ten of their apps.
@@ -76,12 +75,6 @@ func hostCerts(i int, name string) (*report.CertScan, *report.CertFiles) {
 		file("/etc/haproxy/certs/example.com.pem", c, wildcard.NotBefore.Add(time.Hour))
 	case pos >= 30 && pos < 40:
 		begun := time.Duration(30+(n*37)%300) * 24 * time.Hour
-		switch {
-		case n%97 == 30: // ends in a few days
-			begun = 360 * 24 * time.Hour
-		case n%131 == 31: // ended
-			begun = 370 * 24 * time.Hour
-		}
 		key := "ECDSA P-256"
 		if n%211 == 32 {
 			key = "RSA 1024"
@@ -158,7 +151,7 @@ func clusterCerts(name string, ocp bool, routes int, put func(report.Workload)) 
 	for n := range min(10, routes) {
 		app := appNames[n]
 		host := app + ".example.com"
-		begun := time.Duration(10+(n*7+k*3)%60) * 24 * time.Hour
+		begun := time.Duration(10+(n*7+k*3)%55) * 24 * time.Hour // all a month or more from their end, renewing at 30 days
 		if n == 4 && k == 0 {
 			begun = 86 * 24 * time.Hour // ends in four days: the renewal is failing
 		}

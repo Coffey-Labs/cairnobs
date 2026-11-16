@@ -27,25 +27,21 @@ func newPure(name, token string, k int) *fakeCluster {
 }
 
 // newFlashBlade is fb-prod-01 (docs/pure.md, step 5): ten blades, one
-// evacuating; a failed fan; 400 file systems, cluster-02's first 100 VM
-// disks among them (Portworx names them after their PersistentVolumes),
-// one whose replication to fb-dr-01 is unhealthy; 40 buckets.
+// evacuating now and then (scenario.go); 400 file systems, cluster-02's
+// first 100 VM disks among them (Portworx names them after their
+// PersistentVolumes); 40 buckets.
 func newFlashBlade(name, token string, k int) *fakeCluster {
 	arr := pureArrays[k]
 	c := &fakeCluster{name: name, token: token, recs: map[string]report.Workload{}, changed: map[string]bool{}, noUsage: true, source: arr}
 	c.usageFn = func(now time.Time) []report.Usage { return pureIO(k, now) }
 	now := time.Now()
 	put := func(w report.Workload) { c.recs[w.ID] = w }
-	put(report.Workload{Kind: report.KindCluster, ID: report.ClusterSelf, Name: arr, State: report.StateDegraded, Word: "Hardware: CH1.FAN2 critical (Fan speed is 0 RPM)",
-		Since: now.Add(-95 * time.Minute), Facts: map[string]any{"distribution": "Purity//FB", "version": "4.5.6", "model": "FlashBlade//S", "capacity_tib": 2000.0,
-			"used_pct": 61.0, "data_reduction": 3.1, "hardware": "CH1.FAN2 critical (Fan speed is 0 RPM)", "alerts": "CH1.FAN2: Fan failure (critical)"}})
+	put(report.Workload{Kind: report.KindCluster, ID: report.ClusterSelf, Name: arr, State: report.StateOK, Word: "API answering",
+		Since: now.Add(-200 * 24 * time.Hour), Facts: map[string]any{"distribution": "Purity//FB", "version": "4.5.6", "model": "FlashBlade//S", "capacity_tib": 2000.0,
+			"used_pct": 61.0, "data_reduction": 3.1}})
 	for i := 1; i <= 10; i++ {
-		r := report.Workload{Kind: report.KindNode, ID: fmt.Sprintf("ch1.fb%d", i), Name: fmt.Sprintf("CH1.FB%d", i), State: report.StateOK, Word: "Healthy",
-			Since: now.Add(-200 * 24 * time.Hour), Facts: map[string]any{"raw_tib": 48.0}}
-		if i == 6 {
-			r.State, r.Word, r.Since = report.StateUpdating, "Evacuating its data (37%)", now.Add(-2*time.Hour)
-		}
-		put(r)
+		put(report.Workload{Kind: report.KindNode, ID: fmt.Sprintf("ch1.fb%d", i), Name: fmt.Sprintf("CH1.FB%d", i), State: report.StateOK, Word: "Healthy",
+			Since: now.Add(-200 * 24 * time.Hour), Facts: map[string]any{"raw_tib": 48.0}})
 	}
 	put(report.Workload{Kind: report.KindCluster, ID: "connection/c-fb-dr-01", Name: "connection/fb-dr-01", State: report.StateOK, Word: "Connected",
 		Since: now.Add(-90 * 24 * time.Hour), Facts: map[string]any{"type": "async-replication", "version": "4.5.6"}})
@@ -62,9 +58,7 @@ func newFlashBlade(name, token string, k int) *fakeCluster {
 			r.Name, r.Word, r.Facts["protocols"] = "home", "Shared over NFSv3, NFSv4.1, SMB", "NFSv3, NFSv4.1, SMB"
 			r.Facts["replication"] = "to fb-dr-01, replicating, 4 min behind"
 		case n == 101:
-			r.Name, r.State = "scratch", report.StateDegraded
-			r.Word = "Replication to fb-dr-01 is unhealthy: Target file system is full"
-			r.Facts["replication"] = "to fb-dr-01, unhealthy, 5 h behind"
+			r.Name = "scratch"
 		case n%50 == 7:
 			r.Word = "Not shared over any protocol"
 			delete(r.Facts, "protocols")
@@ -80,6 +74,10 @@ func newFlashBlade(name, token string, k int) *fakeCluster {
 		}
 		put(r)
 	}
+	c.flap("ch1.fb6", spellBladeEvac, func(r *report.Workload, since time.Time) {
+		done := min(95, 5+int(time.Since(since).Minutes()))
+		r.State, r.Word, r.Since = report.StateUpdating, fmt.Sprintf("Evacuating its data (%d%%)", done), since
+	})
 	return c
 }
 
@@ -99,12 +97,8 @@ func newFlashArray(name, token string, k, volumes int) *fakeCluster {
 	}
 	put(self)
 	for n, mode := range []string{"primary", "secondary"} {
-		r := report.Workload{Kind: report.KindNode, ID: fmt.Sprintf("ct%d", n), Name: fmt.Sprintf("CT%d", n), State: report.StateOK, Word: "Ready, " + mode,
-			Since: now.Add(-40 * 24 * time.Hour), Facts: map[string]any{"mode": mode, "model": "FA-X70R4", "version": "6.7.3"}}
-		if arr == "fa-vdi-01" && n == 1 {
-			r.State, r.Word, r.Since = report.StateUpdating, "Updating", now.Add(-12*time.Minute)
-		}
-		put(r)
+		put(report.Workload{Kind: report.KindNode, ID: fmt.Sprintf("ct%d", n), Name: fmt.Sprintf("CT%d", n), State: report.StateOK, Word: "Ready, " + mode,
+			Since: now.Add(-40 * 24 * time.Hour), Facts: map[string]any{"mode": mode, "model": "FA-X70R4", "version": "6.7.3"}})
 	}
 	switch arr {
 	case "fa-prod-01", "fa-prod-02":
@@ -116,8 +110,8 @@ func newFlashArray(name, token string, k, volumes int) *fakeCluster {
 		put(report.Workload{Kind: report.KindCluster, ID: "connection/c-fa-dr-01", Name: "connection/fa-dr-01", State: report.StateOK, Word: "Connected",
 			Since: now.Add(-60 * 24 * time.Hour), Facts: map[string]any{"type": "async-replication", "version": "6.7.3"}})
 	case "fa-dr-01":
-		put(report.Workload{Kind: report.KindCluster, ID: "connection/c-fa-prod-01", Name: "connection/fa-prod-01", State: report.StateDegraded,
-			Word: "Connected, but its paths aren't redundant", Since: now.Add(-50 * time.Minute), Facts: map[string]any{"type": "async-replication", "version": "6.7.3"}})
+		put(report.Workload{Kind: report.KindCluster, ID: "connection/c-fa-prod-01", Name: "connection/fa-prod-01", State: report.StateOK,
+			Word: "Connected", Since: now.Add(-60 * 24 * time.Hour), Facts: map[string]any{"type": "async-replication", "version": "6.7.3"}})
 	}
 	prefix := map[string]string{"fa-prod-01": "k8s-pvc", "fa-prod-02": "k8s-pvc", "fa-dr-01": "dr-copy", "fa-vdi-01": "vdi"}[arr]
 	for n := range volumes {
@@ -145,6 +139,16 @@ func newFlashArray(name, token string, k, volumes int) *fakeCluster {
 			r.Facts["pod"] = "prod-pod"
 		}
 		put(r)
+	}
+	switch arr {
+	case "fa-vdi-01":
+		c.flap("ct1", spellVDIUpdate, func(r *report.Workload, since time.Time) {
+			r.State, r.Word, r.Since = report.StateUpdating, "Updating", since
+		})
+	case "fa-dr-01":
+		c.flap("connection/c-fa-prod-01", spellDRPaths, func(r *report.Workload, since time.Time) {
+			r.State, r.Word, r.Since = report.StateDegraded, "Connected, but its paths aren't redundant", since
+		})
 	}
 	return c
 }

@@ -49,3 +49,13 @@ obs-beacond and the simulator, so nothing in it can reach anything else:
 - The root is read-only and the state is in tmpfs, so restarting the
   container is a fresh demo; restart it on a timer (weekly is plenty) so
   history doesn't pile up.
+
+## What a visitor sees
+
+Most of the simulated fleet is healthy. What's wrong follows a plan
+(`scripts/fleet/scenario.go`, and "The demo fleet" in development.md):
+three stories with a cause and its effects, a few lasting warnings, and
+problems that come and go through the day, so incidents open, resolve and
+show up under Recently resolved. Because the plan runs on the clock, two
+visitors an hour apart see different problems, and a restarted demo shows
+the same ones the old one would have.
