@@ -327,11 +327,20 @@ hide a real outage.
 Built on the paged, server-side lists from #69. No page ever lists
 everything at once.
 
-- **Dashboard:** one line per cluster: version, nodes ready of total,
-  workloads by state, open incidents. The "needs attention" list takes
-  workloads too, capped as for hosts.
-- **Clusters:** each cluster's nodes, operators and update state, then
-  its namespaces with counts by state, problems first.
+- **Dashboard:** one line per cluster: its version, state and a summary
+  in its kind's terms: "31/32 nodes ready · 3,300 workloads" for
+  Kubernetes, "2/2 controllers ready · 600 volumes · 71% used" for an
+  array, "CPU 41% · system ASP 85% · 4 of 5 subsystems active" for an
+  IBM i partition. The network map's cluster boxes use the same line.
+  The "needs attention" list takes workloads too, capped as for hosts.
+- **Clusters:** in sections by kind (Kubernetes, Virtualization, Storage,
+  IBM i, Secrets), the ones that need a look first in each, with a jump
+  list counting each kind and its problems. Filters for kind, "need a
+  look" and name stay in the address
+  (`/clusters?group=Storage&show=problems&q=prod`). Each cluster shows
+  its nodes, operators and update state, then its kinds of workload with
+  counts by state. The API gives each cluster's `group` and `summary`.
+  A host's own libvirt or Hyper-V VMs are on its page, not here.
 - **Workloads:** one table for every kind, filtered by cluster, namespace,
   kind, node and state and searched by name, problems first, paged. The
   same table filtered to `vm` is the **VMs** page.

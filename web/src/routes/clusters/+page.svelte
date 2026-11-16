@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 	import Panel from '$lib/Panel.svelte';
 	import Status from '$lib/Status.svelte';
@@ -37,20 +39,78 @@
 		return s ? (m[s] ?? 0) : Object.values(m).reduce((a, b) => a + b, 0);
 	};
 	const href = (c: string, extra: Record<string, string>) => '/workloads?' + new URLSearchParams({ source: c, ...extra });
+
+	// Sections by kind, problems first in each, and filters that live in
+	// the address (#41): ?group=Storage&show=problems&q=prod.
+	const groups = ['Kubernetes', 'Virtualization', 'Storage', 'IBM i', 'Secrets'];
+	const u = page.url.searchParams;
+	let group = $state(u.get('group') ?? '');
+	let show = $state(u.get('show') ?? '');
+	let typed = $state(u.get('q') ?? '');
+	let q = $state(u.get('q') ?? '');
+	$effect(() => {
+		const t = typed;
+		const d = setTimeout(() => (q = t.trim()), 200);
+		return () => clearTimeout(d);
+	});
+	$effect(() => {
+		const p = new URLSearchParams();
+		for (const [k, v] of [['group', group], ['show', show], ['q', q]]) if (v) p.set(k, v);
+		try { replaceState('/clusters' + (p.size ? '?' + p : ''), {}); } catch { /* before the router is up */ }
+	});
+	const rank: Record<string, number> = { critical: 0, warning: 1, waiting: 2, off: 3, good: 4 };
+	const needsLook = (c: Cluster) => c.status === 'critical' || c.status === 'warning' || c.problems > 0;
+	const matches = (c: Full) => {
+		if (show === 'problems' && !needsLook(c)) return false;
+		if (!q) return true;
+		const f = q.toLowerCase();
+		return [c.name, c.title, c.read_by, c.version, c.noun].some((x) => x?.toLowerCase().includes(f));
+	};
+	const sections = $derived(
+		groups
+			.map((g) => {
+				const all = clusters.filter((c) => (c.group || 'Kubernetes') === g);
+				const shown = all.filter(matches).sort((a, b) => (rank[a.status] ?? 5) - (rank[b.status] ?? 5) || b.problems - a.problems || a.name.localeCompare(b.name));
+				return { g, all, shown, bad: all.filter(needsLook).length };
+			})
+			.filter((x) => x.all.length)
+	);
+	const anchor = (g: string) => 'kind-' + g.toLowerCase().replace(/[^a-z]+/g, '-');
+	const badCount = $derived(clusters.filter(needsLook).length);
 </script>
 
 <svelte:head><title>Cairn OBS · Clusters</title></svelte:head>
 
 <div class="phead">
 	<span class="tile"><Icon name="cluster" /></span>
-	<div><h1>Clusters</h1><p>Each cluster a cluster agent watches: its nodes, and what runs on them by state. A node that's down is one problem, with what's on it listed under it.</p></div>
+	<div><h1>Clusters</h1><p>Everything Cairn OBS reads as a cluster, by kind: Kubernetes, hypervisor managers, arrays, IBM i and Vault. The ones that need a look come first in each. A node that's down is one problem, with what's on it listed under it.</p></div>
 	<div class="acts"><a class="btn sm" href="/workloads?show=problems"><Icon name="grid" /> Workloads that need a look</a></div>
 </div>
 
 {#if error}<p class="foot-note" style="color:var(--critical)">{error}</p>{/if}
 {#if loaded && clusters.length === 0}<p class="empty">No clusters yet. A cluster agent adds its cluster once it has joined.</p>{/if}
 
-{#each clusters as c (c.name)}
+{#if clusters.length}
+	<nav class="jump" aria-label="Kinds of cluster">
+		{#each sections as x (x.g)}
+			<a href="#{anchor(x.g)}" class:dim={group && group !== x.g}>{x.g} <b>{x.all.length}</b>{#if x.bad}<span class="badn" title="{x.bad} need a look">{x.bad}</span>{/if}</a>
+		{/each}
+	</nav>
+	<div class="filters">
+		<Icon name="filter" />
+		<input class="input" placeholder="Name, version or what it is" aria-label="Find a cluster" bind:value={typed} style="width:240px" />
+		<button class="chip" class:on={group === ''} onclick={() => (group = '')}>All kinds</button>
+		{#each sections as x (x.g)}<button class="chip" class:on={group === x.g} onclick={() => (group = group === x.g ? '' : x.g)}>{x.g}</button>{/each}
+		<button class="chip" class:on={show === 'problems'} onclick={() => (show = show === 'problems' ? '' : 'problems')}>Need a look <b>{badCount}</b></button>
+		{#if group || show || q}<button class="btn sm" onclick={() => { group = ''; show = ''; typed = ''; q = ''; }}>Clear</button>{/if}
+	</div>
+{/if}
+
+{#each sections as x (x.g)}
+	{#if !group || group === x.g}
+	<h2 class="sect" id={anchor(x.g)}>{x.g} <span class="sub">{(x.shown.length === x.all.length ? `${x.all.length}` : `${x.shown.length} of ${x.all.length}`) + (x.bad ? ` · ${x.bad} ${x.bad === 1 ? 'needs' : 'need'} a look` : '')}</span></h2>
+	{#if !x.shown.length}<p class="empty">None match.</p>{/if}
+	{#each x.shown as c (c.name)}
 	<div class="mt">
 		<Panel title={c.title ? `${c.title} · read by ${c.read_by || c.name}` : c.name} aside={c.version ? `version ${c.version}` : ''}>
 			<div class="top">
@@ -93,7 +153,7 @@
 					{#each kinds as [k, label]}
 						{#if n(c, k)}
 							<tr>
-								<td><a href={href(c.name, { kind: k })}>{k === 'node' && c.node_noun ? c.node_noun + 's' : label}</a></td>
+								<td><a href={href(c.name, { kind: k })}>{k === 'node' && c.node_noun ? c.node_noun + 's' : k === 'vm' && c.noun === 'HMC' ? 'Partitions' : label}</a></td>
 								<td class="mono">{n(c, k)}</td>
 								{#each sevs as [s]}
 									<td class="mono">{#if n(c, k, s)}<a class="sv {s}" href={href(c.name, { kind: k, show: s === 'critical' || s === 'warning' ? 'problems' : s })}>{n(c, k, s)}</a>{:else}<span class="sub">0</span>{/if}</td>
@@ -114,10 +174,19 @@
 			{/if}
 		</Panel>
 	</div>
+	{/each}
+	{/if}
 {/each}
 <p class="foot-note">Refreshes every 10 seconds.</p>
 
 <style>
+	.jump { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 4px 0 10px; font-size: 13px; }
+	.jump a { color: var(--foreground); display: inline-flex; align-items: center; gap: 5px; }
+	.jump a b { font-family: var(--mono); color: var(--muted-fg); font-weight: 500; }
+	.jump a.dim { opacity: 0.5; }
+	.badn { font: 600 11px var(--mono); color: var(--critical); border: 1px solid color-mix(in oklab, var(--critical) 50%, transparent); border-radius: 9px; padding: 0 6px; }
+	.sect { font-size: 15px; margin: 22px 0 0; scroll-margin-top: 70px; display: flex; gap: 10px; align-items: baseline; }
+	.sect .sub { font-size: 12px; font-weight: 400; }
 	.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 	.nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 	.nums a, .nums > div { display: flex; flex-direction: column; color: var(--foreground); }
