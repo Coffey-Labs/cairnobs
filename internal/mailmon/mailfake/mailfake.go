@@ -28,6 +28,8 @@ type Server struct {
 	nextID  int
 	queue   []time.Time
 	deleted int
+	conns   int          // SMTP connections so far
+	refuse  map[int]bool // SMTP connection numbers to drop
 	ls      []net.Listener
 	http    *http.Server
 
@@ -87,6 +89,19 @@ func (f *Server) SetDelay(d time.Duration) {
 	f.mu.Unlock()
 }
 
+// RefuseSMTP drops the given upcoming SMTP connections (1 = the next one)
+// without a greeting, the way a server's connection throttle does.
+func (f *Server) RefuseSMTP(next ...int) {
+	f.mu.Lock()
+	if f.refuse == nil {
+		f.refuse = map[int]bool{}
+	}
+	for _, n := range next {
+		f.refuse[f.conns+n] = true
+	}
+	f.mu.Unlock()
+}
+
 // SetQueue sets the outgoing queue: one creation time per message.
 func (f *Server) SetQueue(q []time.Time) {
 	f.mu.Lock()
@@ -122,6 +137,13 @@ func (f *Server) serve(l net.Listener, h func(net.Conn)) {
 }
 
 func (f *Server) smtpConn(c net.Conn) {
+	f.mu.Lock()
+	f.conns++
+	drop := f.refuse[f.conns]
+	f.mu.Unlock()
+	if drop {
+		return // serve closes it: the client reads EOF
+	}
 	r := bufio.NewReader(c)
 	say := func(s string) { _, _ = c.Write([]byte(s + "\r\n")) }
 	say("220 fake ESMTP")

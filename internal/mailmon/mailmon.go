@@ -21,10 +21,12 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/textproto"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -225,6 +227,64 @@ func readPassword(p string) (string, error) {
 	return s, nil
 }
 
+// Mail servers often limit how many connections one address may open in a
+// second (inbuxa's inbound throttle allows 5). A round opens several: the
+// SMTP, IMAP and JMAP sign-ins, then the send. So they are spaced stepGap
+// apart, and a connection the server drops (EOF, reset, a 4xx reply) is
+// tried once more after retryWait before it counts as a failure. A real
+// outage still fails both tries. Variables so tests can shorten them.
+var (
+	stepGap   = time.Second
+	retryWait = 3 * time.Second
+)
+
+// transient says whether err looks like a connection the server dropped or
+// put off, worth one more try, rather than an answer (wrong password, 5xx,
+// refused port) or a timeout, which already took its full time.
+func transient(err error) bool {
+	if err == nil {
+		return false
+	}
+	var te *textproto.Error
+	if errors.As(err, &te) {
+		return te.Code >= 400 && te.Code < 500
+	}
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
+}
+
+// pause waits d, or less if ctx ends; it says whether the whole wait passed.
+func pause(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+// once runs f with its own timeout.
+func once(ctx context.Context, d time.Duration, f func(context.Context) error) error {
+	c, cancel := context.WithTimeout(ctx, d)
+	defer cancel()
+	return f(c)
+}
+
+// retried runs f, and once more after retryWait if the first try failed
+// transiently.
+func retried(ctx context.Context, d time.Duration, f func(context.Context) error) error {
+	err := once(ctx, d, f)
+	if transient(err) && pause(ctx, retryWait) {
+		err = once(ctx, d, f)
+	}
+	return err
+}
+
 // Round signs in everywhere, sends a test message and waits for it, and
 // reads the queue.
 func (w *Watcher) Round(ctx context.Context) {
@@ -243,10 +303,8 @@ func (w *Watcher) Round(ctx context.Context) {
 		fails[si.Name] = si.Fails
 	}
 	step := func(name string, f func(context.Context) error) SignIn {
-		c, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
 		t := time.Now()
-		err := f(c)
+		err := retried(ctx, 20*time.Second, f)
 		si := SignIn{Name: name, OK: err == nil, Ms: float64(time.Since(t).Microseconds()) / 1000}
 		if err != nil {
 			si.Error, si.Fails = plain(err), fails[name]+1
@@ -255,11 +313,11 @@ func (w *Watcher) Round(ctx context.Context) {
 	}
 
 	var j *jmapSession
-	s.SignIns = []SignIn{
-		step("SMTP", func(c context.Context) error { return w.smtpSignIn(c, pw) }),
-		step("IMAP", func(c context.Context) error { return w.imapSignIn(c, pw) }),
-		step("JMAP", func(c context.Context) (err error) { j, err = w.jmapSignIn(c, pw); return }),
-	}
+	s.SignIns = []SignIn{step("SMTP", func(c context.Context) error { return w.smtpSignIn(c, pw) })}
+	pause(ctx, stepGap)
+	s.SignIns = append(s.SignIns, step("IMAP", func(c context.Context) error { return w.imapSignIn(c, pw) }))
+	pause(ctx, stepGap)
+	s.SignIns = append(s.SignIns, step("JMAP", func(c context.Context) (err error) { j, err = w.jmapSignIn(c, pw); return }))
 
 	// The queue, then the round trip (which takes longest).
 	if j == nil {
@@ -579,9 +637,10 @@ func (w *Watcher) roundTrip(ctx context.Context, pw string, j *jmapSession) Trip
 	defer cancel()
 	w.sweep(c, j, start.Add(-time.Hour))
 	token := randomToken(9)
-	sc, scancel := context.WithTimeout(c, 30*time.Second)
-	err := w.send(sc, pw, token, start)
-	scancel()
+	pause(c, stepGap)
+	// A retry after the server dropped the end of DATA may deliver the
+	// message twice; find takes either, and the sweep removes the other.
+	err := retried(c, 30*time.Second, func(sc context.Context) error { return w.send(sc, pw, token, start) })
 	if err != nil {
 		t.Error = "sending: " + plain(err)
 		return t
