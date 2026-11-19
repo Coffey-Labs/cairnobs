@@ -2,6 +2,10 @@ package mailmon
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +14,13 @@ import (
 
 	"github.com/cairnobs/cairnobs/internal/mailmon/mailfake"
 )
+
+// The fake server has no throttle and the timing tests count seconds, so
+// the spacing between connections is off and the retry wait short.
+func TestMain(m *testing.M) {
+	stepGap, retryWait = 0, 50*time.Millisecond
+	os.Exit(m.Run())
+}
 
 func newFakeMail(t *testing.T) *mailfake.Server {
 	f, err := mailfake.Start("monitor@example.test", "right horse", "127.0.0.1:0", "127.0.0.1:0", "127.0.0.1:0")
@@ -139,5 +150,58 @@ func TestStandInOnLoopbackOnly(t *testing.T) {
 	c := base
 	if err := c.Defaults(); err != nil || !c.PlainIMAP || !c.PlainSMTP {
 		t.Fatalf("loopback stand-in: %v %+v", err, c)
+	}
+}
+
+// A server throttle that drops one connection is tried again, not a miss:
+// the SMTP sign-in (connection 1) and the send (connection 3, after the
+// retried sign-in's 2) each lose one connection here.
+func TestDroppedConnectionIsRetried(t *testing.T) {
+	f := newFakeMail(t)
+	w := watcher(t, f, f.Password)
+	f.RefuseSMTP(1, 3)
+	w.Round(context.Background())
+	s := w.Snapshot()
+	for _, si := range s.SignIns {
+		if !si.OK {
+			t.Errorf("%s sign-in failed: %s", si.Name, si.Error)
+		}
+	}
+	if !s.Trip.OK {
+		t.Errorf("trip = %+v, want it to arrive after one retried send", s.Trip)
+	}
+}
+
+// Dropped twice in a row is a real failure, reported as before.
+func TestSendDroppedTwiceFails(t *testing.T) {
+	f := newFakeMail(t)
+	w := watcher(t, f, f.Password)
+	f.RefuseSMTP(2, 3) // connection 1 is the sign-in; both tries at sending drop
+	w.Round(context.Background())
+	s := w.Snapshot()
+	if s.Trip.OK || !strings.HasPrefix(s.Trip.Error, "sending: ") || !strings.Contains(s.Trip.Error, "EOF") {
+		t.Errorf("trip = %+v, want a sending failure mentioning EOF", s.Trip)
+	}
+	if s.Trip.Fails != 1 {
+		t.Errorf("fails = %d, want 1", s.Trip.Fails)
+	}
+}
+
+func TestTransient(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{nil, false},
+		{io.EOF, true},
+		{fmt.Errorf("STARTTLS: %w", io.ErrUnexpectedEOF), true},
+		{&textproto.Error{Code: 421, Msg: "too many connections"}, true},
+		{fmt.Errorf("sign-in refused: %w", &textproto.Error{Code: 535, Msg: "bad credentials"}), false},
+		{errors.New("connection refused"), false},
+	}
+	for _, c := range cases {
+		if got := transient(c.err); got != c.want {
+			t.Errorf("transient(%v) = %v, want %v", c.err, got, c.want)
+		}
 	}
 }
